@@ -115,7 +115,7 @@ if [ "$JAVA_HOME" = "" ]; then
 fi
 JAVA=$JAVA_HOME/bin/java
 export HBASE_LOGFILE=hbase-$HBASE_IDENT_STRING-$command-$HOSTNAME.log
-export HBASE_ROOT_LOGGER="INFO,DRFA"
+export HBASE_ROOT_LOGGER=${HBASE_ROOT_LOGGER:-"INFO,RFA"}
 logout=$HBASE_LOG_DIR/hbase-$HBASE_IDENT_STRING-$command-$HOSTNAME.out  
 loglog="${HBASE_LOG_DIR}/${HBASE_LOGFILE}"
 pid=$HBASE_PID_DIR/hbase-$HBASE_IDENT_STRING-$command.pid
