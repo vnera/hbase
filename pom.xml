@@ -712,6 +712,7 @@
 
                 <exec executable="sh">
                   <arg line="${basedir}/src/saveVersion.sh ${project.version} ${generated.sources}/java"/>
+                  <env key="HBASE_REVISION" value="${cloudera.hash}" />
                 </exec>
               </target>
             </configuration>
@@ -865,6 +866,7 @@
     <thrift.version>0.7.0</thrift.version>
     <zookeeper.version>${cdh.zookeeper.version}</zookeeper.version>
     <hadoop-snappy.version>${cdh.hadoop-snappy.version}</hadoop-snappy.version>
+    <cloudera.hash></cloudera.hash>
 
     <package.prefix>/usr</package.prefix>	           
     <package.conf.dir>/etc/hbase</package.conf.dir>  
