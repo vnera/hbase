@@ -1285,7 +1285,7 @@ public class Store implements HeapSize {
                     throw new InterruptedIOException(
                         "Aborting compaction of store " + this +
                         " in region " + this.region +
-                        " because user requested stop.");
+                        " because it was interrupted.");
                   }
                 }
               }
