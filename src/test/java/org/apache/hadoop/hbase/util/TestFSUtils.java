@@ -37,14 +37,12 @@ import org.junit.Test;
 public class TestFSUtils {
   @Test public void testIsHDFS() throws Exception {
     HBaseTestingUtility htu = new HBaseTestingUtility();
-    htu.getConfiguration().setBoolean("dfs.support.append", false);
     assertFalse(FSUtils.isHDFS(htu.getConfiguration()));
-    htu.getConfiguration().setBoolean("dfs.support.append", true);
+    assertTrue(FSUtils.isSyncSupported() || FSUtils.isHflushSupported());
     MiniDFSCluster cluster = null;
     try {
       cluster = htu.startMiniDFSCluster(1);
       assertTrue(FSUtils.isHDFS(htu.getConfiguration()));
-      assertTrue(FSUtils.isAppendSupported(htu.getConfiguration()));
     } finally {
       if (cluster != null) cluster.shutdown();
     }

@@ -326,9 +326,9 @@ public class TestLogRolling  {
     this.log = server.getWAL();
 
     assertTrue("Need HDFS-826 for this test", log.canGetCurReplicas());
-    // don't run this test without append support (HDFS-200 & HDFS-142)
-    assertTrue("Need append support for this test", FSUtils
-        .isAppendSupported(TEST_UTIL.getConfiguration()));
+    // don't run this test without sync or hflush support 
+    assertTrue("Need sync or hflush support for this test",
+        FSUtils.isSyncSupported() || FSUtils.isHflushSupported());
 
     // add up the datanode count, to ensure proper replication when we kill 1
     // This function is synchronous; when it returns, the dfs cluster is active
@@ -445,9 +445,9 @@ public class TestLogRolling  {
     });
 
     assertTrue("Need HDFS-826 for this test", log.canGetCurReplicas());
-    // don't run this test without append support (HDFS-200 & HDFS-142)
-    assertTrue("Need append support for this test", FSUtils
-        .isAppendSupported(TEST_UTIL.getConfiguration()));
+    // don't run this test without sync or hflush support 
+    assertTrue("Need sync or hflush support for this test",
+        FSUtils.isSyncSupported() || FSUtils.isHflushSupported());
 
     writeData(table, 1002);
 

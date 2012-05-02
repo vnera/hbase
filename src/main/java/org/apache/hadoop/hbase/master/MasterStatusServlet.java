@@ -65,7 +65,8 @@ public class MasterStatusServlet extends HttpServlet {
     response.setContentType("text/html");
     MasterStatusTmpl tmpl = new MasterStatusTmpl()
       .setFrags(frags)
-      .setShowAppendWarning(shouldShowAppendWarning(conf))
+      .setShowSyncWarning(shouldShowSyncWarning(conf))
+      .setShowHflushWarning(shouldShowHflushWarning(conf))
       .setRootLocation(rootLocation)
       .setMetaLocation(metaLocation)
       .setServers(servers)
@@ -98,11 +99,20 @@ public class MasterStatusServlet extends HttpServlet {
     }
   }
 
-  static boolean shouldShowAppendWarning(Configuration conf) {
+  static boolean shouldShowSyncWarning(Configuration conf) {
     try {
-      return !FSUtils.isAppendSupported(conf) && FSUtils.isHDFS(conf);
+      return !FSUtils.isSyncSupported() && FSUtils.isHDFS(conf);
     } catch (IOException e) {
-      LOG.warn("Unable to determine if append is supported", e);
+      LOG.warn("Unable to determine if sync is supported", e);
+      return false;
+    }
+  }
+
+  static boolean shouldShowHflushWarning(Configuration conf) {
+    try {
+      return !FSUtils.isHflushSupported() && FSUtils.isHDFS(conf);
+    } catch (IOException e) {
+      LOG.warn("Unable to determine if hflush is supported", e);
       return false;
     }
   }

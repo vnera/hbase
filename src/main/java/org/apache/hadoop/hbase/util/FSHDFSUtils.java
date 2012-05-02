@@ -25,7 +25,6 @@ import java.lang.reflect.InvocationTargetException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -51,10 +50,10 @@ public class FSHDFSUtils extends FSUtils{
    */
   public static final long LEASE_SOFTLIMIT_PERIOD = 60 * 1000;
 
-  public void recoverFileLease(final FileSystem fs, final Path p, Configuration conf)
+  public void recoverFileLease(final FileSystem fs, final Path p)
   throws IOException{
-    if (!isAppendSupported(conf)) {
-      LOG.warn("Running on HDFS without append enabled may result in data loss");
+    if (!isSyncSupported() && !isHflushSupported()) {
+      LOG.warn("Running on HDFS without sync or hflush enabled may result in data loss");
       return;
     }
     // lease recovery not needed for local file system case.

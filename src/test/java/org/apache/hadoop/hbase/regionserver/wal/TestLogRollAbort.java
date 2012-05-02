@@ -141,9 +141,9 @@ public class TestLogRollAbort {
     HLog log = server.getWAL();
 
     assertTrue("Need HDFS-826 for this test", log.canGetCurReplicas());
-    // don't run this test without append support (HDFS-200 & HDFS-142)
-    assertTrue("Need append support for this test",
-        FSUtils.isAppendSupported(TEST_UTIL.getConfiguration()));
+    // don't run this test without sync or hflush support
+    assertTrue("Need sync or hflush support for this test",
+        FSUtils.isSyncSupported() || FSUtils.isHflushSupported());
 
     Put p = new Put(Bytes.toBytes("row2001"));
     p.add(HConstants.CATALOG_FAMILY, Bytes.toBytes("col"), Bytes.toBytes(2001));

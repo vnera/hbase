@@ -767,36 +767,37 @@ public abstract class FSUtils {
   }
 
   /**
-   * Heuristic to determine whether is safe or not to open a file for append
-   * Looks both for dfs.support.append and use reflection to search
-   * for SequenceFile.Writer.syncFs() or FSDataOutputStream.hflush()
-   * @param conf
-   * @return True if append support
+   * Heuristic to determine whether is safe or not to open a file for sync
+   * Uses reflection to search for SequenceFile.Writer.syncFs()
+   * @return True if sync is supported
    */
-  public static boolean isAppendSupported(final Configuration conf) {
-    boolean append = conf.getBoolean("dfs.support.append", false);
-    if (append) {
-      try {
-        // TODO: The implementation that comes back when we do a createWriter
-        // may not be using SequenceFile so the below is not a definitive test.
-        // Will do for now (hdfs-200).
-        SequenceFile.Writer.class.getMethod("syncFs", new Class<?> []{});
-        append = true;
-      } catch (SecurityException e) {
-      } catch (NoSuchMethodException e) {
-        append = false;
-      }
+  public static boolean isSyncSupported() {
+    boolean sync = true;
+    try {
+      // TODO: The implementation that comes back when we do a createWriter
+      // may not be using SequenceFile so the below is not a definitive test.
+      // Will do for now (hdfs-200).
+      SequenceFile.Writer.class.getMethod("syncFs", new Class<?> []{});
+    } catch (SecurityException e) {
+    } catch (NoSuchMethodException e) {
+      sync = false;
     }
-    if (!append) {
-      // Look for the 0.21, 0.22, new-style append evidence.
-      try {
-        FSDataOutputStream.class.getMethod("hflush", new Class<?> []{});
-        append = true;
-      } catch (NoSuchMethodException e) {
-        append = false;
-      }
+    return sync;
+  }
+
+  /**
+   * Heuristic to determine whether is safe or not to open a file for hflush
+   * Uses reflection to search for FSDataOutputStream.hflush()
+   * @return True if hflush is supported
+   */
+  public static boolean isHflushSupported() {
+    boolean hflush = true;
+    try {
+      FSDataOutputStream.class.getMethod("hflush", new Class<?> []{});
+    } catch (NoSuchMethodException e) {
+      hflush = false;
     }
-    return append;
+    return hflush;
   }
 
   /**
@@ -818,8 +819,7 @@ public abstract class FSUtils {
    * @param conf Configuration handle
    * @throws IOException
    */
-  public abstract void recoverFileLease(final FileSystem fs, final Path p,
-      Configuration conf) throws IOException;
+  public abstract void recoverFileLease(final FileSystem fs, final Path p) throws IOException;
   
   /**
    * @param fs
