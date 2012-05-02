@@ -25,7 +25,8 @@ ServerName rootLocation = null;
 ServerName metaLocation = null;
 List<ServerName> servers = null;
 Set<ServerName> deadServers = null;
-boolean showAppendWarning = false;
+boolean showSyncWarning = false;
+boolean showHflushWarning = false;
 String filter = "general";
 String format = "html";
 </%args>
@@ -77,9 +78,9 @@ org.apache.hadoop.hbase.HTableDescriptor;
   for details.
   </div>
 </%if>
-<%if showAppendWarning %> 
+<%if showSyncWarning && showHflushWarning %>
   <div class="warning">
-  You are currently running the HMaster without HDFS append support enabled.
+  You are currently running the HMaster without either HDFS sync or hflush support enabled.
   This may result in data loss.
   Please see the <a href="http://wiki.apache.org/hadoop/Hbase/HdfsSyncSupport">HBase wiki</a>
   for details.

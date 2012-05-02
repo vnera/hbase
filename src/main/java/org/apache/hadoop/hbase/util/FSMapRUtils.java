@@ -19,7 +19,6 @@
 package org.apache.hadoop.hbase.util;
 
 import java.io.IOException;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
@@ -32,8 +31,7 @@ import org.apache.commons.logging.LogFactory;
 public class FSMapRUtils extends FSUtils {
   private static final Log LOG = LogFactory.getLog(FSMapRUtils.class);
   
-  public void recoverFileLease(final FileSystem fs, final Path p, 
-      Configuration conf) throws IOException {
+  public void recoverFileLease(final FileSystem fs, final Path p) throws IOException {
     LOG.info("Recovering file " + p.toString() + 
       " by changing permission to readonly");
     FsPermission roPerm = new FsPermission((short) 0444);

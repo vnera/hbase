@@ -754,7 +754,7 @@ public class HLogSplitter {
     }
 
     try {
-      FSUtils.getInstance(fs, conf).recoverFileLease(fs, path, conf);
+      FSUtils.getInstance(fs, conf).recoverFileLease(fs, path);
       try {
         in = getReader(fs, path, conf);
       } catch (EOFException e) {
