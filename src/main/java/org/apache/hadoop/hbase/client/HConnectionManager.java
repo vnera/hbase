@@ -1848,7 +1848,7 @@ public class HConnectionManager {
     }
 
     public HTableDescriptor[] getHTableDescriptors(List<String> tableNames) throws IOException {
-      if (tableNames == null || tableNames.size() == 0) return null;
+      if (tableNames == null || tableNames.isEmpty()) return new HTableDescriptor[0];
       if (this.master == null) {
         this.master = getMaster();
       }
