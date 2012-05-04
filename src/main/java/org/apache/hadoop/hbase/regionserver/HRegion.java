@@ -192,6 +192,10 @@ public class HRegion implements HeapSize { // , Writable{
 
   final AtomicLong memstoreSize = new AtomicLong(0);
 
+  // Debug possible data loss due to WAL off
+  final AtomicLong numPutsWithoutWAL = new AtomicLong(0);
+  final AtomicLong dataInMemoryWithoutWAL = new AtomicLong(0);
+
   final Counter readRequestsCount = new Counter();
   final Counter writeRequestsCount = new Counter();
 
@@ -1095,6 +1099,10 @@ public class HRegion implements HeapSize { // , Writable{
         status.setStatus("Running coprocessor pre-flush hooks");
         coprocessorHost.preFlush();
       }
+      if (numPutsWithoutWAL.get() > 0) {
+        numPutsWithoutWAL.set(0);
+        dataInMemoryWithoutWAL.set(0);
+      }
       try {
         synchronized (writestate) {
           if (!writestate.flushing && writestate.writesEnabled) {
@@ -1853,7 +1861,10 @@ public class HRegion implements HeapSize { // , Writable{
         }
 
         Put p = batchOp.operations[i].getFirst();
-        if (!p.getWriteToWAL()) continue;
+        if (!p.getWriteToWAL()) {
+          recordPutWithoutWal(p.getFamilyMap());
+          continue;
+        }
         addFamilyMapToWALEdit(familyMaps[i], walEdit);
       }
 
@@ -2135,6 +2146,8 @@ public class HRegion implements HeapSize { // , Writable{
         addFamilyMapToWALEdit(familyMap, walEdit);
         this.log.append(regionInfo, this.htableDescriptor.getName(),
             walEdit, clusterId, now, this.htableDescriptor);
+      } else {
+        recordPutWithoutWal(familyMap);
       }
 
       long addedSize = applyFamilyMapToMemstore(familyMap);
@@ -3926,14 +3939,14 @@ public class HRegion implements HeapSize { // , Writable{
   public static final long FIXED_OVERHEAD = ClassSize.align(
       ClassSize.OBJECT +
       ClassSize.ARRAY +
-      30 * ClassSize.REFERENCE + Bytes.SIZEOF_INT +
+      32 * ClassSize.REFERENCE + Bytes.SIZEOF_INT +
       (4 * Bytes.SIZEOF_LONG) +
       Bytes.SIZEOF_BOOLEAN);
 
   public static final long DEEP_OVERHEAD = FIXED_OVERHEAD +
       ClassSize.OBJECT + // closeLock
       (2 * ClassSize.ATOMIC_BOOLEAN) + // closed, closing
-      ClassSize.ATOMIC_LONG + // memStoreSize
+      (3 * ClassSize.ATOMIC_LONG) + // memStoreSize, numPutsWithoutWAL, dataInMemoryWithoutWAL
       ClassSize.ATOMIC_INTEGER + // lockIdGenerator
       (3 * ClassSize.CONCURRENT_HASHMAP) +  // lockedRows, lockIds, scannerReadPoints
       WriteState.HEAP_SIZE + // writestate
@@ -3951,6 +3964,26 @@ public class HRegion implements HeapSize { // , Writable{
     }
     // this does not take into account row locks, recent flushes, mvcc entries
     return heapSize;
+  }
+
+  /**
+   * Update counters for numer of puts without wal and the size of possible data loss.
+   * These information are exposed by the region server metrics.
+   */
+  private void recordPutWithoutWal(final Map<byte [], List<KeyValue>> familyMap) {
+    if (numPutsWithoutWAL.getAndIncrement() == 0) {
+      LOG.info("writing data to region " + this +
+               " with WAL disabled. Data may be lost in the event of a crash.");
+    }
+
+    long putSize = 0;
+    for (List<KeyValue> edits : familyMap.values()) {
+      for (KeyValue kv : edits) {
+        putSize += kv.heapSize();
+      }
+    }
+
+    dataInMemoryWithoutWAL.addAndGet(putSize);
   }
 
   /*

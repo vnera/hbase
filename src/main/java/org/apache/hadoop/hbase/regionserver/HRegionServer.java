@@ -1276,6 +1276,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     int readRequestsCount = 0;
     int writeRequestsCount = 0;
     long storefileIndexSize = 0;
+    long numPutsWithoutWAL = 0;
+    long dataInMemoryWithoutWAL = 0;
     HDFSBlocksDistribution hdfsBlocksDistribution =
       new HDFSBlocksDistribution();
     long totalStaticIndexSize = 0;
@@ -1283,6 +1285,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     for (Map.Entry<String, HRegion> e : this.onlineRegions.entrySet()) {
         HRegion r = e.getValue();
         memstoreSize += r.memstoreSize.get();
+        numPutsWithoutWAL += r.numPutsWithoutWAL.get();
+        dataInMemoryWithoutWAL += r.dataInMemoryWithoutWAL.get();
         readRequestsCount += r.readRequestsCount.get();
         writeRequestsCount += r.writeRequestsCount.get();
         synchronized (r.stores) {
@@ -1301,6 +1305,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     this.metrics.stores.set(stores);
     this.metrics.storefiles.set(storefiles);
     this.metrics.memstoreSizeMB.set((int) (memstoreSize / (1024 * 1024)));
+    this.metrics.mbInMemoryWithoutWAL.set((int) (dataInMemoryWithoutWAL / (1024 * 1024)));
+    this.metrics.numPutsWithoutWAL.set(numPutsWithoutWAL);
     this.metrics.storefileIndexSizeMB.set(
         (int) (storefileIndexSize / (1024 * 1024)));
     this.metrics.rootIndexSizeKB.set(
