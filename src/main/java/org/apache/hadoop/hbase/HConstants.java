@@ -195,7 +195,7 @@ public final class HConstants {
   public static final String HREGION_COMPACTIONDIR_NAME = "compaction.dir";
 
   /** Default maximum file size */
-  public static final long DEFAULT_MAX_FILE_SIZE = 256 * 1024 * 1024;
+  public static final long DEFAULT_MAX_FILE_SIZE = 1024 * 1024 * 1024;
 
   /** Default size of a reservation block   */
   public static final int DEFAULT_SIZE_RESERVATION_BLOCK = 1024 * 1024 * 5;
