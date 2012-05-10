@@ -151,7 +151,7 @@ public class TestTableMapReduce {
         IdentityTableReducer.class, job);
       FileOutputFormat.setOutputPath(job, new Path("test"));
       LOG.info("Started " + Bytes.toString(table.getTableName()));
-      job.waitForCompletion(true);
+      assertTrue(job.waitForCompletion(true));
       LOG.info("After map/reduce completion");
 
       // verify map-reduce results
