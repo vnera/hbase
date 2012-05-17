@@ -24,10 +24,13 @@ import java.io.IOException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.RemoteExceptionHandler;
+import org.apache.hadoop.hbase.UnknownScannerException;
 import org.apache.hadoop.hbase.regionserver.RegionServerStoppedException;
 import org.apache.hadoop.ipc.RemoteException;
 
@@ -37,12 +40,17 @@ import org.apache.hadoop.ipc.RemoteException;
  * Used by {@link ResultScanner}s made by {@link HTable}.
  */
 public class ScannerCallable extends ServerCallable<Result[]> {
+  public static final String LOG_SCANNER_LATENCY_CUTOFF
+    = "hbase.client.log.scanner.latency.cutoff";
+  public static final String LOG_SCANNER_ACTIVITY = "hbase.client.log.scanner.activity";
   private static final Log LOG = LogFactory.getLog(ScannerCallable.class);
   private long scannerId = -1L;
   private boolean instantiated = false;
   private boolean closed = false;
   private Scan scan;
   private int caching = 1;
+  private boolean logScannerActivity = false;
+  private int logCutOffLatency = 1000;
 
   /**
    * @param connection which connection
@@ -52,6 +60,9 @@ public class ScannerCallable extends ServerCallable<Result[]> {
   public ScannerCallable (HConnection connection, byte [] tableName, Scan scan) {
     super(connection, tableName, scan.getStartRow());
     this.scan = scan;
+    Configuration conf = connection.getConfiguration();
+    logScannerActivity = conf.getBoolean(LOG_SCANNER_ACTIVITY, false);
+    logCutOffLatency = conf.getInt(LOG_SCANNER_LATENCY_CUTOFF, 1000);
   }
 
   /**
@@ -77,13 +88,37 @@ public class ScannerCallable extends ServerCallable<Result[]> {
     } else {
       Result [] rrs = null;
       try {
+        long timestamp = System.currentTimeMillis();
         rrs = server.next(scannerId, caching);
+        if (logScannerActivity) {
+          long now = System.currentTimeMillis();
+          if (now - timestamp > logCutOffLatency) {
+            int rows = rrs == null ? 0 : rrs.length;
+            LOG.info("Took " + (now-timestamp) + "ms to fetch "
+              + rows + " rows from scanner=" + scannerId);
+          }
+        }
       } catch (IOException e) {
+        if (logScannerActivity) {
+          LOG.info("Got exception in fetching from scanner="
+            + scannerId, e);
+        }
         IOException ioe = null;
         if (e instanceof RemoteException) {
           ioe = RemoteExceptionHandler.decodeRemoteException((RemoteException)e);
         }
         if (ioe == null) throw new IOException(e);
+        if (logScannerActivity && (ioe instanceof UnknownScannerException)) {
+          try {
+            HRegionLocation location =
+              connection.relocateRegion(tableName, scan.getStartRow());
+            LOG.info("Scanner=" + scannerId
+              + " expired, current region location is " + location.toString()
+              + " ip:" + location.getServerAddress().getBindAddress());
+          } catch (Throwable t) {
+            LOG.info("Failed to relocate region", t);
+          }
+        }
         if (ioe instanceof NotServingRegionException) {
           // Throw a DNRE so that we break out of cycle of calling NSRE
           // when what we need is to open scanner against new location.
@@ -117,8 +152,14 @@ public class ScannerCallable extends ServerCallable<Result[]> {
   }
 
   protected long openScanner() throws IOException {
-    return this.server.openScanner(this.location.getRegionInfo().getRegionName(),
+    long id = this.server.openScanner(this.location.getRegionInfo().getRegionName(),
       this.scan);
+    if (logScannerActivity) {
+      LOG.info("Open scanner=" + id + " for scan=" + scan.toString()
+        + " on region " + this.location.toString() + " ip:"
+        + this.location.getServerAddress().getBindAddress());
+    }
+    return id;
   }
 
   protected Scan getScan() {
