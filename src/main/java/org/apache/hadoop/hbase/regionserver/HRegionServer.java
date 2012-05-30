@@ -117,6 +117,7 @@ import org.apache.hadoop.hbase.ipc.RpcServer;
 import org.apache.hadoop.hbase.ipc.ServerNotRunningYetException;
 import org.apache.hadoop.hbase.regionserver.Leases.LeaseStillHeldException;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionProgress;
+import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest;
 import org.apache.hadoop.hbase.regionserver.handler.CloseMetaHandler;
 import org.apache.hadoop.hbase.regionserver.handler.CloseRegionHandler;
 import org.apache.hadoop.hbase.regionserver.handler.CloseRootHandler;
@@ -3292,6 +3293,29 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     return wal.rollWriter(true);
   }
 
+  /**
+   * Gets the online regions of the specified table.
+   * This method looks at the in-memory onlineRegions.  It does not go to <code>.META.</code>.
+   * Only returns <em>online</em> regions.  If a region on this table has been
+   * closed during a disable, etc., it will not be included in the returned list.
+   * So, the returned list may not necessarily be ALL regions in this table, its
+   * all the ONLINE regions in the table.
+   * @param tableName
+   * @return Online regions from <code>tableName</code>
+   */
+   public List<HRegion> getOnlineRegions(byte[] tableName) {
+     List<HRegion> tableRegions = new ArrayList<HRegion>();
+     synchronized (this.onlineRegions) {
+       for (HRegion region: this.onlineRegions.values()) {
+         HRegionInfo regionInfo = region.getRegionInfo();
+         if(Bytes.equals(regionInfo.getTableName(), tableName)) {
+           tableRegions.add(region);
+         }
+       }
+     }
+     return tableRegions;
+   }
+
   // used by org/apache/hbase/tmpl/regionserver/RSStatusTmpl.jamon (HBASE-4070).
   public String[] getCoprocessors() {
     HServerLoad hsl = buildServerLoad();
@@ -3309,4 +3333,18 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     LOG.info("Registered RegionServer MXBean");
   }
 
+  /**
+   * Get the current compaction state of the region.
+   *
+   * @param regionName the name of the region to check compaction statte.
+   * @return the compaction state name.
+   * @throws IOException exception
+   */
+  public String getCompactionState(final byte[] regionName) throws IOException {
+      checkOpen();
+      requestCount.incrementAndGet();
+      HRegion region = getRegion(regionName);
+      HRegionInfo info = region.getRegionInfo();
+      return CompactionRequest.getCompactionState(info.getRegionId()).name();
+  }
 }

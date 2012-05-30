@@ -1042,10 +1042,14 @@ public class Store implements HeapSize {
     } finally {
       this.lock.readLock().unlock();
     }
+    if (ret != null) {
+      CompactionRequest.preRequest(ret);
+    }
     return ret;
   }
 
   public void finishRequest(CompactionRequest cr) {
+    CompactionRequest.postRequest(cr);
     synchronized (filesCompacting) {
       filesCompacting.removeAll(cr.getFiles());
     }
