@@ -851,7 +851,7 @@
     <commons-configuration.version>1.6</commons-configuration.version>
     <commons-io.version>2.1</commons-io.version>
     <guava.version>11.0.2</guava.version>
-    <jackson.version>1.5.5</jackson.version>
+    <jackson.version>1.8.8</jackson.version>
     <jasper.version>5.5.23</jasper.version>
     <jaxb-api.version>2.1</jaxb-api.version>
     <jetty.version>6.1.26</jetty.version>
