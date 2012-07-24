@@ -851,6 +851,7 @@
     <commons-configuration.version>1.6</commons-configuration.version>
     <commons-io.version>2.1</commons-io.version>
     <guava.version>11.0.2</guava.version>
+    <metrics-core.version>2.1.2</metrics-core.version>
     <jackson.version>1.8.8</jackson.version>
     <jasper.version>5.5.23</jasper.version>
     <jaxb-api.version>2.1</jaxb-api.version>
@@ -907,6 +908,11 @@
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
       <version>${commons-io.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.yammer.metrics</groupId>
+      <artifactId>metrics-core</artifactId>
+      <version>${metrics-core.version}</version>
     </dependency>
     <dependency>
       <groupId>com.google.guava</groupId>
