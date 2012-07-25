@@ -138,7 +138,7 @@ public class SplitLogManager extends ZooKeeperListener {
         try {
           HLogSplitter.moveRecoveredEditsFromTemp(tmpname, logfile, conf);
         } catch (IOException e) {
-          LOG.warn("Could not finish splitting of log file " + logfile);
+          LOG.warn("Could not finish splitting of log file " + logfile, e);
           return Status.ERR;
         }
         return Status.DONE;
