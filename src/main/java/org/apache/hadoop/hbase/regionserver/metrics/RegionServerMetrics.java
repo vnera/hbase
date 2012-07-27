@@ -1,4 +1,4 @@
-/**
+ /**
  * Copyright 2010 The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -46,6 +46,7 @@ import org.apache.hadoop.metrics.util.MetricsIntValue;
 import org.apache.hadoop.metrics.util.MetricsLongValue;
 import org.apache.hadoop.metrics.util.MetricsRegistry;
 import org.apache.hadoop.metrics.util.MetricsTimeVaryingRate;
+import org.apache.hadoop.metrics.util.MetricsTimeVaryingLong;
 import org.apache.hadoop.util.StringUtils;
 
 /**
@@ -287,6 +288,12 @@ public class RegionServerMetrics implements Updater {
 
   protected final PersistentMetricsTimeVaryingRate flushSize =
     new PersistentMetricsTimeVaryingRate("flushSize", registry);
+   
+  public final MetricsTimeVaryingLong regionSplitSuccessCount =
+      new MetricsTimeVaryingLong("regionSplitSuccessCount", registry);
+  
+  public final MetricsTimeVaryingLong regionSplitFailureCount =
+      new MetricsTimeVaryingLong("regionSplitFailureCount", registry);
 
   public RegionServerMetrics() {
     MetricsContext context = MetricsUtil.getContext("hbase");
@@ -410,6 +417,8 @@ public class RegionServerMetrics implements Updater {
       this.compactionSize.pushMetric(this.metricsRecord);
       this.flushTime.pushMetric(this.metricsRecord);
       this.flushSize.pushMetric(this.metricsRecord);
+      this.regionSplitSuccessCount.pushMetric(this.metricsRecord);
+      this.regionSplitFailureCount.pushMetric(this.metricsRecord);
     }
     this.metricsRecord.update();
   }
@@ -452,6 +461,14 @@ public class RegionServerMetrics implements Updater {
    */
   public void incrementRequests(final int inc) {
     this.requests.inc(inc);
+  }
+  
+  public void incrementSplitSuccessCount() {
+    this.regionSplitSuccessCount.inc();
+  }
+  
+  public void incrementSplitFailureCount() {
+    this.regionSplitFailureCount.inc();
   }
 
   @Override
