@@ -32,7 +32,6 @@ import java.util.TreeMap;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.client.coprocessor.Batch;
 import org.apache.hadoop.hbase.ipc.CoprocessorProtocol;
 import org.apache.hadoop.util.StringUtils;
@@ -710,5 +709,25 @@ public class RemoteHTable implements HTableInterface {
       Batch.Call<T, R> callable, Batch.Callback<R> callback)
       throws IOException, Throwable {
     throw new UnsupportedOperationException("coprocessorExec not implemented");
+  }
+
+  @Override
+  public void setAutoFlush(boolean autoFlush) {
+    throw new UnsupportedOperationException("setAutoFlush not implemented");
+  }
+
+  @Override
+  public void setAutoFlush(boolean autoFlush, boolean clearBufferOnFail) {
+    throw new UnsupportedOperationException("setAutoFlush not implemented");
+  }
+
+  @Override
+  public long getWriteBufferSize() {
+    throw new UnsupportedOperationException("getWriteBufferSize not implemented");
+  }
+
+  @Override
+  public void setWriteBufferSize(long writeBufferSize) throws IOException {
+    throw new IOException("setWriteBufferSize not supported");
   }
 }

@@ -496,6 +496,26 @@ public abstract class CoprocessorHost<E extends CoprocessorEnvironment> {
           byte[] row) {
         return table.coprocessorProxy(protocol, row);
       }
+
+      @Override
+      public void setAutoFlush(boolean autoFlush) {
+        table.setAutoFlush(autoFlush);
+      }
+
+      @Override
+      public void setAutoFlush(boolean autoFlush, boolean clearBufferOnFail) {
+        table.setAutoFlush(autoFlush, clearBufferOnFail);
+      }
+
+      @Override
+      public long getWriteBufferSize() {
+         return table.getWriteBufferSize();
+      }
+
+      @Override
+      public void setWriteBufferSize(long writeBufferSize) throws IOException {
+        table.setWriteBufferSize(writeBufferSize);
+      }
     }
 
     /** The coprocessor */
