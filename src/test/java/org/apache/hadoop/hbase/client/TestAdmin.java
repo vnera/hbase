@@ -41,13 +41,16 @@ import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HServerAddress;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.NotServingRegionException;
+import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableExistsException;
 import org.apache.hadoop.hbase.TableNotDisabledException;
 import org.apache.hadoop.hbase.TableNotEnabledException;
 import org.apache.hadoop.hbase.TableNotFoundException;
+import org.apache.hadoop.hbase.catalog.CatalogTracker;
 import org.apache.hadoop.hbase.executor.EventHandler;
 import org.apache.hadoop.hbase.executor.EventHandler.EventType;
 import org.apache.hadoop.hbase.executor.ExecutorService;
@@ -57,6 +60,7 @@ import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.regionserver.wal.TestHLogUtils;
 import org.apache.hadoop.hbase.InvalidFamilyOperationException;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.Pair;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -1435,5 +1439,26 @@ public class TestAdmin {
       HBaseAdmin.checkHBaseAvailable(conf);
     }
   }
-  
+
+  @Test
+  public void testGetRegion() throws Exception {
+    final String name = "testGetRegion";
+    LOG.info("Started " + name);
+    final byte [] nameBytes = Bytes.toBytes(name);
+    HTable t = TEST_UTIL.createTable(nameBytes, HConstants.CATALOG_FAMILY);
+    TEST_UTIL.createMultiRegions(t, HConstants.CATALOG_FAMILY);
+    CatalogTracker ct = new CatalogTracker(TEST_UTIL.getConfiguration());
+    ct.start();
+    try {
+      HRegionLocation regionLocation = t.getRegionLocation("mmm");
+      HRegionInfo region = regionLocation.getRegionInfo();
+      byte[] regionName = region.getRegionName();
+      Pair<HRegionInfo, ServerName> pair = admin.getRegion(regionName, ct);
+      assertTrue(Bytes.equals(regionName, pair.getFirst().getRegionName()));
+      pair = admin.getRegion(region.getEncodedNameAsBytes(), ct);
+      assertTrue(Bytes.equals(regionName, pair.getFirst().getRegionName()));
+    } finally {
+      ct.stop();
+    }
+  }
 }
