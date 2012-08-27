@@ -66,7 +66,6 @@ public class TestReplication {
   private static ZooKeeperWatcher zkw2;
 
   private static ReplicationAdmin admin;
-  private static String slaveClusterKey;
 
   private static HTable htable1;
   private static HTable htable2;
@@ -107,7 +106,7 @@ public class TestReplication {
     MiniZooKeeperCluster miniZK = utility1.getZkCluster();
     // Have to reget conf1 in case zk cluster location different
     // than default
-    conf1 = utility1.getConfiguration();
+    conf1 = utility1.getConfiguration();  
     zkw1 = new ZooKeeperWatcher(conf1, "cluster1", null, true);
     admin = new ReplicationAdmin(conf1);
     LOG.info("Setup first Zk");
@@ -123,9 +122,7 @@ public class TestReplication {
     utility2.setZkCluster(miniZK);
     zkw2 = new ZooKeeperWatcher(conf2, "cluster2", null, true);
 
-    slaveClusterKey = conf2.get(HConstants.ZOOKEEPER_QUORUM)+":" +
-            conf2.get("hbase.zookeeper.property.clientPort")+":/2";
-    admin.addPeer("2", slaveClusterKey);
+    admin.addPeer("2", utility2.getClusterKey());
     setIsReplication(true);
 
     LOG.info("Setup second Zk");
@@ -478,7 +475,7 @@ public class TestReplication {
       }
     }
 
-    admin.addPeer("2", slaveClusterKey);
+    admin.addPeer("2", utility2.getClusterKey());
     Thread.sleep(SLEEP_TIME);
     rowKey = Bytes.toBytes("do rep");
     put = new Put(rowKey);
