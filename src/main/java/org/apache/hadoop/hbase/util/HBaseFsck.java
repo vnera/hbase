@@ -184,6 +184,7 @@ public class HBaseFsck {
   private int maxMerge = DEFAULT_MAX_MERGE; // maximum number of overlapping regions to merge
   private int maxOverlapsToSideline = DEFAULT_OVERLAPS_TO_SIDELINE; // maximum number of overlapping regions to sideline
   private boolean sidelineBigOverlaps = false; // sideline overlaps with >maxMerge regions
+  private Path sidelineDir = null;
 
   private boolean rerun = false; // if we tried to fix something, rerun hbck
   private static boolean summary = false; // if we want to print less output
@@ -845,7 +846,7 @@ public class HBaseFsck {
 
     // we can rebuild, move old root and meta out of the way and start
     LOG.info("HDFS regioninfo's seems good.  Sidelining old .META.");
-    sidelineOldRootAndMeta();
+    Path backupDir = sidelineOldRootAndMeta();
 
     LOG.info("Creating new .META.");
     HRegion meta = createNewRootAndMeta();
@@ -861,6 +862,7 @@ public class HBaseFsck {
     meta.close();
     meta.getLog().closeAndDelete();
     LOG.info("Success! .META. table rebuilt.");
+    LOG.info("Old -ROOT- and .META. are moved into " + backupDir);
     return true;
   }
 
@@ -884,11 +886,13 @@ public class HBaseFsck {
   }
 
   private Path getSidelineDir() throws IOException {
-    Path hbaseDir = FSUtils.getRootDir(conf);
-    Path hbckDir = new Path(hbaseDir.getParent(), "hbck");
-    Path backupDir = new Path(hbckDir, hbaseDir.getName() + "-"
-        + startMillis);
-    return backupDir;
+    if (sidelineDir == null) {
+      Path hbaseDir = FSUtils.getRootDir(conf);
+      Path hbckDir = new Path(hbaseDir, HConstants.HBCK_SIDELINEDIR_NAME);
+      sidelineDir = new Path(hbckDir, hbaseDir.getName() + "-"
+          + startMillis);
+    }
+    return sidelineDir;
   }
 
   /**
@@ -1002,8 +1006,7 @@ public class HBaseFsck {
     // put current -ROOT- and .META. aside.
     Path hbaseDir = new Path(conf.get(HConstants.HBASE_DIR));
     FileSystem fs = hbaseDir.getFileSystem(conf);
-    Path backupDir = new Path(hbaseDir.getParent(), hbaseDir.getName() + "-"
-        + startMillis);
+    Path backupDir = getSidelineDir();
     fs.mkdirs(backupDir);
 
     sidelineTable(fs, HConstants.ROOT_TABLE_NAME, hbaseDir, backupDir);
@@ -3109,6 +3112,14 @@ public class HBaseFsck {
     timelag = seconds * 1000; // convert to milliseconds
   }
 
+  /**
+   *
+   * @param sidelineDir - HDFS path to sideline data
+   */
+  public void setSidelineDir(String sidelineDir) {
+    this.sidelineDir = new Path(sidelineDir);
+  }
+
   protected HFileCorruptionChecker createHFileCorruptionChecker(boolean sidelineCorruptHFiles) throws IOException {
     return new HFileCorruptionChecker(conf, executor, sidelineCorruptHFiles);
   }
@@ -3134,13 +3145,14 @@ public class HBaseFsck {
     System.err.println(" where [opts] are:");
     System.err.println("   -help Display help options (this)");
     System.err.println("   -details Display full report of all regions.");
-    System.err.println("   -timelag {timeInSeconds}  Process only regions that " +
+    System.err.println("   -timelag <timeInSeconds>  Process only regions that " +
                        " have not experienced any metadata updates in the last " +
-                       " {{timeInSeconds} seconds.");
-    System.err.println("   -sleepBeforeRerun {timeInSeconds} Sleep this many seconds" +
+                       " <timeInSeconds> seconds.");
+    System.err.println("   -sleepBeforeRerun <timeInSeconds> Sleep this many seconds" +
         " before checking if the fix worked if run with -fix");
     System.err.println("   -summary Print only summary of the tables and status.");
     System.err.println("   -metaonly Only check the state of ROOT and META tables.");
+    System.err.println("   -sidelineDir <hdfs://> HDFS path to backup existing meta and root.");
 
     System.err.println("");
     System.err.println("  Metadata Repair options: (expert features, use with caution!)");
@@ -3234,6 +3246,13 @@ public class HBaseFsck {
           return printUsageAndExit();
         }
         i++;
+      } else if (cmd.equals("-sidelineDir")) {
+        if (i == args.length - 1) {
+          System.err.println("HBaseFsck: -sidelineDir needs a value.");
+          printUsageAndExit();
+        }
+        i++;
+        setSidelineDir(args[i]);
       } else if (cmd.equals("-fix")) {
         System.err.println("This option is deprecated, please use " +
           "-fixAssignments instead.");
