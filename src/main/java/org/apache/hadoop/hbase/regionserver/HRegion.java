@@ -3807,7 +3807,6 @@ public class HRegion implements HeapSize { // , Writable{
     WALEdit walEdits = null;
     List<KeyValue> allKVs = new ArrayList<KeyValue>(increment.numColumns());
     Map<Store, List<KeyValue>> tempMemstore = new HashMap<Store, List<KeyValue>>();
-    long before = EnvironmentEdgeManager.currentTimeMillis();
     long size = 0;
 
     // Lock row
@@ -3849,7 +3848,7 @@ public class HRegion implements HeapSize { // , Writable{
                 now, Bytes.toBytes(amount));
             kvs.add(newKV);
 
-            // Append update to WAL
+            // Prepare WAL updates
             if (writeToWAL) {
               if (walEdits == null) {
                 walEdits = new WALEdit();
