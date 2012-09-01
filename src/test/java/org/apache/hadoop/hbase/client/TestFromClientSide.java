@@ -79,7 +79,7 @@ import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.regionserver.Store;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.client.HTable.DaemonThreadFactory;
+import org.apache.hadoop.hbase.util.Threads;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -3798,7 +3798,7 @@ public class TestFromClientSide {
     ExecutorService pool = new ThreadPoolExecutor(1, Integer.MAX_VALUE,
       60, TimeUnit.SECONDS,
       new SynchronousQueue<Runnable>(),
-      new DaemonThreadFactory());
+      Threads.newDaemonThreadFactory("test-from-client-table"));
     ((ThreadPoolExecutor)pool).allowCoreThreadTimeOut(true);
     return new HTable(tableName, conn, pool);
   }
