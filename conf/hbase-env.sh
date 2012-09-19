@@ -37,7 +37,7 @@
 export HBASE_OPTS="-XX:+UseConcMarkSweepGC"
 
 # Uncomment below to enable java garbage collection logging in the .out file.
-# export HBASE_OPTS="$HBASE_OPTS -verbose:gc -XX:+PrintGCDetails -XX:+PrintGCDateStamps" 
+# export HBASE_OPTS="$HBASE_OPTS -verbose:gc -XX:+PrintGCDetails -XX:+PrintGCDateStamps"
 
 # Uncomment below if you intend to use the EXPERIMENTAL off heap cache.
 # export HBASE_OPTS="$HBASE_OPTS -XX:MaxDirectMemorySize="
@@ -56,6 +56,10 @@ export HBASE_OPTS="-XX:+UseConcMarkSweepGC"
 
 # File naming hosts on which HRegionServers will run.  $HBASE_HOME/conf/regionservers by default.
 # export HBASE_REGIONSERVERS=${HBASE_HOME}/conf/regionservers
+
+# Uncomment and adjust to keep all the Region Server pages memory-resident using mlock(2)
+#HBASE_REGIONSERVER_MLOCK=true
+#HBASE_REGIONSERVER_UID="hbase"
 
 # Extra ssh options.  Empty by default.
 # export HBASE_SSH_OPTS="-o ConnectTimeout=1 -o SendEnv=HBASE_CONF_DIR"
@@ -79,11 +83,11 @@ export HBASE_OPTS="-XX:+UseConcMarkSweepGC"
 
 # Tell HBase whether it should manage it's own instance of Zookeeper or not.
 # export HBASE_MANAGES_ZK=true
-# The default log rolling policy is RFA, where the log file is rolled as per the size defined for the 
+# The default log rolling policy is RFA, where the log file is rolled as per the size defined for the
 # RFA appender. Please refer to the log4j.properties file to see more details on this appender.
 # In case one needs to do log rolling on a date change, one should set the environment property
 # HBASE_ROOT_LOGGER to "<DESIRED_LOG LEVEL>,DRFA".
 # For example:
 # HBASE_ROOT_LOGGER=INFO,DRFA
-# The reason for changing default to RFA is to avoid the boundary case of filling out disk space as 
+# The reason for changing default to RFA is to avoid the boundary case of filling out disk space as
 # DRFA doesn't put any cap on the log size. Please refer to HBase-5655 for more context.
