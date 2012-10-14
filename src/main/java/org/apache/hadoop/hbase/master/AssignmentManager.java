@@ -3179,7 +3179,7 @@ public class AssignmentManager extends ZooKeeperListener {
     synchronized (this.regions) {
       result = new HashMap<String, Map<ServerName,List<HRegionInfo>>>();
       if (!this.master.getConfiguration().
-          getBoolean("hbase.master.loadbalance.bytable", true)) {
+          getBoolean("hbase.master.loadbalance.bytable", false)) {
         result.put("ensemble", getAssignments());
       } else {
         for (Map.Entry<ServerName, Set<HRegionInfo>> e: this.servers.entrySet()) {
