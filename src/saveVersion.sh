@@ -36,6 +36,10 @@ else
   revision="Unknown"
   url="file://$cwd"
 fi
+
+#allow override of revision using environment variable
+revision=${HBASE_REVISION:-$revision}
+
 mkdir -p "$outputDirectory/org/apache/hadoop/hbase"
 cat >"$outputDirectory/org/apache/hadoop/hbase/package-info.java" <<EOF
 /*
