@@ -4618,7 +4618,7 @@ public class HRegion implements HeapSize { // , Writable{
                 now, Bytes.toBytes(amount));
             kvs.add(newKV);
 
-            // Append update to WAL
+            // Prepare WAL updates
             if (writeToWAL) {
               if (walEdits == null) {
                 walEdits = new WALEdit();
