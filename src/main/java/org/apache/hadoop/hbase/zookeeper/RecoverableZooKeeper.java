@@ -21,8 +21,10 @@ package org.apache.hadoop.hbase.zookeeper;
 
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -72,6 +74,7 @@ public class RecoverableZooKeeper {
   private Watcher watcher;
   private int sessionTimeout;
   private String quorumServers;
+  private final Random salter;
 
   // The metadata attached to each piece of data has the
   // format:
@@ -100,6 +103,7 @@ public class RecoverableZooKeeper {
     this.watcher = watcher;
     this.sessionTimeout = sessionTimeout;
     this.quorumServers = quorumServers;
+    salter = new SecureRandom();
   }
 
   public void reconnectAfterExpiration()
@@ -338,6 +342,7 @@ public class RecoverableZooKeeper {
   throws KeeperException, InterruptedException {
     RetryCounter retryCounter = retryCounterFactory.create();
     byte[] newData = appendMetaData(data);
+    boolean isRetry = false;
     while (true) {
       try {
         return zk.setData(path, newData, version);
@@ -349,24 +354,20 @@ public class RecoverableZooKeeper {
             retryOrThrow(retryCounter, e, "setData");
             break;
           case BADVERSION:
-            // try to verify whether the previous setData success or not
-            try{
-              Stat stat = new Stat();
-              byte[] revData = zk.getData(path, false, stat);
-              int idLength = Bytes.toInt(revData, ID_LENGTH_SIZE);
-              int dataLength = revData.length-ID_LENGTH_SIZE-idLength;
-              int dataOffset = ID_LENGTH_SIZE+idLength;
-              
-              if(Bytes.compareTo(revData, ID_LENGTH_SIZE, id.length, 
-                  revData, dataOffset, dataLength) == 0) {
-                // the bad version is caused by previous successful setData
-                return stat;
+            if (isRetry) {
+              // try to verify whether the previous setData success or not
+              try{
+                Stat stat = new Stat();
+                byte[] revData = zk.getData(path, false, stat);
+                if(Bytes.compareTo(revData, newData) == 0) {
+                  // the bad version is caused by previous successful setData
+                  return stat;
+                }
+              } catch(KeeperException keeperException){
+                // the ZK is not reliable at this moment. just throwing exception
+                throw keeperException;
               }
-            } catch(KeeperException keeperException){
-              // the ZK is not reliable at this moment. just throwing exception
-              throw keeperException;
-            }            
-          
+            }
           // throw other exceptions and verified bad version exceptions
           default:
             throw e;
@@ -374,6 +375,7 @@ public class RecoverableZooKeeper {
       }
       retryCounter.sleepUntilNextRetry();
       retryCounter.useRetry();
+      isRetry = true;
     }
   }
 
@@ -518,30 +520,29 @@ public class RecoverableZooKeeper {
     if(magic != MAGIC) {
       return data;
     }
-    
+
     int idLength = Bytes.toInt(data, ID_LENGTH_OFFSET);
     int dataLength = data.length-MAGIC_SIZE-ID_LENGTH_SIZE-idLength;
     int dataOffset = MAGIC_SIZE+ID_LENGTH_SIZE+idLength;
 
     byte[] newData = new byte[dataLength];
     System.arraycopy(data, dataOffset, newData, 0, dataLength);
-    
     return newData;
-    
   }
-  
+
   private byte[] appendMetaData(byte[] data) {
     if(data == null || data.length == 0){
       return data;
     }
-    
-    byte[] newData = new byte[MAGIC_SIZE+ID_LENGTH_SIZE+id.length+data.length];
+    byte[] salt = Bytes.toBytes(salter.nextLong());
+    int idLength = id.length + salt.length;
+    byte[] newData = new byte[MAGIC_SIZE+ID_LENGTH_SIZE+idLength+data.length];
     int pos = 0;
     pos = Bytes.putByte(newData, pos, MAGIC);
-    pos = Bytes.putInt(newData, pos, id.length);
+    pos = Bytes.putInt(newData, pos, idLength);
     pos = Bytes.putBytes(newData, pos, id, 0, id.length);
+    pos = Bytes.putBytes(newData, pos, salt, 0, salt.length);
     pos = Bytes.putBytes(newData, pos, data, 0, data.length);
-
     return newData;
   }
 
