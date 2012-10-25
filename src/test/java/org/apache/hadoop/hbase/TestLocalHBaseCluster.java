@@ -22,6 +22,7 @@ import static org.junit.Assert.fail;
 import java.io.IOException;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
@@ -44,7 +45,10 @@ public class TestLocalHBaseCluster {
   @Test
   public void testLocalHBaseCluster() throws Exception {
     Configuration conf = TEST_UTIL.getConfiguration();
-    conf.set(HConstants.HBASE_DIR, TEST_UTIL.getDataTestDir("hbase.rootdir").toString());
+    String scheme = FileSystem.getDefaultUri(conf).getScheme();
+    if (scheme == null) scheme = "";
+    conf.set(HConstants.HBASE_DIR, scheme + "://"
+        + TEST_UTIL.getDataTestDir("hbase.rootdir").toString());
     MiniZooKeeperCluster zkCluster = TEST_UTIL.startMiniZKCluster();
     conf.set(HConstants.ZOOKEEPER_CLIENT_PORT, Integer.toString(zkCluster.getClientPort()));
     LocalHBaseCluster cluster = new LocalHBaseCluster(conf, 1, 1, MyHMaster.class,
