@@ -23,7 +23,6 @@ import static org.apache.hadoop.hbase.zookeeper.ZKSplitLog.Counters.*;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -66,8 +65,7 @@ public class TestSplitLogManager {
   private SplitLogManager slm;
   private Configuration conf;
 
-  private final static HBaseTestingUtility TEST_UTIL =
-    new HBaseTestingUtility();
+  private static HBaseTestingUtility TEST_UTIL;
 
   static Stoppable stopper = new Stoppable() {
     @Override
@@ -92,6 +90,7 @@ public class TestSplitLogManager {
 
   @Before
   public void setup() throws Exception {
+    TEST_UTIL = new HBaseTestingUtility();
     TEST_UTIL.startMiniZKCluster();
     conf = TEST_UTIL.getConfiguration();
     zkw = new ZooKeeperWatcher(conf, "split-log-manager-tests", null);
@@ -198,7 +197,6 @@ public class TestSplitLogManager {
     conf.setInt("hbase.splitlog.manager.timeout", to);
     conf.setInt("hbase.splitlog.manager.timeoutmonitor.period", 100);
     to = to + 2 * 100;
-
 
     slm = new SplitLogManager(zkw, conf, stopper, "dummy-master", null);
     slm.finishInitialization();
@@ -459,7 +457,12 @@ public class TestSplitLogManager {
   @Test(timeout=45000)
   public void testVanishingTaskZNode() throws Exception {
     LOG.info("testVanishingTaskZNode");
+
+    int to = 1000;
+    conf.setInt("hbase.splitlog.manager.timeout", to);
+    conf.setInt("hbase.splitlog.manager.timeoutmonitor.period", 100);
     conf.setInt("hbase.splitlog.manager.unassigned.timeout", 0);
+
     slm = new SplitLogManager(zkw, conf, stopper, "dummy-master", null);
     slm.finishInitialization();
     FileSystem fs = TEST_UTIL.getTestFileSystem();
