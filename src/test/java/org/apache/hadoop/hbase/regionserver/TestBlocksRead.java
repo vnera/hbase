@@ -216,25 +216,25 @@ public class TestBlocksRead extends HBaseTestCase {
       putData(FAMILY, "row", "col7", 7);
       region.flushcache();
 
-      // Expected block reads: 1
-      kvs = getData(FAMILY, "row", "col1", 1);
+      // Expected block reads: 2
+      kvs = getData(FAMILY, "row", "col1", 2);
       assertEquals(1, kvs.length);
       verifyData(kvs[0], "row", "col1", 1);
 
-      // Expected block reads: 2
-      kvs = getData(FAMILY, "row", Arrays.asList("col1", "col2"), 2);
+      // Expected block reads: 3
+      kvs = getData(FAMILY, "row", Arrays.asList("col1", "col2"), 3);
       assertEquals(2, kvs.length);
       verifyData(kvs[0], "row", "col1", 1);
       verifyData(kvs[1], "row", "col2", 2);
 
-      // Expected block reads: 3
-      kvs = getData(FAMILY, "row", Arrays.asList("col2", "col3"), 3);
+      // Expected block reads: 4
+      kvs = getData(FAMILY, "row", Arrays.asList("col2", "col3"), 4);
       assertEquals(2, kvs.length);
       verifyData(kvs[0], "row", "col2", 2);
       verifyData(kvs[1], "row", "col3", 3);
 
-      // Expected block reads: 3
-      kvs = getData(FAMILY, "row", Arrays.asList("col5"), 3);
+      // Expected block reads: 5
+      kvs = getData(FAMILY, "row", Arrays.asList("col5"), 5);
       assertEquals(1, kvs.length);
       verifyData(kvs[0], "row", "col5", 5);
     } finally {
@@ -266,13 +266,13 @@ public class TestBlocksRead extends HBaseTestCase {
       putData(FAMILY, "row", "col2", 4);
       region.flushcache();
 
-      // Baseline expected blocks read: 2
-      kvs = getData(FAMILY, "row", Arrays.asList("col1"), 2);
+      // Baseline expected blocks read: 4
+      kvs = getData(FAMILY, "row", Arrays.asList("col1"), 4);
       assertEquals(1, kvs.length);
       verifyData(kvs[0], "row", "col1", 3);
 
-      // Baseline expected blocks read: 4
-      kvs = getData(FAMILY, "row", Arrays.asList("col1", "col2"), 4);
+      // Baseline expected blocks read: 6
+      kvs = getData(FAMILY, "row", Arrays.asList("col1", "col2"), 6);
       assertEquals(2, kvs.length);
       verifyData(kvs[0], "row", "col1", 3);
       verifyData(kvs[1], "row", "col2", 4);
@@ -281,8 +281,8 @@ public class TestBlocksRead extends HBaseTestCase {
       putData(FAMILY, "row", "col3", 5);
       region.flushcache();
 
-      // Baseline expected blocks read: 5
-      kvs = getData(FAMILY, "row", "col3", 5);
+      // Baseline expected blocks read: 6
+      kvs = getData(FAMILY, "row", "col3", 6);
       assertEquals(1, kvs.length);
       verifyData(kvs[0], "row", "col3", 5);
 
@@ -297,7 +297,7 @@ public class TestBlocksRead extends HBaseTestCase {
       region.flushcache();
 
       // Baseline expected blocks read: 6.
-      kvs = getData(FAMILY, "row", "col1", 6);
+      kvs = getData(FAMILY, "row", "col1", 7);
       assertEquals(0, kvs.length);
       kvs = getData(FAMILY, "row", "col2", 6);
       assertEquals(0, kvs.length);
@@ -317,8 +317,8 @@ public class TestBlocksRead extends HBaseTestCase {
       putData(FAMILY, "row", "col3", 9);
       region.flushcache();
 
-      // Baseline expected blocks read: 10
-      kvs = getData(FAMILY, "row", Arrays.asList("col1", "col2", "col3"), 10);
+      // Baseline expected blocks read: 14
+      kvs = getData(FAMILY, "row", Arrays.asList("col1", "col2", "col3"), 14);
       assertEquals(0, kvs.length);
 
       // File 7: Put back new data
@@ -327,8 +327,8 @@ public class TestBlocksRead extends HBaseTestCase {
       putData(FAMILY, "row", "col3", 13);
       region.flushcache();
 
-      // Baseline expected blocks read: 13
-      kvs = getData(FAMILY, "row", Arrays.asList("col1", "col2", "col3"), 13);
+      // Baseline expected blocks read: 16
+      kvs = getData(FAMILY, "row", Arrays.asList("col1", "col2", "col3"), 16);
       assertEquals(3, kvs.length);
       verifyData(kvs[0], "row", "col1", 11);
       verifyData(kvs[1], "row", "col2", 12);
