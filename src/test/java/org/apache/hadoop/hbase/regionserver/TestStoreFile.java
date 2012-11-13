@@ -654,9 +654,9 @@ public class TestStoreFile extends HBaseTestCase {
     scanner.seek(KeyValue.LOWESTKEY);
     while (scanner.next() != null);
     assertEquals(startHit, cs.getHitCount());
-    assertEquals(startMiss + 3, cs.getMissCount());
+    assertEquals(startMiss + 6, cs.getMissCount());
     assertEquals(startEvicted, cs.getEvictedCount());
-    startMiss += 3;
+    startMiss += 6;
     scanner.close();
     reader.close(cacheConf.shouldEvictOnClose());
 

@@ -30,7 +30,6 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.KeyValue;
-import org.apache.hadoop.hbase.io.hfile.BlockType.BlockCategory;
 import org.apache.hadoop.hbase.io.hfile.HFile.FileInfo;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.IdLock;
@@ -246,10 +245,22 @@ public class HFileReaderV2 extends AbstractHFileReader {
     // from doing).
 
     BlockCacheKey cacheKey = HFile.getBlockCacheKey(name, dataBlockOffset);
-    IdLock.Entry lockEntry = offsetLock.getLockEntry(dataBlockOffset);
-    try {
-      blockLoads.incrementAndGet();
 
+    blockLoads.incrementAndGet();
+    if (cacheConf.isBlockCacheEnabled()) {
+      HFileBlock cachedBlock =
+        (HFileBlock) cacheConf.getBlockCache().getBlock(cacheKey, cacheBlock);
+      if (cachedBlock != null) {
+        cacheHits.incrementAndGet();
+
+        return cachedBlock;
+      }
+      // Carry on, please load.
+    }
+
+    IdLock.Entry lockEntry = offsetLock.getLockEntry(dataBlockOffset);
+
+    try {
       if (cacheConf.isBlockCacheEnabled()) {
         HFileBlock cachedBlock =
           (HFileBlock) cacheConf.getBlockCache().getBlock(cacheKey, cacheBlock);
@@ -265,7 +276,6 @@ public class HFileReaderV2 extends AbstractHFileReader {
       long startTimeNs = System.nanoTime();
       HFileBlock hfileBlock = fsBlockReader.readBlockData(dataBlockOffset,
           onDiskBlockSize, -1, pread);
-      BlockCategory blockCategory = hfileBlock.getBlockType().getCategory();
 
       final long latency = System.nanoTime() - startTimeNs;
       HFile.offerReadLatency(latency);
