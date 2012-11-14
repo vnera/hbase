@@ -723,6 +723,19 @@
                 <parallel>classes</parallel><!-- surefire hack, if not we're using method parallelisation class !-->
                 <groups>${surefire.firstPartGroups}</groups>
                 <testFailureIgnore>false</testFailureIgnore>
+                <includes>
+            	  <include>${unittest.include}</include>
+          	</includes>
+		<excludes>
+                  <exlude>${integrationtest.include}</exlude>
+                  <exclude>**/*$*</exclude>
+                <exclude>${test.exclude.pattern}</exclude>
+            </excludes>
+            <environmentVariables>
+              <LD_LIBRARY_PATH>${env.LD_LIBRARY_PATH}:${project.build.directory}/nativelib</LD_LIBRARY_PATH>
+              <DYLD_LIBRARY_PATH>${env.DYLD_LIBRARY_PATH}:${project.build.directory}/nativelib</DYLD_LIBRARY_PATH>
+              <MALLOC_ARENA_MAX>4</MALLOC_ARENA_MAX>
+            </environmentVariables>
         </configuration>
         <executions>
           <execution>
@@ -1034,7 +1047,15 @@
     <surefire.firstPartGroups>org.apache.hadoop.hbase.SmallTests</surefire.firstPartGroups>
     <surefire.secondPartGroups>org.apache.hadoop.hbase.MediumTests</surefire.secondPartGroups>
     <test.output.tofile>true</test.output.tofile>
-  </properties>
+    <!-- For flaky tests exclusion -->
+    <test.exclude></test.exclude>
+    <test.exclude.pattern>**/${test.exclude}.java</test.exclude.pattern>
+    
+    <!-- Test inclusion patterns -->
+    <unittest.include>**/Test*.java</unittest.include>
+    <integrationtest.include>**/IntegrationTest*.java</integrationtest.include>
+  
+ </properties>
 
   <!-- Sorted by groups of dependencies then groupId and artifactId -->
   <dependencies>
