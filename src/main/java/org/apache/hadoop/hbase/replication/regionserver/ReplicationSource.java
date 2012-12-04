@@ -429,9 +429,6 @@ public class ReplicationSource extends Thread
         break;
       }
     }
-    LOG.debug("currentNbOperations:" + currentNbOperations +
-        " and seenEntries:" + seenEntries +
-        " and size: " + (this.reader.getPosition() - startPosition));
     // If we didn't get anything and the queue has an object, it means we
     // hit the end of the file for sure
     return seenEntries == 0 && processEndOfFile();
@@ -484,8 +481,6 @@ public class ReplicationSource extends Thread
    */
   protected boolean openReader(int sleepMultiplier) {
     try {
-      LOG.debug("Opening log for replication " + this.currentPath.getName() +
-          " at " + this.position);
       try {
        this.reader = null;
        this.reader = HLog.getReader(this.fs, this.currentPath, this.conf);
@@ -620,7 +615,6 @@ public class ReplicationSource extends Thread
       }
       try {
         HRegionInterface rrs = getRS();
-        LOG.debug("Replicating " + currentNbEntries);
         rrs.replicateLogEntries(Arrays.copyOf(this.entriesArray, currentNbEntries));
         if (this.lastLoggedPosition != this.position) {
           this.manager.logPositionAndCleanOldLogs(this.currentPath,
@@ -633,7 +627,6 @@ public class ReplicationSource extends Thread
             this.currentNbOperations);
         this.metrics.setAgeOfLastShippedOp(
             this.entriesArray[currentNbEntries-1].getKey().getWriteTime());
-        LOG.debug("Replicated in total: " + this.totalReplicatedEdits);
         break;
 
       } catch (IOException ioe) {
@@ -823,5 +816,12 @@ public class ReplicationSource extends Thread
       String[] parts = p.getName().split("\\.");
       return Long.parseLong(parts[parts.length-1]);
     }
+  }
+
+  @Override
+  public String getStats() {
+    return "Total replicated edits: " + totalReplicatedEdits +
+      ", currently replicating from: " + this.currentPath +
+      " at position: " + this.position;
   }
 }
