@@ -145,10 +145,13 @@ public class ReplicationSourceManager {
    * @param id id of the peer cluster
    * @param position current location in the log
    * @param queueRecovered indicates if this queue comes from another region server
+   * @param holdLogInZK if true then the log is retained in ZK
    */
-  public void logPositionAndCleanOldLogs(Path log, String id, long position, boolean queueRecovered) {
+  public void logPositionAndCleanOldLogs(Path log, String id, long position,
+      boolean queueRecovered, boolean holdLogInZK) {
     String key = log.getName();
     this.zkHelper.writeReplicationStatus(key, id, position);
+    if (holdLogInZK) return;
     synchronized (this.hlogsById) {
       SortedSet<String> hlogs = this.hlogsById.get(id);
       if (!queueRecovered && hlogs.first() != key) {
@@ -248,7 +251,7 @@ public class ReplicationSourceManager {
     return this.sources;
   }
 
-  void logRolled(Path newLog) throws IOException {
+  void preLogRoll(Path newLog) throws IOException {
     if (!this.replicating.get()) {
       LOG.warn("Replication stopped, won't add new log");
       return;
@@ -274,9 +277,17 @@ public class ReplicationSourceManager {
     }
 
     this.latestPath = newLog;
+  }
+
+  void postLogRoll(Path newLog) throws IOException {
+    if (!this.replicating.get()) {
+      LOG.warn("Replication stopped, won't add new log");
+      return;
+    }
+
     // This only updates the sources we own, not the recovered ones
     for (ReplicationSourceInterface source : this.sources) {
-      source.enqueueLog(newLog);    
+      source.enqueueLog(newLog);
     }
   }
 

@@ -634,12 +634,6 @@ public class HLog implements Syncable {
       if (nextWriter instanceof SequenceFileLogWriter) {
         nextHdfsOut = ((SequenceFileLogWriter)nextWriter).getWriterFSDataOutputStream();
       }
-      // Tell our listeners that a new log was created
-      if (!this.listeners.isEmpty()) {
-        for (WALActionsListener i : this.listeners) {
-          i.postLogRoll(oldPath, newPath);
-        }
-      }
 
       synchronized (updateLock) {
         // Clean up current writer.
@@ -654,6 +648,12 @@ public class HLog implements Syncable {
             this.fs.getFileStatus(oldFile).getLen() + ". ": "") +
           " for " + FSUtils.getPath(newPath));
         this.numEntries.set(0);
+      }
+      // Tell our listeners that a new log was created
+      if (!this.listeners.isEmpty()) {
+        for (WALActionsListener i : this.listeners) {
+          i.postLogRoll(oldPath, newPath);
+        }
       }
       // Can we delete any of the old log files?
       if (this.outputfiles.size() > 0) {
