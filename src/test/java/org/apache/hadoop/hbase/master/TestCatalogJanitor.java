@@ -194,6 +194,11 @@ public class TestCatalogJanitor {
     }
 
     @Override
+    public MasterCoprocessorHost getCoprocessorHost() {
+      return null;
+    }
+
+    @Override
     public ZooKeeperWatcher getZooKeeper() {
       return null;
     }
