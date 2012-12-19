@@ -28,6 +28,7 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.UnknownRegionException;
 import org.apache.hadoop.hbase.security.TokenInfo;
 import org.apache.hadoop.hbase.security.KerberosInfo;
+import org.apache.hadoop.hbase.snapshot.HSnapshotDescription;
 import org.apache.hadoop.hbase.util.Pair;
 
 /**
@@ -266,4 +267,16 @@ public interface HMasterInterface extends VersionedProtocol {
    * @return array of HTableDescriptor
    */
   public HTableDescriptor[] getHTableDescriptors(List<String> tableNames);
+
+  public long snapshot(final HSnapshotDescription snapshot)
+    throws IOException;
+
+  public List<HSnapshotDescription> listSnapshots()
+    throws IOException;
+
+  public void deleteSnapshot(final HSnapshotDescription snapshot)
+    throws IOException;
+
+  public boolean isSnapshotDone(final HSnapshotDescription snapshot)
+    throws IOException;
 }
