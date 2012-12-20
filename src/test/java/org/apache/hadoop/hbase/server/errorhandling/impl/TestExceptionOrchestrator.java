@@ -39,8 +39,8 @@ public class TestExceptionOrchestrator {
   @Test
   public void testErrorPropagation() {
 
-    ExceptionListener listener1 = Mockito.mock(ExceptionListener.class);
-    ExceptionListener listener2 = Mockito.mock(ExceptionListener.class);
+    ExceptionListener<Exception> listener1 = Mockito.mock(ExceptionListener.class);
+    ExceptionListener<Exception> listener2 = Mockito.mock(ExceptionListener.class);
 
     ExceptionOrchestrator<Exception> orchestrator = new ExceptionOrchestrator<Exception>();
 
