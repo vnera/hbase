@@ -456,7 +456,7 @@ Server {
         ", cluster-up flag was=" + wasUp);
 
     // create the snapshot manager
-     this.snapshotManager = new SnapshotManager(this);
+    this.snapshotManager = new SnapshotManager(this);
   }
 
   // Check if we should stop every second.
@@ -1872,6 +1872,12 @@ Server {
   public long snapshot(final HSnapshotDescription request) throws IOException {
     LOG.debug("Starting snapshot for:" + request.getProto());
 
+    try {
+      this.snapshotManager.checkSnapshotSupport();
+    } catch (UnsupportedOperationException e) {
+      throw new IOException(e);
+    }
+
     // get the snapshot information
     SnapshotDescription snapshot = SnapshotDescriptionUtils.validate(request.getProto(),
       this.conf);
@@ -1909,6 +1915,12 @@ Server {
    */
   @Override
   public void deleteSnapshot(final HSnapshotDescription request) throws IOException {
+    try {
+      this.snapshotManager.checkSnapshotSupport();
+    } catch (UnsupportedOperationException e) {
+      throw new IOException(e);
+    }
+
     snapshotManager.deleteSnapshot(request.getProto());
   }
 
@@ -1940,6 +1952,12 @@ Server {
    */
   @Override
   public void restoreSnapshot(final HSnapshotDescription request) throws IOException {
+    try {
+      this.snapshotManager.checkSnapshotSupport();
+    } catch (UnsupportedOperationException e) {
+      throw new IOException(e);
+    }
+
     snapshotManager.restoreSnapshot(request.getProto());
   }
 
