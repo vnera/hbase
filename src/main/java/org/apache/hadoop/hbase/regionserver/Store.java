@@ -1647,8 +1647,8 @@ public class Store extends SchemaConfigured implements HeapSize {
 
       // let the archive util decide if we should archive or delete the files
       LOG.debug("Removing store files after compaction...");
-      HFileArchiver.archiveStoreFiles(this.fs, this.region, this.conf, this.family.getName(),
-        compactedFiles);
+      HFileArchiver.archiveStoreFiles(this.conf, this.fs, this.region,
+        this.family.getName(), compactedFiles);
 
     } catch (IOException e) {
       e = RemoteExceptionHandler.checkIOException(e);
