@@ -649,6 +649,12 @@ public final class HConstants {
     "hbase.regionserver.wal.enablecompression";
 
   /**
+   * The byte array represents for NO_NEXT_INDEXED_KEY;
+   * The actual value is irrelevant because this is always compared by reference.
+   */
+  public static final byte [] NO_NEXT_INDEXED_KEY = Bytes.toBytes("NO_NEXT_INDEXED_KEY");
+
+  /**
    * QOS attributes: these attributes are used to demarcate RPC call processing
    * by different set of handlers. For example, HIGH_QOS tagged methods are
    * handled by high priority handlers.
