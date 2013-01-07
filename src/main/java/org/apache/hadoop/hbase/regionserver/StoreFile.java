@@ -157,8 +157,6 @@ public class StoreFile extends SchemaConfigured {
   // If this storefile is a link to another, this is the link instance.
   private HFileLink link;
 
-  private Configuration conf;
-
   // Block cache configuration and reference.
   private final CacheConfig cacheConf;
 
@@ -203,25 +201,26 @@ public class StoreFile extends SchemaConfigured {
    */
   private Map<byte[], byte[]> metadataMap;
 
-  /*
-   * Regex that will work for straight filenames (<hfile>) and for reference names
-   * (<hfile>.<parentEncRegion>).  If reference, then the regex has more than just one group.
-   * Group 1, '([0-9a-f]+(?:_SeqId_[0-9]+_0?)',  is this file's id.  Group 2 '(.+)' is the
-   * reference's parent region name.  The ?: paren expressions are non-capture markers so not
-   * included in the groups count. The _SeqId_ portion comes from bulk loaded files.
+  /**
+   * A non-capture group, for hfiles, so that this can be embedded.
+   * HFiles are uuid ([0-9a-z]+). Bulk loaded hfiles has (_SeqId_[0-9]+_) has suffix.
    */
-  public static final String REF_NAME_REGEX = "^([0-9a-f]+(?:_SeqId_[0-9]+_)?)(?:\\.(.+))?$";
-  private static final Pattern REF_NAME_PARSER = Pattern.compile(REF_NAME_REGEX);
+  public static final String HFILE_NAME_REGEX = "[0-9a-f]+(?:_SeqId_[0-9]+_)?";
+
+  /** Regex that will work for hfiles */
+  private static final Pattern HFILE_NAME_PATTERN =
+    Pattern.compile("^(" + HFILE_NAME_REGEX + ")");
 
   /**
-   * Regex strictly for references to hfilelinks.  (<hfile>-<region>-<table>.<parentEncRegion>).
-   * Group 1 is this file's hfilelink name.  Group 2 the referenced parent region name.  The '.'
-   * char is valid in table names but group 2's regex is greedy and interprets the table names
-   * correctly.   The _SeqId_ portion comes from bulk loaded files.
+   * Regex that will work for straight reference names (<hfile>.<parentEncRegion>)
+   * and hfilelink reference names (<table>=<region>-<hfile>.<parentEncRegion>)
+   * If reference, then the regex has more than just one group.
+   * Group 1, hfile/hfilelink pattern, is this file's id.
+   * Group 2 '(.+)' is the reference's parent region name.
    */
-  public static final String REF_TO_LINK_REGEX = "^([0-9a-f]+(?:_SeqId_[0-9]+_)?-[0-9a-f]+-"
-      + HTableDescriptor.VALID_USER_TABLE_REGEX + "+)\\.([^.]+)$";
-  private static final Pattern REF_TO_LINK_PARSER = Pattern.compile(REF_TO_LINK_REGEX);
+  private static final Pattern REF_NAME_PATTERN =
+    Pattern.compile(String.format("^(%s|%s)\\.(.+)$",
+      HFILE_NAME_REGEX, HFileLink.LINK_NAME_REGEX));
 
   // StoreFile.Reader
   private volatile Reader reader;
@@ -261,7 +260,6 @@ public class StoreFile extends SchemaConfigured {
       throws IOException {
     this.fs = fs;
     this.path = p;
-    this.conf = conf;
     this.cacheConf = cacheConf;
     this.dataBlockEncoder =
         dataBlockEncoder == null ? NoOpDataBlockEncoder.INSTANCE
@@ -273,6 +271,13 @@ public class StoreFile extends SchemaConfigured {
     } else if (isReference(p)) {
       this.reference = Reference.read(fs, p);
       this.referencePath = getReferredToFile(this.path);
+      if (HFileLink.isHFileLink(this.referencePath)) {
+        this.link = new HFileLink(conf, this.referencePath);
+      }
+      LOG.debug("Store file " + p + " is a " + reference.getFileRegion() +
+        " reference to " + this.referencePath);
+    } else if (!isHFile(p)) {
+      throw new IOException("path=" + path + " doesn't look like a valid StoreFile");
     }
 
     if (BloomFilterFactory.isGeneralBloomEnabled(conf)) {
@@ -320,7 +325,12 @@ public class StoreFile extends SchemaConfigured {
    * @return <tt>true</tt> if this StoreFile is an HFileLink
    */
   boolean isLink() {
-    return this.link != null;
+    return this.link != null && this.reference == null;
+  }
+
+  private static boolean isHFile(final Path path) {
+    Matcher m = HFILE_NAME_PATTERN.matcher(path.getName());
+    return m.matches() && m.groupCount() > 0;
   }
 
   /**
@@ -328,22 +338,16 @@ public class StoreFile extends SchemaConfigured {
    * @return True if the path has format of a HStoreFile reference.
    */
   public static boolean isReference(final Path p) {
-    return !p.getName().startsWith("_") &&
-      isReference(p, REF_NAME_PARSER.matcher(p.getName()));
+    return isReference(p.getName());
   }
 
   /**
-   * @param p Path to check.
-   * @param m Matcher to use.
+   * @param name file name to check.
    * @return True if the path has format of a HStoreFile reference.
    */
-  public static boolean isReference(final Path p, final Matcher m) {
-    if (m == null || !m.matches()) {
-      LOG.warn("Failed match of store file name " + p.toString());
-      throw new RuntimeException("Failed match of store file name " +
-          p.toString());
-    }
-    return m.groupCount() > 1 && m.group(2) != null;
+  public static boolean isReference(final String name) {
+    Matcher m = REF_NAME_PATTERN.matcher(name);
+    return m.matches() && m.groupCount() > 1;
   }
 
   /*
@@ -354,35 +358,10 @@ public class StoreFile extends SchemaConfigured {
    * @throws IllegalArgumentException when path regex fails to match.
    */
   public static Path getReferredToFile(final Path p) {
-    Matcher m = REF_NAME_PARSER.matcher(p.getName());
+    Matcher m = REF_NAME_PATTERN.matcher(p.getName());
     if (m == null || !m.matches()) {
       LOG.warn("Failed match of store file name " + p.toString());
       throw new IllegalArgumentException("Failed match of store file name " +
-          p.toString());
-    }
-    // Other region name is suffix on the passed Reference file name
-    String otherRegion = m.group(2);
-    // Tabledir is up two directories from where Reference was written.
-    Path tableDir = p.getParent().getParent().getParent();
-    String nameStrippedOfSuffix = m.group(1);
-    // Build up new path with the referenced region in place of our current
-    // region in the reference path.  Also strip regionname suffix from name.
-    return new Path(new Path(new Path(tableDir, otherRegion),
-      p.getParent().getName()), nameStrippedOfSuffix);
-  }
-
-  /*
-   * Return path to an hfilelink referred to by a Reference.  Presumes a directory
-   * hierarchy of <code>${hbase.rootdir}/tablename/regionname/familyname</code>.
-   * @param p Path to a Reference to hfilelink file.
-   * @return Calculated path to parent region file.
-   * @throws IllegalArgumentException when path regex fails to match.
-   */
-  static Path getReferredToLink(final Path p) {
-    Matcher m = REF_TO_LINK_PARSER.matcher(p.getName());
-    if (m == null || !m.matches()) {
-      LOG.warn("Failed match of ref to hfilelink name" + p.toString());
-      throw new IllegalArgumentException("Failed match of ref to hfilelink name " +
           p.toString());
     }
     // Other region name is suffix on the passed Reference file name
@@ -493,16 +472,15 @@ public class StoreFile extends SchemaConfigured {
    * If this estimate isn't good enough, we can improve it later.
    * @param fs  The FileSystem
    * @param reference  The reference
-   * @param reference  The referencePath
+   * @param status  The reference FileStatus
    * @return HDFS blocks distribution
    */
   static private HDFSBlocksDistribution computeRefFileHDFSBlockDistribution(
-    FileSystem fs, Reference reference, Path referencePath) throws IOException {
-    if ( referencePath == null) {
+    FileSystem fs, Reference reference, FileStatus status) throws IOException {
+    if (status == null) {
       return null;
     }
 
-    FileStatus status = fs.getFileStatus(referencePath);
     long start = 0;
     long length = 0;
 
@@ -521,8 +499,14 @@ public class StoreFile extends SchemaConfigured {
    */
   private void computeHDFSBlockDistribution() throws IOException {
     if (isReference()) {
+      FileStatus status;
+      if (this.link != null) {
+        status = this.link.getFileStatus(fs);
+      } else {
+        status = fs.getFileStatus(this.referencePath);
+      }
       this.hdfsBlocksDistribution = computeRefFileHDFSBlockDistribution(
-        this.fs, this.reference, this.referencePath);
+        this.fs, this.reference, status);
     } else {
       FileStatus status;
       if (isLink()) {
@@ -547,37 +531,17 @@ public class StoreFile extends SchemaConfigured {
       throw new IllegalAccessError("Already open");
     }
     if (isReference()) {
-      this.reader = new HalfStoreFileReader(this.fs, this.referencePath,
-          this.cacheConf, this.reference,
-          dataBlockEncoder.getEncodingInCache());
-    } else if (isLink()) {
-      try {
-        long size = link.getFileStatus(fs).getLen();
-        this.reader = new Reader(this.fs, this.path, link, size, this.cacheConf,
-            dataBlockEncoder.getEncodingInCache(), true);
-      } catch (FileNotFoundException fnfe) {
-        // This didn't actually link to another file!
-
-        // Handles the case where a file with the hfilelink pattern is actually a daughter
-        // reference to a hfile link.  This can occur when a cloned table's hfilelinks get split.
-        FileStatus actualRef = fs.getFileStatus(path);
-        long actualLen = actualRef.getLen();
-        if (actualLen == 0) {
-          LOG.error(path + " is a 0-len file, and actually an hfilelink missing target file!", fnfe);
-          throw fnfe;
-        }
-        LOG.debug("Size of link file is " + actualLen + "!= 0; treating as a reference to" +
-            " HFileLink " + path + "!");
-        this.reference = Reference.read(fs, this.path);
-        this.referencePath = getReferredToLink(this.path);
-        LOG.debug("Reference file "+ path + " referred to " + referencePath + "!");
-        link = new HFileLink(conf, referencePath);
-        this.reader = new HalfStoreFileReader(this.fs, this.referencePath, link,
-            this.cacheConf, this.reference,
-            dataBlockEncoder.getEncodingInCache());
-        LOG.debug("Store file " + path + " is loaded " + referencePath + " as a half store file" +
-            " reader to an HFileLink!");
+      if (this.link != null) {
+        this.reader = new HalfStoreFileReader(this.fs, this.referencePath, this.link,
+          this.cacheConf, this.reference, dataBlockEncoder.getEncodingInCache());
+      } else {
+        this.reader = new HalfStoreFileReader(this.fs, this.referencePath,
+          this.cacheConf, this.reference, dataBlockEncoder.getEncodingInCache());
       }
+    } else if (isLink()) {
+      long size = link.getFileStatus(fs).getLen();
+      this.reader = new Reader(this.fs, this.path, link, size, this.cacheConf,
+          dataBlockEncoder.getEncodingInCache(), true);
     } else {
       this.reader = new Reader(this.fs, this.path, this.cacheConf,
           dataBlockEncoder.getEncodingInCache());
@@ -962,13 +926,14 @@ public class StoreFile extends SchemaConfigured {
     // A reference to the bottom half of the hsf store file.
     Reference r = new Reference(splitRow, range);
     // Add the referred-to regions name as a dot separated suffix.
-    // See REF_NAME_PARSER regex above.  The referred-to regions name is
+    // See REF_NAME_REGEX regex above.  The referred-to regions name is
     // up in the path of the passed in <code>f</code> -- parentdir is family,
     // then the directory above is the region name.
     String parentRegionName = f.getPath().getParent().getParent().getName();
     // Write reference with same file id only with the other region name as
     // suffix and into the new region location (under same family).
     Path p = new Path(splitDir, f.getPath().getName() + "." + parentRegionName);
+    LOG.info("StoreFile.split(): splitDir=" + splitDir + " p=" + p);
     return r.write(fs, p);
   }
 
