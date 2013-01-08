@@ -185,6 +185,10 @@ public class HConnectionManager {
       if (connection == null) {
         connection = new HConnectionImplementation(conf, true);
         HBASE_INSTANCES.put(connectionKey, connection);
+      } else if (connection.isClosed()) {
+        HConnectionManager.deleteConnection(connectionKey, true, true);
+        connection = new HConnectionImplementation(conf, true);
+        HBASE_INSTANCES.put(connectionKey, connection);
       }
       connection.incCount();
       return connection;
@@ -1812,7 +1816,11 @@ public class HConnectionManager {
 
     public void close() {
       if (managed) {
-        HConnectionManager.deleteConnection((HConnection)this, stopProxy, false);
+        if (aborted) {
+          HConnectionManager.deleteStaleConnection(this);
+        } else {
+          HConnectionManager.deleteConnection(this, stopProxy, false);
+        }
       } else {
         close(true);
       }
