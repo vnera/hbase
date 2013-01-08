@@ -19,19 +19,17 @@
  */
 package org.apache.hadoop.hbase.client;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertEquals;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.Set;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -41,6 +39,8 @@ import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
+import org.apache.hadoop.hbase.client.HConnectionManager.HConnectionImplementation;
+import org.apache.hadoop.hbase.client.HConnectionManager.HConnectionKey;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -122,6 +122,28 @@ public class TestHCM {
     cacheField.setAccessible(true);
     Map<?, ?> cache = (Map<?, ?>) cacheField.get(null);
     return cache.size();
+  }
+  
+  @Test
+  public void abortingHConnectionRemovesItselfFromHCM() throws Exception {
+    // Save off current HConnections
+    Map<HConnectionKey, HConnectionImplementation> oldHBaseInstances = 
+        new HashMap<HConnectionKey, HConnectionImplementation>();
+    oldHBaseInstances.putAll(HConnectionManager.HBASE_INSTANCES);
+    
+    HConnectionManager.HBASE_INSTANCES.clear();
+
+    try {
+      HConnection connection = HConnectionManager.getConnection(TEST_UTIL.getConfiguration());
+      connection.abort("test abortingHConnectionRemovesItselfFromHCM", new Exception(
+          "test abortingHConnectionRemovesItselfFromHCM"));
+      Assert.assertNotSame(connection,
+        HConnectionManager.getConnection(TEST_UTIL.getConfiguration()));
+    } finally {
+      // Put original HConnections back
+      HConnectionManager.HBASE_INSTANCES.clear();
+      HConnectionManager.HBASE_INSTANCES.putAll(oldHBaseInstances);
+    }
   }
 
   /**
