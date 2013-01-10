@@ -61,7 +61,7 @@ public class TestReplication {
 
   private static final Log LOG = LogFactory.getLog(TestReplication.class);
 
-  private static Configuration conf1;
+  protected static Configuration conf1 = HBaseConfiguration.create();
   private static Configuration conf2;
   private static Configuration CONF_WITH_LOCALFS;
 
@@ -91,11 +91,9 @@ public class TestReplication {
    */
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    conf1 = HBaseConfiguration.create();
     conf1.set(HConstants.ZOOKEEPER_ZNODE_PARENT, "/1");
-    // smaller block size and capacity to trigger more operations
-    // and test them
-    conf1.setInt("hbase.regionserver.hlog.blocksize", 1024*20);
+    // smaller log roll size (not block size)
+    conf1.setFloat("hbase.regionserver.logroll.multiplier", 0.0003f);
     conf1.setInt("replication.source.size.capacity", 1024);
     conf1.setLong("replication.source.sleepforretries", 100);
     conf1.setInt("hbase.regionserver.maxlogs", 10);
@@ -144,7 +142,7 @@ public class TestReplication {
     table.addFamily(fam);
     HBaseAdmin admin1 = new HBaseAdmin(conf1);
     HBaseAdmin admin2 = new HBaseAdmin(conf2);
-    admin1.createTable(table);
+    admin1.createTable(table, HBaseTestingUtility.KEYS_FOR_HBA_CREATE_TABLE);
     admin2.createTable(table);
     htable1 = new HTable(conf1, tableName);
     htable1.setWriteBufferSize(1024);
@@ -521,7 +519,7 @@ public class TestReplication {
 
     // disable and start the peer
     admin.disablePeer("2");
-    utility2.startMiniHBaseCluster(1, 1);
+    utility2.startMiniHBaseCluster(1, 2);
     Get get = new Get(rowkey);
     for (int i = 0; i < NB_RETRIES; i++) {
       Result res = htable2.get(get);
@@ -718,8 +716,6 @@ public class TestReplication {
    */
   @Test(timeout=300000)
   public void queueFailover() throws Exception {
-    utility1.createMultiRegions(htable1, famName);
-
     // killing the RS with .META. can result into failed puts until we solve
     // IO fencing
     int rsToKill1 =
@@ -761,7 +757,8 @@ public class TestReplication {
     int lastCount = 0;
 
     final long start = System.currentTimeMillis();
-    for (int i = 0; i < NB_RETRIES; i++) {
+    int i = 0;
+    while (true) {
       if (i==NB_RETRIES-1) {
         fail("Waited too much time for queueFailover replication. " +
           "Waited "+(System.currentTimeMillis() - start)+"ms.");
@@ -773,6 +770,8 @@ public class TestReplication {
       if (res2.length < initialCount) {
         if (lastCount < res2.length) {
           i--; // Don't increment timeout if we make progress
+        } else {
+          i++;
         }
         lastCount = res2.length;
         LOG.info("Only got " + lastCount + " rows instead of " +
@@ -792,7 +791,7 @@ public class TestReplication {
           Thread.sleep(timeout);
           utility.expireRegionServerSession(rs);
         } catch (Exception e) {
-          LOG.error(e);
+          LOG.error("Couldn't kill a region server", e);
         }
       }
     };
