@@ -369,6 +369,8 @@ public class StoreFile extends SchemaConfigured {
     // Tabledir is up two directories from where Reference was written.
     Path tableDir = p.getParent().getParent().getParent();
     String nameStrippedOfSuffix = m.group(1);
+    LOG.debug("reference '" + p + "' to region=" + otherRegion + " hfile=" + nameStrippedOfSuffix);
+
     // Build up new path with the referenced region in place of our current
     // region in the reference path.  Also strip regionname suffix from name.
     return new Path(new Path(new Path(tableDir, otherRegion),
@@ -902,6 +904,8 @@ public class StoreFile extends SchemaConfigured {
   public static boolean validateStoreFileName(String fileName) {
     if (HFileLink.isHFileLink(fileName))
       return true;
+    if (isReference(fileName))
+      return true;
     return !fileName.contains("-");
   }
 
@@ -933,7 +937,6 @@ public class StoreFile extends SchemaConfigured {
     // Write reference with same file id only with the other region name as
     // suffix and into the new region location (under same family).
     Path p = new Path(splitDir, f.getPath().getName() + "." + parentRegionName);
-    LOG.info("StoreFile.split(): splitDir=" + splitDir + " p=" + p);
     return r.write(fs, p);
   }
 
