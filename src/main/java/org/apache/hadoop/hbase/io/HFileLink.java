@@ -32,6 +32,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.regionserver.HRegion;
@@ -89,6 +90,7 @@ public class HFileLink extends FileLink {
 
   private final Path archivePath;
   private final Path originPath;
+  private final Path tempPath;
 
   /**
    * @param conf {@link Configuration} from which to extract specific archive locations
@@ -106,18 +108,9 @@ public class HFileLink extends FileLink {
    */
   public HFileLink(final Path rootDir, final Path archiveDir, final Path path) {
     Path hfilePath = getRelativeTablePath(path);
+    this.tempPath = new Path(new Path(rootDir, HConstants.HBASE_TEMP_DIRECTORY), hfilePath);
     this.originPath = new Path(rootDir, hfilePath);
     this.archivePath = new Path(archiveDir, hfilePath);
-    setLocations(originPath, archivePath);
-  }
-
-  /**
-   * @param originPath Path to the hfile in the table directory
-   * @param archiveDir Path to the hfile in the archive directory
-   */
-  public HFileLink(final Path originPath, final Path archivePath) {
-    this.originPath = originPath;
-    this.archivePath = archivePath;
     setLocations(originPath, archivePath);
   }
 
@@ -191,7 +184,12 @@ public class HFileLink extends FileLink {
       return originPath;
     }
 
-    return new Path(archiveDir, hfilePath);
+    Path archivePath = new Path(archiveDir, hfilePath);
+    if (fs.exists(archivePath)) {
+      return archivePath;
+    }
+
+    return new Path(new Path(rootDir, HConstants.HBASE_TEMP_DIRECTORY), hfilePath);
   }
 
   /**
