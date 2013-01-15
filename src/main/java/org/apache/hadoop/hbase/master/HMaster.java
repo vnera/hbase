@@ -1870,8 +1870,8 @@ Server {
    */
   @Override
   public long snapshot(final HSnapshotDescription request) throws IOException {
-    LOG.debug("Starting snapshot for:" + request.getProto());
-
+    LOG.debug("Submitting snapshot request for:" +
+        SnapshotDescriptionUtils.toString(request.getProto()));
     try {
       this.snapshotManager.checkSnapshotSupport();
     } catch (UnsupportedOperationException e) {
@@ -1931,7 +1931,8 @@ Server {
    */
   @Override
   public boolean isSnapshotDone(final HSnapshotDescription request) throws IOException {
-    LOG.debug("Checking to see if snapshot from request:" + request + " is done");
+    LOG.debug("Checking to see if snapshot from request:" +
+      SnapshotDescriptionUtils.toString(request.getProto()) + " is done");
     return snapshotManager.isSnapshotDone(request.getProto());
   }
 
