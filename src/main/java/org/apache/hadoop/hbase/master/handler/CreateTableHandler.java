@@ -1,5 +1,4 @@
 /**
- * Copyright 2011 The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -20,12 +19,22 @@
 package org.apache.hadoop.hbase.master.handler;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -41,13 +50,14 @@ import org.apache.hadoop.hbase.master.AssignmentManager;
 import org.apache.hadoop.hbase.master.MasterFileSystem;
 import org.apache.hadoop.hbase.master.ServerManager;
 import org.apache.hadoop.hbase.regionserver.HRegion;
-import org.apache.hadoop.hbase.regionserver.wal.HLog;
 import org.apache.hadoop.hbase.util.FSTableDescriptors;
+import org.apache.hadoop.hbase.util.Threads;
 import org.apache.zookeeper.KeeperException;
 
 /**
  * Handler to create a table.
  */
+@InterfaceAudience.Private
 public class CreateTableHandler extends EventHandler {
   private static final Log LOG = LogFactory.getLog(CreateTableHandler.class);
   protected MasterFileSystem fileSystemManager;
@@ -98,8 +108,7 @@ public class CreateTableHandler extends EventHandler {
     // table in progress. This will introduce a new zookeeper call. Given
     // createTable isn't a frequent operation, that should be ok.
     try {
-      if (!this.assignmentManager.getZKTable().checkAndSetEnablingTable(
-        tableName))
+      if (!this.assignmentManager.getZKTable().checkAndSetEnablingTable(tableName))
         throw new TableExistsException(tableName);
     } catch (KeeperException e) {
       throw new IOException("Unable to ensure that the table will be" +
@@ -122,8 +131,8 @@ public class CreateTableHandler extends EventHandler {
   public void process() {
     String tableName = this.hTableDescriptor.getNameAsString();
     try {
-      LOG.info("Attemping to create the table " + tableName);
-      handleCreateTable();
+      LOG.info("Attempting to create the table " + tableName);
+      handleCreateTable(tableName);
     } catch (IOException e) {
       LOG.error("Error trying to create the table " + tableName, e);
     } catch (KeeperException e) {
@@ -131,8 +140,8 @@ public class CreateTableHandler extends EventHandler {
     }
   }
 
-  private void handleCreateTable() throws IOException, KeeperException {
-
+  private void handleCreateTable(String tableName) throws IOException,
+      KeeperException {
     // TODO: Currently we make the table descriptor and as side-effect the
     // tableDir is created.  Should we change below method to be createTable
     // where we create table in tmp dir with its table descriptor file and then
@@ -163,28 +172,62 @@ public class CreateTableHandler extends EventHandler {
   }
 
   protected List<HRegionInfo> handleCreateRegions(String tableName) throws IOException {
+    int regionNumber = newRegions.length;
+    ThreadPoolExecutor regionOpenAndInitThreadPool = getRegionOpenAndInitThreadPool(
+        "RegionOpenAndInitThread-" + tableName, regionNumber);
+    CompletionService<HRegion> completionService = new ExecutorCompletionService<HRegion>(
+        regionOpenAndInitThreadPool);
+
     List<HRegionInfo> regionInfos = new ArrayList<HRegionInfo>();
-    final int batchSize = this.conf.getInt("hbase.master.createtable.batchsize", 100);
-    for (int regionIdx = 0; regionIdx < this.newRegions.length; regionIdx++) {
-      HRegionInfo newRegion = this.newRegions[regionIdx];
-      // 1. Create HRegion
-      HRegion region = HRegion.createHRegion(newRegion,
-        this.fileSystemManager.getRootDir(), this.conf,
-        this.hTableDescriptor, null, false, true);
+    for (final HRegionInfo newRegion : newRegions) {
+      completionService.submit(new Callable<HRegion>() {
+        public HRegion call() throws IOException {
 
-      regionInfos.add(region.getRegionInfo());
-      if (regionIdx % batchSize == 0) {
-        // 2. Insert into META
-        MetaEditor.addRegionsToMeta(this.catalogTracker, regionInfos);
-        regionInfos.clear();
+          // 1. Create HRegion
+          HRegion region = HRegion.createHRegion(newRegion,
+              fileSystemManager.getRootDir(), conf, hTableDescriptor, null,
+              false, true);
+
+          // 2. Close the new region to flush to disk. Close log file too.
+          region.close();
+          return region;
+        }
+      });
+    }
+    try {
+      // 3. wait for all regions to finish creation
+      for (int i = 0; i < regionNumber; i++) {
+        Future<HRegion> future = completionService.take();
+        HRegion region = future.get();
+        regionInfos.add(region.getRegionInfo());
       }
-
-      // 3. Close the new region to flush to disk.  Close log file too.
-      region.close();
+    } catch (InterruptedException e) {
+      throw new InterruptedIOException(e.getMessage());
+    } catch (ExecutionException e) {
+      throw new IOException(e.getCause());
+    } finally {
+      regionOpenAndInitThreadPool.shutdownNow();
     }
     if (regionInfos.size() > 0) {
       MetaEditor.addRegionsToMeta(this.catalogTracker, regionInfos);
     }
-    return Arrays.asList(this.newRegions);
+    return regionInfos;
+  }
+
+  protected ThreadPoolExecutor getRegionOpenAndInitThreadPool(
+      final String threadNamePrefix, int regionNumber) {
+    int maxThreads = Math.min(regionNumber, conf.getInt(
+        "hbase.hregion.open.and.init.threads.max", 10));
+    ThreadPoolExecutor openAndInitializeThreadPool = Threads
+    .getBoundedCachedThreadPool(maxThreads, 30L, TimeUnit.SECONDS,
+        new ThreadFactory() {
+          private int count = 1;
+
+          public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, threadNamePrefix + "-" + count++);
+            return t;
+          }
+        });
+    return openAndInitializeThreadPool;
   }
 }

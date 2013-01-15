@@ -255,7 +255,17 @@ public final class HConstants {
    * closing stores or store files in parallel
    */
   public static final int DEFAULT_HSTORE_OPEN_AND_CLOSE_THREADS_MAX = 1;
+  /**
+   * The max number of threads used for opening and initialize regions in
+   * parallel
+   */
+  public static final String HBASE_HREGION_OPEN_AND_INIT_THREADS_MAX = "hbase.hregion.open.and.init.threads.max";
 
+  /**
+   * The default number for the max number of threads used for opening and
+   * initializing regions in parallel
+   */
+  public static final int DEFAULT_HBASE_HREGION_OPEN_AND_INIT_THREADS_MAX = 10;
 
   /** Conf key for the memstore size at which we flush the memstore */
   public static final String HREGION_MEMSTORE_FLUSH_SIZE =
