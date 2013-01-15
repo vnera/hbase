@@ -73,6 +73,8 @@ import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.util.StringUtils;
 
+import com.google.protobuf.ServiceException;
+
 /**
  * Provides an interface to manage HBase database table metadata + general
  * administrative functions.  Use HBaseAdmin to create, drop, list, enable and
@@ -2027,12 +2029,11 @@ public class HBaseAdmin implements Abortable, Closeable {
       IllegalArgumentException {
     // make sure the snapshot is valid
     SnapshotDescriptionUtils.assertSnapshotRequestIsValid(snapshot);
-
     HSnapshotDescription snapshotWritable = new HSnapshotDescription(snapshot);
 
     try {
       // actually take the snapshot
-      long max = getMaster().snapshot(snapshotWritable);
+      long max = takeSnapshotAsync(snapshot);
       long start = EnvironmentEdgeManager.currentTimeMillis();
       long maxPauseTime = max / this.numRetries;
       boolean done = false;
@@ -2063,6 +2064,23 @@ public class HBaseAdmin implements Abortable, Closeable {
     } catch (RemoteException e) {
       throw RemoteExceptionHandler.decodeRemoteException(e);
     }
+  }
+
+  /**
+   * Take a snapshot and wait for the server to complete that snapshot (asynchronous)
+   * <p>
+   * Only a single snapshot should be taken at a time, or results may be undefined.
+   * @param snapshot snapshot to take
+   * @return the max time in millis to wait for the snapshot
+   * @throws IOException if the snapshot did not succeed or we lose contact with the master.
+   * @throws SnapshotCreationException if snapshot creation failed
+   * @throws IllegalArgumentException if the snapshot request is formatted incorrectly
+   */
+  public long takeSnapshotAsync(SnapshotDescription snapshot) throws IOException,
+      SnapshotCreationException {
+    SnapshotDescriptionUtils.assertSnapshotRequestIsValid(snapshot);
+    HSnapshotDescription snapshotWritable = new HSnapshotDescription(snapshot);
+    return getMaster().snapshot(snapshotWritable);
   }
 
   /**
