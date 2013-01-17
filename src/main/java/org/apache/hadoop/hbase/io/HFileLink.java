@@ -21,37 +21,31 @@ package org.apache.hadoop.hbase.io;
 import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 
-import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.StoreFile;
-import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.HFileArchiveUtil;
 import org.apache.hadoop.hbase.util.FSUtils;
+import org.apache.hadoop.hbase.util.HFileArchiveUtil;
 
 /**
  * HFileLink describes a link to an hfile.
  *
- * An hfile can be served from a region or from the hfile archive directory as
- * specified by {@value HConstants.HFILE_ARCHIVE_DIRECTORY} conf property.
+ * An hfile can be served from a region or from the hfile archive directory (/hbase/.archive)
  * HFileLink allows to access the referenced hfile regardless of the location where it is.
  *
  * <p>Searches for hfiles in the following order and locations:
  * <ul>
  *  <li>/hbase/table/region/cf/hfile</li>
- *  <li>/hbase/archive/table/region/cf/hfile</li>
+ *  <li>/hbase/.archive/table/region/cf/hfile</li>
  * </ul>
  *
  * The link checks first in the original path if it is not present
@@ -102,7 +96,7 @@ public class HFileLink extends FileLink {
   }
 
   /**
-   * @param rootdir Path to the root directory where hbase files are stored
+   * @param rootDir Path to the root directory where hbase files are stored
    * @param archiveDir Path to the hbase archive directory
    * @param path The path of the HFile Link.
    */
@@ -129,7 +123,7 @@ public class HFileLink extends FileLink {
   }
 
   /**
-   * @param p Path to check.
+   * @param path Path to check.
    * @return True if the path is a HFileLink.
    */
   public static boolean isHFileLink(final Path path) {
@@ -146,50 +140,6 @@ public class HFileLink extends FileLink {
     if (!m.matches()) return false;
 
     return m.groupCount() > 2 && m.group(3) != null && m.group(2) != null && m.group(1) != null;
-  }
-
-  /**
-   * The returned path can be the "original" file path like: /hbase/table/region/cf/hfile
-   * or a path to the archived file like: /hbase/archive/table/region/cf/hfile
-   *
-   * @param fs {@link FileSystem} on which to check the HFileLink
-   * @param conf {@link Configuration} from which to extract specific archive locations
-   * @param path HFileLink path
-   * @return Referenced path (original path or archived path)
-   * @throws IOException on unexpected error.
-   */
-  public static Path getReferencedPath(final Configuration conf, final FileSystem fs,
-      final Path path) throws IOException {
-    return getReferencedPath(fs, FSUtils.getRootDir(conf),
-                             HFileArchiveUtil.getArchivePath(conf), path);
-  }
-
-  /**
-   * The returned path can be the "original" file path like: /hbase/table/region/cf/hfile
-   * or a path to the archived file like: /hbase/archive/table/region/cf/hfile
-   *
-   * @param fs {@link FileSystem} on which to check the HFileLink
-   * @param rootdir root hbase directory
-   * @param archiveDir Path to the hbase archive directory
-   * @param path HFileLink path
-   * @return Referenced path (original path or archived path)
-   * @throws IOException on unexpected error.
-   */
-  public static Path getReferencedPath(final FileSystem fs, final Path rootDir,
-      final Path archiveDir, final Path path) throws IOException {
-    Path hfilePath = getRelativeTablePath(path);
-
-    Path originPath = new Path(rootDir, hfilePath);
-    if (fs.exists(originPath)) {
-      return originPath;
-    }
-
-    Path archivePath = new Path(archiveDir, hfilePath);
-    if (fs.exists(archivePath)) {
-      return archivePath;
-    }
-
-    return new Path(new Path(rootDir, HConstants.HBASE_TEMP_DIRECTORY), hfilePath);
   }
 
   /**
@@ -386,7 +336,7 @@ public class HFileLink extends FileLink {
   /**
    * Get the full path of the HFile referenced by the back reference
    *
-   * @param rootdir root hbase directory
+   * @param rootDir root hbase directory
    * @param linkRefPath Link Back Reference path
    * @return full path of the referenced hfile
    * @throws IOException on unexpected error.
