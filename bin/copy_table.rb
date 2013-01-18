@@ -61,7 +61,7 @@ end
 
 # Returns true if the region belongs to passed table
 def isTableRegion(tableName, hri)
-  return Bytes.equals(hri.getTableDesc().getName(), tableName)
+  return Bytes.equals(hri.getTableName(), tableName)
 end
 
 # Create new HRI based off passed 'oldHRI'
