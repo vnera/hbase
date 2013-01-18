@@ -1357,7 +1357,7 @@ Server {
     if (cpHost != null) {
       cpHost.preModifyTable(tableName, htd);
     }
-    this.executorService.submit(new ModifyTableHandler(tableName, htd, this, this));
+    new ModifyTableHandler(tableName, htd, this, this).process();
     if (cpHost != null) {
       cpHost.postModifyTable(tableName, htd);
     }
