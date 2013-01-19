@@ -112,7 +112,6 @@ public class Replication implements WALActionsListener,
 
       this.statsThreadPeriod =
         this.conf.getInt("replication.stats.thread.period.seconds", 5 * 60);
-      LOG.debug("ReplicationStatisticsThread " + this.statsThreadPeriod);
     } else {
       this.replicationManager = null;
       this.zkHelper = null;
@@ -147,6 +146,7 @@ public class Replication implements WALActionsListener,
     if (this.replication) {
       this.replicationManager.join();
       this.replicationSink.stopReplicationSinkServices();
+      this.scheduleThreadPool.shutdown();
     }
   }
 

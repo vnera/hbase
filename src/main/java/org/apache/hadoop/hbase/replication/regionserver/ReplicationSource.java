@@ -444,6 +444,7 @@ public class ReplicationSource extends Thread
           currentNbEntries >= this.replicationQueueNbCapacity) {
         break;
       }
+
       try {
         entry = this.repLogReader.readNextAndSetPosition(this.entriesArray, this.currentNbEntries);
       } catch (IOException ie) {
@@ -555,7 +556,7 @@ public class ReplicationSource extends Thread
       // TODO without scanning all logs dir
       if (sleepMultiplier == this.maxRetriesMultiplier) {
         LOG.warn("Waited too long for this file, considering dumping");
-        return !processEndOfFile();
+        //return !processEndOfFile();
       }
     }
     return true;
@@ -839,14 +840,8 @@ public class ReplicationSource extends Thread
 
   @Override
   public String getStats() {
-    String position;
-    try {
-      position = this.reader.getPosition()+"";
-    } catch (IOException ioe) {
-      position = "N/A";
-    }
     return "Total replicated edits: " + totalReplicatedEdits +
       ", currently replicating from: " + this.currentPath +
-      " at position: " + position;
+      " at position: " + lastLoggedPosition;
   }
 }
