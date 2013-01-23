@@ -2016,8 +2016,9 @@ public class HBaseAdmin implements Abortable, Closeable {
       long maxPauseTime = max / this.numRetries;
       boolean done = false;
       int tries = 0;
-      LOG.debug("Waiting a max of " + max + " ms for snapshot to complete. (max " + maxPauseTime
-          + " ms per retry)");
+      LOG.debug("Waiting a max of " + max + " ms for snapshot '" +
+          SnapshotDescriptionUtils.toString(snapshot) + "' to complete. (max " +
+          maxPauseTime + " ms per retry)");
       while (tries == 0 || (EnvironmentEdgeManager.currentTimeMillis() - start) < max && !done) {
         try {
           // sleep a backoff <= pauseTime amount
