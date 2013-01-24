@@ -62,7 +62,7 @@ public class TestReplicationBase {
   protected static final int NB_ROWS_IN_BATCH = 100;
   protected static final int NB_ROWS_IN_BIG_BATCH =
       NB_ROWS_IN_BATCH * 10;
-  protected static final long SLEEP_TIME = 1000;
+  protected static final long SLEEP_TIME = 500;
   protected static final int NB_RETRIES = 10;
 
   protected static final byte[] tableName = Bytes.toBytes("test");

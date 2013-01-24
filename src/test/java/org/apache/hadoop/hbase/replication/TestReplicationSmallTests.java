@@ -431,9 +431,9 @@ public class TestReplicationSmallTests extends TestReplicationBase {
     assertEquals(NB_ROWS_IN_BATCH *10, res.length);
 
     scan = new Scan();
-
-    for (int i = 0; i < NB_RETRIES; i++) {
-
+    int lastCount = 0;
+    int i = 0;
+    while(true) {
       scanner = htable2.getScanner(scan);
       res = scanner.next(NB_ROWS_IN_BIG_BATCH);
       scanner.close();
@@ -451,7 +451,11 @@ public class TestReplicationSmallTests extends TestReplicationBase {
           fail("Waited too much time for normal batch replication, "
               + res.length + " instead of " + NB_ROWS_IN_BIG_BATCH);
         } else {
-          LOG.info("Only got " + res.length + " rows");
+          if (lastCount >= res.length) {
+            i++;
+          }
+          lastCount = res.length;
+          LOG.info("Only got " + res.length + " rows, i=" + i);
           Thread.sleep(SLEEP_TIME);
         }
       } else {
