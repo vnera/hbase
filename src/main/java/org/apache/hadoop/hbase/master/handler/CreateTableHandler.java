@@ -135,11 +135,18 @@ public class CreateTableHandler extends EventHandler {
     try {
       LOG.info("Attempting to create the table " + tableName);
       handleCreateTable(tableName);
-    } catch (IOException e) {
+      completed(null);
+    } catch (Throwable e) {
       LOG.error("Error trying to create the table " + tableName, e);
-    } catch (KeeperException e) {
-      LOG.error("Error trying to create the table " + tableName, e);
+      completed(e);
     }
+  }
+
+  /**
+   * Called after that process() is completed.
+   * @param exception null if process() is successful or not null if something has failed.
+   */
+  protected void completed(final Throwable exception) {
   }
 
   /**
