@@ -152,6 +152,10 @@ public class Store implements HeapSize {
   // Comparing KeyValues
   final KeyValue.KVComparator comparator;
 
+  private static final int DEFAULT_FLUSH_RETRIES_NUMBER = 10;
+  private static int flush_retries_number;
+  private static int pauseTime;
+  
   /**
    * Constructor
    * @param basedir qualified path under which the region directory lives;
@@ -228,6 +232,18 @@ public class Store implements HeapSize {
           "hbase.hstore.close.check.interval", 10*1000*1000 /* 10 MB */);
     }
     this.storefiles = sortAndClone(loadStoreFiles());
+    if (Store.flush_retries_number == 0) {
+      Store.flush_retries_number = conf.getInt(
+          "hbase.hstore.flush.retries.number", DEFAULT_FLUSH_RETRIES_NUMBER);
+      Store.pauseTime = conf.getInt(HConstants.HBASE_SERVER_PAUSE,
+          HConstants.DEFAULT_HBASE_SERVER_PAUSE);
+      if (Store.flush_retries_number <= 0) {
+        throw new IllegalArgumentException(
+            "hbase.hstore.flush.retries.number must be > 0, not "
+                + Store.flush_retries_number);
+      }
+    }
+
   }
 
   public HColumnDescriptor getFamily() {
@@ -505,15 +521,60 @@ public class Store implements HeapSize {
    * @return true if a compaction is needed
    * @throws IOException
    */
-  private StoreFile flushCache(final long logCacheFlushId,
+  protected StoreFile flushCache(final long logCacheFlushId,
       SortedSet<KeyValue> snapshot,
       TimeRangeTracker snapshotTimeRangeTracker,
       MonitoredTask status) throws IOException {
     // If an exception happens flushing, we let it out without clearing
     // the memstore snapshot.  The old snapshot will be returned when we say
     // 'snapshot', the next time flush comes around.
-    return internalFlushCache(
-        snapshot, logCacheFlushId, snapshotTimeRangeTracker, status);
+    // Retry after catching exception when flushing, otherwise server will abort
+    // itself
+    IOException lastException = null;
+    Path tempStoreFilePath = null;
+    for (int i = 0; i < Store.flush_retries_number; i++) {
+      try {
+        lastException = null;
+        tempStoreFilePath = internalFlushCache(snapshot, logCacheFlushId,
+            snapshotTimeRangeTracker, status);
+        if(tempStoreFilePath == null)
+          return null;
+         break;
+      } catch (IOException e) {
+        LOG.warn("Failed flushing store file, retring num=" + i, e);
+        lastException = e;
+        try {
+          Thread.sleep(pauseTime);
+        } catch (InterruptedException ie) {
+          IOException iie = new InterruptedIOException();
+          iie.initCause(ie);
+          throw iie;
+        }
+      }
+    }
+    if(lastException != null)
+      throw lastException;
+    
+    Path dstPath = new Path(homedir, tempStoreFilePath.getName());
+    String msg = "Renaming flushed file at " + tempStoreFilePath + " to " + dstPath;
+    LOG.debug(msg);
+    status.setStatus("Flushing " + this + ": " + msg);
+    if (!fs.rename(tempStoreFilePath, dstPath)) {
+      LOG.warn("Unable to rename " + tempStoreFilePath+ " to " + dstPath);
+    }
+    status.setStatus("Flushing " + this + ": reopening flushed file");
+    StoreFile sf = new StoreFile(this.fs, dstPath, this.conf, this.cacheConf,
+        this.family.getBloomFilterType());
+    StoreFile.Reader r = sf.createReader();
+    this.storeSize += r.length();
+    this.totalUncompressedBytes += r.getTotalUncompressedBytes();
+    if (LOG.isInfoEnabled()) {
+      LOG.info("Successfully renamed " + tempStoreFilePath +" to "+ dstPath);
+      LOG.info("Added " + sf + ", entries=" + r.getEntries() +
+        ", sequenceid=" + logCacheFlushId +
+        ", filesize=" + StringUtils.humanReadableInt(r.length()));
+    }
+    return sf;
   }
 
   /*
@@ -522,13 +583,12 @@ public class Store implements HeapSize {
    * @return StoreFile created.
    * @throws IOException
    */
-  private StoreFile internalFlushCache(final SortedSet<KeyValue> set,
+  private Path internalFlushCache(final SortedSet<KeyValue> set,
       final long logCacheFlushId,
       TimeRangeTracker snapshotTimeRangeTracker,
       MonitoredTask status)
       throws IOException {
     StoreFile.Writer writer;
-    String fileName;
     // Find the smallest read point across all the Scanners.
     long smallestReadPoint = region.getSmallestReadPoint();
     long flushed = 0;
@@ -553,7 +613,6 @@ public class Store implements HeapSize {
         // A. Write the map out to the disk
         writer = createWriterInTmp(set.size());
         writer.setTimeRangeTracker(snapshotTimeRangeTracker);
-        fileName = writer.getPath().getName();
         try {
           List<KeyValue> kvs = new ArrayList<KeyValue>();
           boolean hasMore;
@@ -587,30 +646,13 @@ public class Store implements HeapSize {
     } finally {
       scanner.close();
     }
-
+    LOG.info("Flushed " +
+      ", sequenceid=" + logCacheFlushId +
+      ", memsize=" + StringUtils.humanReadableInt(flushed) +
+      ", into tmp file " + writer.getPath());
     // Write-out finished successfully, move into the right spot
-    Path dstPath = new Path(homedir, fileName);
     validateStoreFile(writer.getPath());
-    String msg = "Renaming flushed file at " + writer.getPath() + " to " + dstPath;
-    LOG.debug(msg);
-    status.setStatus("Flushing " + this + ": " + msg);
-    if (!fs.rename(writer.getPath(), dstPath)) {
-      LOG.warn("Unable to rename " + writer.getPath() + " to " + dstPath);
-    }
-
-    status.setStatus("Flushing " + this + ": reopening flushed file");
-    StoreFile sf = new StoreFile(this.fs, dstPath, this.conf, this.cacheConf,
-        this.family.getBloomFilterType());
-    StoreFile.Reader r = sf.createReader();
-    this.storeSize += r.length();
-    this.totalUncompressedBytes += r.getTotalUncompressedBytes();
-    if (LOG.isInfoEnabled()) {
-      LOG.info("Added " + sf + ", entries=" + r.getEntries() +
-        ", sequenceid=" + logCacheFlushId +
-        ", memsize=" + StringUtils.humanReadableInt(flushed) +
-        ", filesize=" + StringUtils.humanReadableInt(r.length()));
-    }
-    return sf;
+    return writer.getPath();
   }
 
   /*
