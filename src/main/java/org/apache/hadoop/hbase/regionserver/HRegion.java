@@ -1195,7 +1195,7 @@ public class HRegion implements HeapSize { // , Writable{
   throws IOException {
     if (this.rsServices != null && this.rsServices.isAborted()) {
       // Don't flush when server aborting, it's unsafe
-      throw new IOException("Aborting flush because server is abortted...");
+      throw new IOException("Aborting flush because server is aborted...");
     }
     final long startTime = EnvironmentEdgeManager.currentTimeMillis();
     // Clear flush flag.
