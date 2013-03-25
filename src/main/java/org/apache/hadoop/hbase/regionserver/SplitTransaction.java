@@ -540,14 +540,13 @@ public class SplitTransaction {
   private static void createSplitDir(final FileSystem fs, final Path splitdir)
   throws IOException {
     if (fs.exists(splitdir)) {
-      LOG.info("The " + splitdir
-          + " directory exists.  Hence deleting it to recreate it");
-      if (!fs.delete(splitdir, true)) {
-        throw new IOException("Failed deletion of " + splitdir
-            + " before creating them again.");
+      LOG.info("The " + splitdir + " directory exists.  Hence deleting it to recreate it");
+      if (!HRegionFileSystem.deleteDirFromFileSystem(fs, splitdir)) {
+        throw new IOException("Failed deletion of " + splitdir + " before creating them again.");
       }
     }
-    if (!fs.mkdirs(splitdir)) throw new IOException("Failed create of " + splitdir);
+    if (!HRegionFileSystem.makeDirOnFileSystem(fs, splitdir)) 
+      throw new IOException("Failed create of " + splitdir);
   }
 
   private static void cleanupSplitDir(final FileSystem fs, final Path splitdir)
@@ -568,7 +567,7 @@ public class SplitTransaction {
   throws IOException {
     if (!fs.exists(dir)) {
       if (mustPreExist) throw new IOException(dir.toString() + " does not exist!");
-    } else if (!fs.delete(dir, true)) {
+    } else if (!HRegionFileSystem.deleteDirFromFileSystem(fs, dir)) {
       throw new IOException("Failed delete of " + dir);
     }
   }

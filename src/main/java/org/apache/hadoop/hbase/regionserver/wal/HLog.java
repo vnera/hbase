@@ -58,6 +58,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.fs.Syncable;
 import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.HBaseFileSystem;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -144,6 +145,7 @@ public class HLog implements Syncable {
   private static Class<? extends Reader> logReaderClass;
 
   private WALCoprocessorHost coprocessorHost;
+  private HLogFileSystem hlogFs;
 
   static void resetLogReaderClass() {
     HLog.logReaderClass = null;
@@ -370,6 +372,7 @@ public class HLog implements Syncable {
     this.fs = fs;
     this.dir = dir;
     this.conf = conf;
+    this.hlogFs = new HLogFileSystem(conf);
     if (listeners != null) {
       for (WALActionsListener i: listeners) {
         registerWALActionsListener(i);
@@ -385,14 +388,12 @@ public class HLog implements Syncable {
     if (failIfLogDirExists && fs.exists(dir)) {
       throw new IOException("Target HLog directory already exists: " + dir);
     }
-    if (!fs.mkdirs(dir)) {
+    if (!HBaseFileSystem.makeDirOnFileSystem(fs, dir)) {
       throw new IOException("Unable to mkdir " + dir);
     }
     this.oldLogDir = oldLogDir;
-    if (!fs.exists(oldLogDir)) {
-      if (!fs.mkdirs(this.oldLogDir)) {
-        throw new IOException("Unable to mkdir " + this.oldLogDir);
-      }
+    if (!fs.exists(oldLogDir) && !HBaseFileSystem.makeDirOnFileSystem(fs, this.oldLogDir)) {
+      throw new IOException("Unable to mkdir " + this.oldLogDir);
     }
     this.maxLogs = conf.getInt("hbase.regionserver.maxlogs", 32);
     this.minTolerableReplication = conf.getInt(
@@ -660,7 +661,7 @@ public class HLog implements Syncable {
    */
   protected Writer createWriterInstance(final FileSystem fs, final Path path,
       final Configuration conf) throws IOException {
-    return createWriter(fs, path, conf);
+    return hlogFs.createWriter(fs, conf, path);
   }
 
   /**
@@ -861,7 +862,7 @@ public class HLog implements Syncable {
     LOG.info("moving old hlog file " + FSUtils.getPath(p) +
       " whose highest sequenceid is " + seqno + " to " +
       FSUtils.getPath(newPath));
-    if (!this.fs.rename(p, newPath)) {
+    if (!HBaseFileSystem.renameDirForFileSystem(fs, p, newPath)) {
       throw new IOException("Unable to rename " + p + " to " + newPath);
     }
   }
@@ -899,13 +900,13 @@ public class HLog implements Syncable {
     FileStatus[] files = fs.listStatus(this.dir);
     for(FileStatus file : files) {
       Path p = getHLogArchivePath(this.oldLogDir, file.getPath());
-      if (!fs.rename(file.getPath(),p)) {
+      if (!HBaseFileSystem.renameDirForFileSystem(fs, file.getPath(), p)) {
         throw new IOException("Unable to rename " + file.getPath() + " to " + p);
       }
     }
     LOG.debug("Moved " + files.length + " log files to " +
       FSUtils.getPath(this.oldLogDir));
-    if (!fs.delete(dir, true)) {
+    if (!HBaseFileSystem.deleteDirFromFileSystem(fs, dir)) {
       LOG.info("Unable to delete " + dir);
     }
   }
@@ -1627,7 +1628,7 @@ public class HLog implements Syncable {
   throws IOException {
     Path moveAsideName = new Path(edits.getParent(), edits.getName() + "." +
       System.currentTimeMillis());
-    if (!fs.rename(edits, moveAsideName)) {
+    if (!HBaseFileSystem.renameDirForFileSystem(fs, edits, moveAsideName)) {
       LOG.warn("Rename failed from " + edits + " to " + moveAsideName);
     }
     return moveAsideName;

@@ -38,10 +38,12 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.hbase.HBaseFileSystem;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableDescriptors;
 import org.apache.hadoop.hbase.TableInfoMissingException;
+import org.apache.hadoop.hbase.regionserver.HRegionFileSystem;
 
 
 /**
@@ -219,14 +221,12 @@ public class FSTableDescriptors implements TableDescriptors {
   }
 
   @Override
-  public HTableDescriptor remove(final String tablename)
-  throws IOException {
+  public HTableDescriptor remove(final String tablename) throws IOException {
     if (!this.fsreadonly) {
       Path tabledir = FSUtils.getTablePath(this.rootdir, tablename);
-      if (this.fs.exists(tabledir)) {
-        if (!this.fs.delete(tabledir, true)) {
-          throw new IOException("Failed delete of " + tabledir.toString());
-        }
+      if (this.fs.exists(tabledir)
+          && !HBaseFileSystem.deleteDirFromFileSystem(this.fs, tabledir)) {
+        throw new IOException("Failed delete of " + tabledir.toString());
       }
     }
     TableDescriptorModtime tdm = this.cache.remove(tablename);
@@ -280,7 +280,7 @@ public class FSTableDescriptors implements TableDescriptors {
       for (int i = 1; i < status.length; i++) {
         Path p = status[i].getPath();
         // Clean up old versions
-        if (!fs.delete(p, false)) {
+        if (fs.exists(p) && !HRegionFileSystem.deleteFileFromFileSystem(fs, p)) {
           LOG.warn("Failed cleanup of " + status);
         } else {
           LOG.debug("Cleaned up old tableinfo file " + p);
@@ -504,13 +504,13 @@ public class FSTableDescriptors implements TableDescriptors {
       try {
         writeHTD(fs, p, hTableDescriptor);
         tableInfoPath = getTableInfoFileName(tableDir, sequenceid);
-        if (!fs.rename(p, tableInfoPath)) {
+        if (!HBaseFileSystem.renameDirForFileSystem(fs, p, tableInfoPath)) {
           throw new IOException("Failed rename of " + p + " to " + tableInfoPath);
         }
       } catch (IOException ioe) {
         // Presume clash of names or something; go around again.
         LOG.debug("Failed write and/or rename; retrying", ioe);
-        if (!FSUtils.deleteDirectory(fs, p)) {
+        if (!HBaseFileSystem.deleteDirFromFileSystem(fs, p)) {
           LOG.warn("Failed cleanup of " + p);
         }
         tableInfoPath = null;
@@ -518,7 +518,7 @@ public class FSTableDescriptors implements TableDescriptors {
       }
       // Cleanup old schema file.
       if (status != null) {
-        if (!FSUtils.deleteDirectory(fs, status.getPath())) {
+        if (!HBaseFileSystem.deleteDirFromFileSystem(fs, status.getPath())) {
           LOG.warn("Failed delete of " + status.getPath() + "; continuing");
         }
       }
@@ -530,7 +530,7 @@ public class FSTableDescriptors implements TableDescriptors {
   private static void writeHTD(final FileSystem fs, final Path p,
       final HTableDescriptor htd)
   throws IOException {
-    FSDataOutputStream out = fs.create(p, false);
+    FSDataOutputStream out = HRegionFileSystem.createPathOnFileSystem(fs, p, false);
     try {
       htd.write(out);
       out.write('\n');

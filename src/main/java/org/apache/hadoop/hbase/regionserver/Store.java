@@ -37,6 +37,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseFileSystem;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -170,7 +171,7 @@ public class Store implements HeapSize {
     this.fs = fs;
     this.homedir = getStoreHomedir(basedir, info.getEncodedName(), family.getName());
     if (!this.fs.exists(this.homedir)) {
-      if (!this.fs.mkdirs(this.homedir))
+      if (!HBaseFileSystem.makeDirOnFileSystem(fs, homedir))
         throw new IOException("Failed create of: " + this.homedir.toString());
     }
     this.region = region;
@@ -594,7 +595,7 @@ public class Store implements HeapSize {
     String msg = "Renaming flushed file at " + writer.getPath() + " to " + dstPath;
     LOG.debug(msg);
     status.setStatus("Flushing " + this + ": " + msg);
-    if (!fs.rename(writer.getPath(), dstPath)) {
+    if (!HBaseFileSystem.renameDirForFileSystem(fs, writer.getPath(), dstPath)) {
       LOG.warn("Unable to rename " + writer.getPath() + " to " + dstPath);
     }
 
@@ -1329,7 +1330,7 @@ public class Store implements HeapSize {
                   bytesWritten = 0;
                   if (!this.region.areWritesEnabled()) {
                     writer.close();
-                    fs.delete(writer.getPath(), false);
+                    HBaseFileSystem.deleteFileFromFileSystem(fs, writer.getPath());
                     throw new InterruptedIOException(
                         "Aborting compaction of store " + this +
                         " in region " + this.region +
@@ -1410,7 +1411,7 @@ public class Store implements HeapSize {
       Path origPath = compactedFile.getPath();
       Path destPath = new Path(homedir, origPath.getName());
       LOG.info("Renaming compacted file at " + origPath + " to " + destPath);
-      if (!fs.rename(origPath, destPath)) {
+      if (!HBaseFileSystem.renameDirForFileSystem(fs, origPath, destPath)) {
         LOG.error("Failed move of compacted file " + origPath + " to " +
             destPath);
         throw new IOException("Failed move of compacted file " + origPath +

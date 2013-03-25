@@ -30,6 +30,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Chore;
+import org.apache.hadoop.hbase.HBaseFileSystem;
 import org.apache.hadoop.hbase.RemoteExceptionHandler;
 import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.regionserver.wal.HLog;
@@ -136,11 +137,11 @@ public class LogCleaner extends Chore {
             }
           }
           // delete this log file if it passes all the log cleaners
-          this.fs.delete(filePath, true);
+          HBaseFileSystem.deleteDirFromFileSystem(fs, filePath);
         } else {
           LOG.warn("Found a wrongly formated file: "
               + file.getPath().getName());
-          this.fs.delete(filePath, true);
+          HBaseFileSystem.deleteDirFromFileSystem(fs, filePath);
         }
       }
     } catch (IOException e) {

@@ -31,6 +31,7 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.hbase.HBaseFileSystem;
 import org.apache.hadoop.hbase.KeyValue.KeyComparator;
 import org.apache.hadoop.hbase.io.hfile.HFile.FileInfo;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -252,9 +253,6 @@ public abstract class AbstractHFileWriter implements HFile.Writer {
   /** A helper method to create HFile output streams in constructors */
   protected static FSDataOutputStream createOutputStream(Configuration conf,
       FileSystem fs, Path path) throws IOException {
-    return fs.create(path, FsPermission.getDefault(), true,
-        fs.getConf().getInt("io.file.buffer.size", 4096),
-        fs.getDefaultReplication(), fs.getDefaultBlockSize(),
-        null);
+    return HBaseFileSystem.createPathWithPermsOnFileSystem(fs, path, FsPermission.getDefault(), true);
   }
 }

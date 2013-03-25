@@ -33,6 +33,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseFileSystem;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -129,8 +130,8 @@ public class MasterFileSystem {
     Path oldLogDir = new Path(this.rootdir, HConstants.HREGION_OLDLOGDIR_NAME);
 
     // Make sure the region servers can archive their old logs
-    if(!this.fs.exists(oldLogDir)) {
-      this.fs.mkdirs(oldLogDir);
+    if(!this.fs.exists(oldLogDir) && !HBaseFileSystem.makeDirOnFileSystem(fs, oldLogDir)) {
+      LOG.info("Couldn't archive old logs");
     }
 
     return oldLogDir;
@@ -254,7 +255,7 @@ public class MasterFileSystem {
       Path splitDir = logDir.suffix(HLog.SPLITTING_EXT);
       // rename the directory so a rogue RS doesn't create more HLogs
       if (fs.exists(logDir)) {
-        if (!this.fs.rename(logDir, splitDir)) {
+        if (!HBaseFileSystem.renameDirForFileSystem(fs, logDir, splitDir)) {
           throw new IOException("Failed fs.rename for log split: " + logDir);
         }
         logDir = splitDir;
@@ -326,7 +327,7 @@ public class MasterFileSystem {
     // Filesystem is good. Go ahead and check for hbase.rootdir.
     try {
       if (!fs.exists(rd)) {
-        fs.mkdirs(rd);
+        HBaseFileSystem.makeDirOnFileSystem(fs, rd);
         // DFS leaves safe mode with 0 DNs when there are 0 blocks.
         // We used to handle this by checking the current DN count and waiting until
         // it is nonzero. With security, the check for datanode count doesn't work --
@@ -434,11 +435,11 @@ public class MasterFileSystem {
 
 
   public void deleteRegion(HRegionInfo region) throws IOException {
-    fs.delete(HRegion.getRegionDir(rootdir, region), true);
+    HBaseFileSystem.deleteDirFromFileSystem(fs, HRegion.getRegionDir(rootdir, region));
   }
 
   public void deleteTable(byte[] tableName) throws IOException {
-    fs.delete(new Path(rootdir, Bytes.toString(tableName)), true);
+    HBaseFileSystem.deleteDirFromFileSystem(fs, new Path(rootdir, Bytes.toString(tableName)));
   }
 
   public void updateRegionInfo(HRegionInfo region) {

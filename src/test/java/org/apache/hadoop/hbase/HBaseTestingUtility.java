@@ -143,6 +143,12 @@ public class HBaseTestingUtility {
 
   public HBaseTestingUtility(Configuration conf) {
     this.conf = conf;
+    setHDFSClientRetryProperty();
+  }
+
+  private void setHDFSClientRetryProperty() {
+    this.conf.setInt("hdfs.client.retries.number", 1);
+    HBaseFileSystem.setRetryCounts(conf);
   }
 
   /**

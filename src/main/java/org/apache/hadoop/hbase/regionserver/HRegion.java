@@ -59,6 +59,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.DroppedSnapshotException;
 import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.HBaseFileSystem;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HConstants.OperationStatusCode;
@@ -217,6 +218,7 @@ public class HRegion implements HeapSize { // , Writable{
 
   private ConcurrentHashMap<RegionScanner, Long> scannerReadPoints;
 
+  final HRegionFileSystem regionFs;
   /*
    * @return The smallest mvcc readPoint across all the scanners in this
    * region. Writes older than this readPoint, are included  in every
@@ -325,6 +327,7 @@ public class HRegion implements HeapSize { // , Writable{
     this.threadWakeFrequency = 0L;
     this.coprocessorHost = null;
     this.scannerReadPoints = new ConcurrentHashMap<RegionScanner, Long>();
+    this.regionFs = new HRegionFileSystem(conf);
   }
 
   /**
@@ -375,6 +378,7 @@ public class HRegion implements HeapSize { // , Writable{
     if (rsServices != null) {
       this.coprocessorHost = new RegionCoprocessorHost(this, rsServices, conf);
     }
+    this.regionFs = new HRegionFileSystem(conf);
     if (LOG.isDebugEnabled()) {
       // Write out region name as string and its encoded name.
       LOG.debug("Instantiated " + this);
@@ -475,7 +479,7 @@ public class HRegion implements HeapSize { // , Writable{
     // these directories here on open.  We may be opening a region that was
     // being split but we crashed in the middle of it all.
     SplitTransaction.cleanupAnySplitDetritus(this);
-    FSUtils.deleteDirectory(this.fs, new Path(regiondir, MERGEDIR));
+    HBaseFileSystem.deleteDirFromFileSystem(fs, new Path(regiondir, MERGEDIR));
 
     this.writestate.setReadOnly(this.htableDescriptor.isReadOnly());
 
@@ -514,7 +518,7 @@ public class HRegion implements HeapSize { // , Writable{
     final Path initialFiles, final Path regiondir)
   throws IOException {
     if (initialFiles != null && fs.exists(initialFiles)) {
-      if (!fs.rename(initialFiles, regiondir)) {
+      if (!HRegionFileSystem.renameDirForFileSystem(fs, initialFiles, regiondir)) {
         LOG.warn("Unable to rename " + initialFiles + " to " + regiondir);
       }
     }
@@ -626,7 +630,7 @@ public class HRegion implements HeapSize { // , Writable{
     // subsequent region reopens will fail the below because create is
     // registered in NN.
     Path tmpPath = new Path(getTmpDir(), REGIONINFO_FILE);
-    FSDataOutputStream out = this.fs.create(tmpPath, true);
+    FSDataOutputStream out = HBaseFileSystem.createPathOnFileSystem(fs, tmpPath, true);
     try {
       this.regionInfo.write(out);
       out.write('\n');
@@ -635,7 +639,7 @@ public class HRegion implements HeapSize { // , Writable{
     } finally {
       out.close();
     }
-    if (!fs.rename(tmpPath, regioninfoPath)) {
+    if (!HBaseFileSystem.renameDirForFileSystem(fs, tmpPath, regioninfoPath)) {
       throw new IOException("Unable to rename " + tmpPath + " to " +
         regioninfoPath);
     }
@@ -934,7 +938,7 @@ public class HRegion implements HeapSize { // , Writable{
    * Removes the temporary directory for this Store.
    */
   private void cleanupTmpDir() throws IOException {
-    FSUtils.deleteDirectory(this.fs, getTmpDir());
+    HBaseFileSystem.deleteDirFromFileSystem(fs, getTmpDir());
   }
 
   /**
@@ -2337,7 +2341,7 @@ public class HRegion implements HeapSize { // , Writable{
     }
     // Now delete the content of recovered edits.  We're done w/ them.
     for (Path file: files) {
-      if (!this.fs.delete(file, false)) {
+      if (!HBaseFileSystem.deleteFileFromFileSystem(fs, file)) {
         LOG.error("Failed delete of " + file);
       } else {
         LOG.debug("Deleted recovered.edits file=" + file);
@@ -2525,7 +2529,7 @@ public class HRegion implements HeapSize { // , Writable{
     FileStatus stat = fs.getFileStatus(p);
     if (stat.getLen() > 0) return false;
     LOG.warn("File " + p + " is zero-length, deleting.");
-    fs.delete(p, false);
+    HRegionFileSystem.deleteFileFromFileSystem(fs, p);
     return true;
   }
 
@@ -3192,7 +3196,7 @@ public class HRegion implements HeapSize { // , Writable{
         HTableDescriptor.getTableDir(rootDir, info.getTableName());
     Path regionDir = HRegion.getRegionDir(tableDir, info.getEncodedName());
     FileSystem fs = FileSystem.get(conf);
-    fs.mkdirs(regionDir);
+    HRegionFileSystem.makeDirOnFileSystem(fs, regionDir);
     HLog effectiveHLog = hlog;
     if (hlog == null) {
       effectiveHLog = new HLog(fs, new Path(regionDir, HConstants.HREGION_LOGDIR_NAME),
@@ -3361,7 +3365,7 @@ public class HRegion implements HeapSize { // , Writable{
    */
   public static void deleteRegion(FileSystem fs, Path rootdir, HRegionInfo info)
   throws IOException {
-    deleteRegion(fs, HRegion.getRegionDir(rootdir, info));
+    HRegionFileSystem.deleteDirFromFileSystem(fs, HRegion.getRegionDir(rootdir, info));
   }
 
   private static void deleteRegion(FileSystem fs, Path regiondir)
@@ -3369,7 +3373,7 @@ public class HRegion implements HeapSize { // , Writable{
     if (LOG.isDebugEnabled()) {
       LOG.debug("DELETING region " + regiondir.toString());
     }
-    if (!fs.delete(regiondir, true)) {
+    if (!HRegionFileSystem.deleteDirFromFileSystem(fs, regiondir)) {
       LOG.warn("Failed delete of " + regiondir);
     }
   }
@@ -3415,7 +3419,7 @@ public class HRegion implements HeapSize { // , Writable{
     final HRegionInfo hri, byte [] colFamily)
   throws IOException {
     Path dir = Store.getStoreHomedir(tabledir, hri.getEncodedName(), colFamily);
-    if (!fs.mkdirs(dir)) {
+    if (!HRegionFileSystem.makeDirOnFileSystem(fs, dir)) {
       LOG.warn("Failed to create " + dir);
     }
   }
@@ -3525,7 +3529,7 @@ public class HRegion implements HeapSize { // , Writable{
       throw new IOException("Cannot merge; target file collision at " +
           newRegionDir);
     }
-    fs.mkdirs(newRegionDir);
+    HRegionFileSystem.makeDirOnFileSystem(fs, newRegionDir);
 
     LOG.info("starting merge of regions: " + a + " and " + b +
       " into new region " + newRegionInfo.toString() +
@@ -3918,7 +3922,7 @@ public class HRegion implements HeapSize { // , Writable{
   public static final long FIXED_OVERHEAD = ClassSize.align(
       ClassSize.OBJECT +
       ClassSize.ARRAY +
-      32 * ClassSize.REFERENCE + Bytes.SIZEOF_INT +
+      33 * ClassSize.REFERENCE + Bytes.SIZEOF_INT +
       (4 * Bytes.SIZEOF_LONG) +
       Bytes.SIZEOF_BOOLEAN);
 

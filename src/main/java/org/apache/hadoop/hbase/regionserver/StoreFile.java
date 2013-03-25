@@ -594,7 +594,7 @@ public class StoreFile {
    */
   public void deleteReader() throws IOException {
     closeReader(true);
-    this.fs.delete(getPath(), true);
+    HRegionFileSystem.deleteDirFromFileSystem(fs, getPath());
   }
 
   @Override
@@ -637,7 +637,7 @@ public class StoreFile {
     if (!fs.exists(src)) {
       throw new FileNotFoundException(src.toString());
     }
-    if (!fs.rename(src, tgt)) {
+    if (!HRegionFileSystem.renameDirForFileSystem(fs, src, tgt)) {
       throw new IOException("Failed rename of " + src + " to " + tgt);
     }
     return tgt;
@@ -688,7 +688,7 @@ public class StoreFile {
       throws IOException {
 
     if (!fs.exists(dir)) {
-      fs.mkdirs(dir);
+      HRegionFileSystem.makeDirOnFileSystem(fs, dir);
     }
     Path path = getUniqueFile(fs, dir);
     if (!BloomFilterFactory.isBloomEnabled(conf)) {
