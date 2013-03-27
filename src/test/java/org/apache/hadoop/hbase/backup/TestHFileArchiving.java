@@ -245,6 +245,7 @@ public class TestHFileArchiving {
 
     // then delete the table so the hfiles get archived
     UTIL.deleteTable(TABLE_NAME);
+    LOG.debug("Deleted table");
 
     assertArchiveFiles(fs, storeFiles, 30000);
   }
