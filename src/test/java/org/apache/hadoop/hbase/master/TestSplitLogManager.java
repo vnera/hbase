@@ -69,8 +69,7 @@ public class TestSplitLogManager {
   private final ServerManager sm = Mockito.mock(ServerManager.class);
   private final MasterServices master = Mockito.mock(MasterServices.class);
 
-  private final static HBaseTestingUtility TEST_UTIL =
-    new HBaseTestingUtility();
+  private static HBaseTestingUtility TEST_UTIL;
 
   static Stoppable stopper = new Stoppable() {
     @Override
@@ -87,6 +86,7 @@ public class TestSplitLogManager {
 
   @Before
   public void setup() throws Exception {
+    TEST_UTIL = new HBaseTestingUtility();
     TEST_UTIL.startMiniZKCluster();
     conf = TEST_UTIL.getConfiguration();
     zkw = new ZooKeeperWatcher(conf, "split-log-manager-tests", null);
