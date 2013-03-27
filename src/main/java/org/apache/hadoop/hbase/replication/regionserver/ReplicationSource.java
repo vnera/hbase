@@ -508,9 +508,6 @@ public class ReplicationSource extends Thread
         break;
       }
     }
-    LOG.debug("currentNbOperations:" + currentNbOperations +
-        " and seenEntries:" + seenEntries +
-        " and size: " + this.currentSize);
     if (currentWALisBeingWrittenTo) {
       return false;
     }
@@ -563,8 +560,6 @@ public class ReplicationSource extends Thread
    */
   protected boolean openReader(int sleepMultiplier) {
     try {
-      LOG.debug("Opening log for replication " + this.currentPath.getName() +
-          " at " + this.repLogReader.getPosition());
       try {
         this.reader = repLogReader.openReader(this.currentPath);
       } catch (FileNotFoundException fnfe) {
@@ -740,7 +735,7 @@ public class ReplicationSource extends Thread
       }
       try {
         HRegionInterface rrs = getRS();
-        LOG.debug("Replicating " + entries.size());
+        LOG.trace("Replicating " + entries.size());
         // can't avoid the copy here, the replicateLogEntries RPC require an HLog.Entry[]
         rrs.replicateLogEntries(entries.toArray(new HLog.Entry[entries.size()]));
         if (this.lastLoggedPosition != this.repLogReader.getPosition()) {
@@ -754,7 +749,7 @@ public class ReplicationSource extends Thread
             this.currentNbOperations);
         this.metrics.setAgeOfLastShippedOp(
             entries.get(entries.size()-1).getKey().getWriteTime());
-        LOG.debug("Replicated in total: " + this.totalReplicatedEdits);
+        LOG.trace("Replicated in total: " + this.totalReplicatedEdits);
         break;
 
       } catch (IOException ioe) {
@@ -954,5 +949,12 @@ public class ReplicationSource extends Thread
       String[] parts = p.getName().split("\\.");
       return Long.parseLong(parts[parts.length-1]);
     }
+  }
+
+  @Override
+  public String getStats() {
+    return "Total replicated edits: " + totalReplicatedEdits +
+      ", currently replicating from: " + this.currentPath +
+      " at position: " + this.repLogReader.getPosition();
   }
 }

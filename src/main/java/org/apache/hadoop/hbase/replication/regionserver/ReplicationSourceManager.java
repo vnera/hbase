@@ -156,7 +156,6 @@ public class ReplicationSourceManager {
   public void logPositionAndCleanOldLogs(Path log, String id, long position, 
       boolean queueRecovered, boolean holdLogInZK) {
     String key = log.getName();
-    LOG.info("Going to report log #" + key + " for position " + position + " in " + log);
     this.zkHelper.writeReplicationStatus(key, id, position);
     if (holdLogInZK) {
      return;
@@ -670,5 +669,21 @@ public class ReplicationSourceManager {
    */
   public FileSystem getFs() {
     return this.fs;
+  }
+
+  /**
+   * Get a string representation of all the sources' metrics
+   */
+  public String getStats() {
+    StringBuffer stats = new StringBuffer();
+    for (ReplicationSourceInterface source : sources) {
+      stats.append("Normal source for cluster " + source.getPeerClusterId() + ": ");
+      stats.append(source.getStats() + "\n");
+    }
+    for (ReplicationSourceInterface oldSource : oldsources) {
+      stats.append("Recovered source for cluster/machine(s) " + oldSource.getPeerClusterId() + ": ");
+      stats.append(oldSource.getStats()+ "\n");
+    }
+    return stats.toString();
   }
 }
