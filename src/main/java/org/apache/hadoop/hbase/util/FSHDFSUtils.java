@@ -43,15 +43,14 @@ public class FSHDFSUtils extends FSUtils{
    */
   @Override
   public void recoverFileLease(final FileSystem fs, final Path p,
-      Configuration conf)
-  throws IOException {
+      Configuration conf, CancelableProgressable reporter) throws IOException{
     if (!isAppendSupported(conf)) {
       LOG.warn("Running on HDFS without append enabled may result in data loss");
       return;
     }
     // lease recovery not needed for local file system case.
     if (!(fs instanceof DistributedFileSystem)) return;
-    recoverDFSFileLease((DistributedFileSystem)fs, p, conf);
+    recoverDFSFileLease((DistributedFileSystem)fs, p, conf, reporter);
   }
 
   /*
@@ -81,7 +80,7 @@ public class FSHDFSUtils extends FSUtils{
    * If HDFS-4525 is available, call it every second and we might be able to exit early.
    */
   boolean recoverDFSFileLease(final DistributedFileSystem dfs, final Path p,
-      final Configuration conf)
+      final Configuration conf, CancelableProgressable reporter)
   throws IOException {
     LOG.info("Recovering lease on dfs file " + p);
     long startWaiting = EnvironmentEdgeManager.currentTimeMillis();
@@ -132,9 +131,13 @@ public class FSHDFSUtils extends FSUtils{
              }
           }
         }
-      } catch (InterruptedException ie) {
+        if (reporter != null && !reporter.progress()) {
+          throw new InterruptedIOException("Operation is cancelled");
+        }
+
+      } catch (InterruptedException ex) {
         InterruptedIOException iioe = new InterruptedIOException();
-        iioe.initCause(ie);
+        iioe.initCause(ex);
         throw iioe;
       }
     }

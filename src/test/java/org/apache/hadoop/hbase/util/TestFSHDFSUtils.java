@@ -58,11 +58,13 @@ public class TestFSHDFSUtils {
   @Test (timeout = 30000)
   public void testRecoverLease() throws IOException {
     HTU.getConfiguration().setInt("hbase.lease.recovery.dfs.timeout", 1000);
+    CancelableProgressable reporter = Mockito.mock(CancelableProgressable.class);
+    Mockito.when(reporter.progress()).thenReturn(true);
     DistributedFileSystem dfs = Mockito.mock(DistributedFileSystem.class);
     // Fail four times and pass on the fifth.
     Mockito.when(dfs.recoverLease(FILE)).
       thenReturn(false).thenReturn(false).thenReturn(false).thenReturn(false).thenReturn(true);
-    assertTrue(this.fsHDFSUtils.recoverDFSFileLease(dfs, FILE, HTU.getConfiguration()));
+    assertTrue(this.fsHDFSUtils.recoverDFSFileLease(dfs, FILE, HTU.getConfiguration(), reporter));
     Mockito.verify(dfs, Mockito.times(5)).recoverLease(FILE);
     // Make sure we waited at least hbase.lease.recovery.dfs.timeout * 3 (the first two
     // invocations will happen pretty fast... the we fall into the longer wait loop).
@@ -78,6 +80,8 @@ public class TestFSHDFSUtils {
   public void testIsFileClosed() throws IOException {
     // Make this time long so it is plain we broke out because of the isFileClosed invocation.
     HTU.getConfiguration().setInt("hbase.lease.recovery.dfs.timeout", 100000);
+    CancelableProgressable reporter = Mockito.mock(CancelableProgressable.class);
+    Mockito.when(reporter.progress()).thenReturn(true);
     IsFileClosedDistributedFileSystem dfs = Mockito.mock(IsFileClosedDistributedFileSystem.class);
     // Now make it so we fail the first two times -- the two fast invocations, then we fall into
     // the long loop during which we will call isFileClosed.... the next invocation should
@@ -85,7 +89,7 @@ public class TestFSHDFSUtils {
     Mockito.when(dfs.recoverLease(FILE)).
       thenReturn(false).thenReturn(false).thenReturn(true);
     Mockito.when(dfs.isFileClosed(FILE)).thenReturn(true);
-    assertTrue(this.fsHDFSUtils.recoverDFSFileLease(dfs, FILE, HTU.getConfiguration()));
+    assertTrue(this.fsHDFSUtils.recoverDFSFileLease(dfs, FILE, HTU.getConfiguration(), reporter));
     Mockito.verify(dfs, Mockito.times(2)).recoverLease(FILE);
     Mockito.verify(dfs, Mockito.times(1)).isFileClosed(FILE);
   }
