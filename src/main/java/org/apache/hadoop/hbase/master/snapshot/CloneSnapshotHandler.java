@@ -42,6 +42,7 @@ import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescriptio
 import org.apache.hadoop.hbase.snapshot.RestoreSnapshotException;
 import org.apache.hadoop.hbase.snapshot.RestoreSnapshotHelper;
 import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import com.google.common.base.Preconditions;
@@ -63,6 +64,7 @@ public class CloneSnapshotHandler extends CreateTableHandler implements Snapshot
   private final ForeignExceptionDispatcher monitor;
 
   private volatile boolean stopped = false;
+  private long completionTimestamp;
 
   public CloneSnapshotHandler(final MasterServices masterServices,
       final SnapshotDescription snapshot, final HTableDescriptor hTableDescriptor)
@@ -123,11 +125,17 @@ public class CloneSnapshotHandler extends CreateTableHandler implements Snapshot
   @Override
   protected void completed(final Throwable exception) {
     this.stopped = true;
+    this.completionTimestamp = EnvironmentEdgeManager.currentTimeMillis();
   }
 
   @Override
   public boolean isFinished() {
     return this.stopped;
+  }
+
+  @Override
+  public long getCompletionTimestamp() {
+    return completionTimestamp;
   }
 
   @Override
@@ -146,5 +154,10 @@ public class CloneSnapshotHandler extends CreateTableHandler implements Snapshot
   @Override
   public ForeignException getExceptionIfFailed() {
     return this.monitor.getException();
+  }
+
+  @Override
+  public void rethrowExceptionIfFailed() throws ForeignException {
+    monitor.rethrowException();
   }
 }

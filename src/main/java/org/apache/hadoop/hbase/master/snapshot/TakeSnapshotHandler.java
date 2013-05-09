@@ -44,6 +44,7 @@ import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescriptio
 import org.apache.hadoop.hbase.snapshot.SnapshotCreationException;
 import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
 import org.apache.hadoop.hbase.snapshot.TableInfoCopyTask;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.zookeeper.KeeperException;
@@ -70,6 +71,7 @@ public abstract class TakeSnapshotHandler extends EventHandler implements Snapsh
   protected final Path workingDir;
   private final MasterSnapshotVerifier verifier;
   protected final ForeignExceptionDispatcher monitor;
+  private long completionTimestamp;
 
   /**
    * @param snapshot descriptor of the snapshot to take
@@ -77,7 +79,7 @@ public abstract class TakeSnapshotHandler extends EventHandler implements Snapsh
    * @throws IOException on unexpected error
    */
   public TakeSnapshotHandler(SnapshotDescription snapshot,
-      final MasterServices masterServices) throws IOException {
+      final MasterServices masterServices) {
     super(masterServices, EventType.C_M_SNAPSHOT_TABLE);
     assert snapshot != null : "SnapshotDescription must not be nul1";
     assert masterServices != null : "MasterServices must not be nul1";
@@ -104,6 +106,11 @@ public abstract class TakeSnapshotHandler extends EventHandler implements Snapsh
       throw new IOException("HTableDescriptor missing for " + name);
     }
     return htd;
+  }
+
+  public TakeSnapshotHandler prepare() throws Exception {
+    loadTableDescriptor(); // check that .tableinfo is present
+    return this;
   }
 
   /**
@@ -184,6 +191,7 @@ public abstract class TakeSnapshotHandler extends EventHandler implements Snapsh
           + ") to completed directory(" + snapshotDir + ").");
     }
     finished = true;
+    this.completionTimestamp = EnvironmentEdgeManager.currentTimeMillis();
   }
 
   /**
@@ -197,6 +205,7 @@ public abstract class TakeSnapshotHandler extends EventHandler implements Snapsh
     if (finished) return;
 
     this.finished = true;
+    this.completionTimestamp = EnvironmentEdgeManager.currentTimeMillis();
     LOG.info("Stop taking snapshot=" + SnapshotDescriptionUtils.toString(snapshot) + " because: "
         + why);
     CancellationException ce = new CancellationException(why);
@@ -209,6 +218,11 @@ public abstract class TakeSnapshotHandler extends EventHandler implements Snapsh
   }
 
   @Override
+  public long getCompletionTimestamp() {
+    return completionTimestamp;
+  }
+
+  @Override
   public SnapshotDescription getSnapshot() {
     return snapshot;
   }
@@ -216,6 +230,11 @@ public abstract class TakeSnapshotHandler extends EventHandler implements Snapsh
   @Override
   public ForeignException getExceptionIfFailed() {
     return monitor.getException();
+  }
+
+  @Override
+  public void rethrowExceptionIfFailed() throws ForeignException {
+    monitor.rethrowException();
   }
 
   @Override

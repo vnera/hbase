@@ -49,7 +49,7 @@ public class EnabledTableSnapshotHandler extends TakeSnapshotHandler {
   private final ProcedureCoordinator coordinator;
 
   public EnabledTableSnapshotHandler(SnapshotDescription snapshot, MasterServices master,
-      SnapshotManager manager) throws IOException {
+      SnapshotManager manager) {
     super(snapshot, master);
     this.coordinator = manager.getCoordinator();
   }

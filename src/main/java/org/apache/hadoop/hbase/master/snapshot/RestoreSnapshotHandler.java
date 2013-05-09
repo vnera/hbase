@@ -42,6 +42,7 @@ import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescriptio
 import org.apache.hadoop.hbase.snapshot.RestoreSnapshotException;
 import org.apache.hadoop.hbase.snapshot.RestoreSnapshotHelper;
 import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.Bytes;
 
 /**
@@ -59,6 +60,7 @@ public class RestoreSnapshotHandler extends TableEventHandler implements Snapsho
 
   private final ForeignExceptionDispatcher monitor;
   private volatile boolean stopped = false;
+  private long completionTimestamp;
 
   public RestoreSnapshotHandler(final MasterServices masterServices,
       final SnapshotDescription snapshot, final HTableDescriptor htd)
@@ -124,12 +126,18 @@ public class RestoreSnapshotHandler extends TableEventHandler implements Snapsho
       throw new RestoreSnapshotException(msg, e);
     } finally {
       this.stopped = true;
+      this.completionTimestamp = EnvironmentEdgeManager.currentTimeMillis();
     }
   }
 
   @Override
   public boolean isFinished() {
     return this.stopped;
+  }
+
+  @Override
+  public long getCompletionTimestamp() {
+    return completionTimestamp;
   }
 
   @Override
@@ -148,7 +156,13 @@ public class RestoreSnapshotHandler extends TableEventHandler implements Snapsho
     this.monitor.receive(new ForeignException(masterServices.getServerName().toString(), ce));
   }
 
+  @Override
   public ForeignException getExceptionIfFailed() {
     return this.monitor.getException();
+  }
+
+  @Override
+  public void rethrowExceptionIfFailed() throws ForeignException {
+    monitor.rethrowException();
   }
 }
