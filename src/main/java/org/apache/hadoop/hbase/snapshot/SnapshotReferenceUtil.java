@@ -37,6 +37,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.io.Reference;
 import org.apache.hadoop.hbase.io.HFileLink;
+import org.apache.hadoop.hbase.regionserver.StoreFile;
 import org.apache.hadoop.hbase.regionserver.wal.HLog;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.FSVisitor;
@@ -223,6 +224,10 @@ public final class SnapshotReferenceUtil {
         if (HFileLink.isHFileLink(hfile)) {
           names.add(HFileLink.getReferencedHFileName(hfile));
         } else {
+          if (StoreFile.isReference(hfile)) {
+            Path hfilePath = new Path(new Path(region, family), hfile);
+            names.add(StoreFile.getReferredToFile(hfilePath).getName());
+          }
           names.add(hfile);
         }
       }
