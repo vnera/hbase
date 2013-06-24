@@ -25,6 +25,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.master.cleaner.BaseLogCleanerDelegate;
@@ -44,7 +45,8 @@ public class SnapshotLogCleaner extends BaseLogCleanerDelegate {
    * Conf key for the frequency to attempt to refresh the cache of hfiles currently used in
    * snapshots (ms)
    */
-  static final String HLOG_CACHE_REFRESH_PERIOD_CONF_KEY = "hbase.master.hlogcleaner.plugins.snapshot.period";
+  static final String HLOG_CACHE_REFRESH_PERIOD_CONF_KEY =
+      "hbase.master.hlogcleaner.plugins.snapshot.period";
 
   /** Refresh cache, by default, every 5 minutes */
   private static final long DEFAULT_HLOG_CACHE_REFRESH_PERIOD = 300000;
@@ -52,12 +54,13 @@ public class SnapshotLogCleaner extends BaseLogCleanerDelegate {
   private SnapshotFileCache cache;
 
   @Override
-  public synchronized boolean isLogDeletable(Path filePath) {
+  public synchronized boolean isFileDeletable(FileStatus fStat) {
     try {
-      return !cache.contains(filePath.getName());
+      if (null == cache) return false;
+      return !cache.contains(fStat.getPath().getName());
     } catch (IOException e) {
-      LOG.error("Exception while checking if:" + filePath + " was valid, keeping it just in case.",
-        e);
+      LOG.error("Exception while checking if:" + fStat.getPath()
+          + " was valid, keeping it just in case.", e);
       return false;
     }
   }
