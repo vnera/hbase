@@ -98,7 +98,7 @@ public class SnapshotManager implements Stoppable {
   public static final String SNAPSHOT_WAKE_MILLIS_KEY = "hbase.snapshot.master.wakeMillis";
 
   /** By default, check to see if the snapshot is complete (ms) */
-  public static final int SNAPSHOT_TIMEOUT_MILLIS_DEFAULT = 5000;
+  private static final int SNAPSHOT_TIMEOUT_MILLIS_DEFAULT = 60000;
 
   /**
    * Conf key for # of ms elapsed before injecting a snapshot timeout error when waiting for
@@ -115,7 +115,6 @@ public class SnapshotManager implements Stoppable {
   private static final int opThreads = 1;
 
   private boolean stopped;
-  private final long wakeFrequency;
   private final MasterServices master;  // Needed by TableEventHandlers
   private final ProcedureCoordinator coordinator;
 
@@ -145,15 +144,16 @@ public class SnapshotManager implements Stoppable {
 
     // get the configuration for the coordinator
     Configuration conf = master.getConfiguration();
-    this.wakeFrequency = conf.getInt(SNAPSHOT_WAKE_MILLIS_KEY, SNAPSHOT_WAKE_MILLIS_DEFAULT);
-    long keepAliveTime = conf.getLong(SNAPSHOT_TIMEOUT_MILLIS_KEY, SNAPSHOT_TIMEOUT_MILLIS_DEFAULT);
+    long wakeFrequency = conf.getInt(SNAPSHOT_WAKE_MILLIS_KEY, SNAPSHOT_WAKE_MILLIS_DEFAULT);
+    long timeoutMillis = conf.getLong(SNAPSHOT_TIMEOUT_MILLIS_KEY, SNAPSHOT_TIMEOUT_MILLIS_DEFAULT);
 
     // setup the default procedure coordinator
     String name = master.getServerName().toString();
-    ThreadPoolExecutor tpool = ProcedureCoordinator.defaultPool(name, keepAliveTime, opThreads, wakeFrequency);
+    ThreadPoolExecutor tpool = ProcedureCoordinator.defaultPool(name, opThreads);
     ProcedureCoordinatorRpcs comms = new ZKProcedureCoordinatorRpcs(
         master.getZooKeeper(), SnapshotManager.ONLINE_SNAPSHOT_CONTROLLER_DESCRIPTION, name);
-    this.coordinator = new ProcedureCoordinator(comms, tpool);
+
+    this.coordinator = new ProcedureCoordinator(comms, tpool, timeoutMillis, wakeFrequency);
     this.rootDir = master.getMasterFileSystem().getRootDir();
     this.executorService = master.getExecutorService();
     resetTempDir();
@@ -170,8 +170,6 @@ public class SnapshotManager implements Stoppable {
     this.master = master;
     checkSnapshotSupport(master.getConfiguration(), master.getMasterFileSystem());
 
-    this.wakeFrequency = master.getConfiguration().getInt(SNAPSHOT_WAKE_MILLIS_KEY,
-      SNAPSHOT_WAKE_MILLIS_DEFAULT);
     this.coordinator = coordinator;
     this.rootDir = master.getMasterFileSystem().getRootDir();
     this.executorService = pool;
@@ -819,6 +817,11 @@ public class SnapshotManager implements Stoppable {
     // pass the stop onto all the restore handlers
     for (SnapshotSentinel restoreHandler: this.restoreHandlers.values()) {
       restoreHandler.cancel(why);
+    }
+    try {
+      coordinator.close();
+    } catch (IOException e) {
+      LOG.error("stop ProcedureCoordinator error", e);
     }
   }
 
