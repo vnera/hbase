@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -36,6 +37,7 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HServerAddress;
 import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Get;
@@ -51,9 +53,15 @@ import org.apache.hadoop.hbase.coprocessor.CoprocessorException;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
 import org.apache.hadoop.hbase.master.MasterCoprocessorHost;
+import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.security.AccessDeniedException;
 import org.apache.hadoop.hbase.security.User;
+import org.apache.hadoop.hbase.security.access.AccessControlLists;
+import org.apache.hadoop.hbase.security.access.AccessControllerProtocol;
+import org.apache.hadoop.hbase.security.access.Permission;
+import org.apache.hadoop.hbase.security.access.UserPermission;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.JVMClusterUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -81,6 +89,7 @@ public class TestAccessController {
   private static User USER_NONE;
 
   private static byte[] TEST_TABLE = Bytes.toBytes("testtable");
+  private static byte[] TEST_TABLE2 = Bytes.toBytes("testtable2");
   private static byte[] TEST_FAMILY = Bytes.toBytes("f1");
 
   private static MasterCoprocessorEnvironment CP_ENV;
@@ -1250,5 +1259,87 @@ public class TestAccessController {
       //expected
     }
 
+  }
+
+  @Test
+  public void testGlobalAuthorizationForNewRegisteredRS() throws Exception {
+    LOG.debug("Test for global authorization for a new registered RegionServer.");
+    MiniHBaseCluster hbaseCluster = TEST_UTIL.getHBaseCluster();
+    final HRegionServer oldRs = hbaseCluster.getRegionServer(0);
+
+    // Since each RegionServer running on different user, add global
+    // permissions for the new user.
+    HTable acl = new HTable(conf, AccessControlLists.ACL_TABLE_NAME);
+    try {
+      AccessControllerProtocol protocol = acl.coprocessorProxy(
+          AccessControllerProtocol.class, TEST_TABLE);
+      String currentUser = User.getCurrent().getShortName();
+      // User name for the new RegionServer we plan to add.
+      String activeUserForNewRs = currentUser + ".hfs."
+          + hbaseCluster.getLiveRegionServerThreads().size();
+
+      protocol.grant(new UserPermission(Bytes.toBytes(activeUserForNewRs),
+          Permission.Action.ADMIN, Permission.Action.CREATE,
+          Permission.Action.READ, Permission.Action.WRITE));
+
+    } finally {
+      acl.close();
+    }
+    final HBaseAdmin admin = TEST_UTIL.getHBaseAdmin();
+    HTableDescriptor htd = new HTableDescriptor(TEST_TABLE2);
+    htd.addFamily(new HColumnDescriptor(TEST_FAMILY));
+    htd.setOwner(USER_OWNER);
+    admin.createTable(htd);
+
+    // Starting a new RegionServer.
+    JVMClusterUtil.RegionServerThread newRsThread = hbaseCluster
+        .startRegionServer();
+    final HRegionServer newRs = newRsThread.getRegionServer();
+
+    // Move region to the new RegionServer.
+    final HTable table = new HTable(TEST_UTIL.getConfiguration(), TEST_TABLE2);
+    try {
+      NavigableMap<HRegionInfo, ServerName> regions = table
+          .getRegionLocations();
+      final Map.Entry<HRegionInfo, ServerName> firstRegion = regions.entrySet()
+          .iterator().next();
+
+      PrivilegedExceptionAction moveAction = new PrivilegedExceptionAction() {
+        public Object run() throws Exception {
+          admin.move(firstRegion.getKey().getEncodedNameAsBytes(),
+              Bytes.toBytes(newRs.getServerName().getServerName()));
+          return null;
+        }
+      };
+      SUPERUSER.runAs(moveAction);
+
+      final int RETRIES_LIMIT = 10;
+      int retries = 0;
+      while (newRs.getOnlineRegions().size() < 1 && retries < RETRIES_LIMIT) {
+        LOG.debug("Waiting for region to be opened. Already retried " + retries
+            + " times.");
+        try {
+          Thread.sleep(200);
+        } catch (InterruptedException e) {
+        }
+        retries++;
+        if (retries == RETRIES_LIMIT - 1) {
+          fail("Retry exhaust for waiting region to be opened.");
+        }
+      }
+      // Verify write permission for user "admin2" who has the global
+      // permissions.
+      PrivilegedExceptionAction putAction = new PrivilegedExceptionAction() {
+        public Object run() throws Exception {
+          Put put = new Put(Bytes.toBytes("test"));
+          put.add(TEST_FAMILY, Bytes.toBytes("qual"), Bytes.toBytes("value"));
+          table.put(put);
+          return null;
+        }
+      };
+      USER_ADMIN.runAs(putAction);
+    } finally {
+      table.close();
+    }
   }
 }
