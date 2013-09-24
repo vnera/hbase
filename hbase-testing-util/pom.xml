@@ -23,7 +23,7 @@
     <parent>
         <artifactId>hbase</artifactId>
         <groupId>org.apache.hbase</groupId>
-        <version>0.96.1.1</version>
+        <version>0.96.1.1-cdh5.0.0-SNAPSHOT</version>
         <relativePath>..</relativePath>
     </parent>
     <artifactId>hbase-testing-util</artifactId>
@@ -92,13 +92,13 @@
         </dependency>
         <dependency>
             <groupId>org.apache.hbase</groupId>
-            <artifactId>${compat.module}</artifactId>
+            <artifactId>hbase-hadoop2-compat</artifactId>
             <type>jar</type>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.hbase</groupId>
-            <artifactId>${compat.module}</artifactId>
+            <artifactId>hbase-hadoop2-compat</artifactId>
             <type>test-jar</type>
             <scope>compile</scope>
         </dependency>
@@ -121,7 +121,7 @@
             <activation>
                 <property>
                     <!--Below formatting for dev-support/generate-hadoopX-poms.sh-->
-                    <!--h1--><name>!hadoop.profile</name>
+                    <!--h1--><name>hadoop.profile</name><value>1.1</value>
                 </property>
             </activation>
             <dependencies>
@@ -167,7 +167,7 @@
             <activation>
                 <property>
                     <!--Below formatting for dev-support/generate-hadoopX-poms.sh-->
-                    <!--h2--><name>hadoop.profile</name><value>2.0</value>
+                    <!--h2--><name>!hadoop.profile</name>
                 </property>
             </activation>
             <dependencies>

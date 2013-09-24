@@ -30,16 +30,16 @@
 -->
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>org.apache</groupId>
-    <artifactId>apache</artifactId>
-    <version>12</version>
+    <groupId>com.cloudera.cdh</groupId>
+    <artifactId>cdh-root</artifactId>
+    <version>5.0.0-SNAPSHOT</version>
     <relativePath/>
     <!-- no parent resolution -->
   </parent>
   <groupId>org.apache.hbase</groupId>
   <artifactId>hbase</artifactId>
   <packaging>pom</packaging>
-  <version>0.96.1.1</version>
+  <version>0.96.1.1-cdh5.0.0-SNAPSHOT</version>
   <name>HBase</name>
   <description>
     Apache HBase is the Hadoop database. Use it when you need
@@ -356,6 +356,29 @@
   </developers>
   <repositories>
     <repository>
+      <id>cdh.repo</id>
+      <url>https://repository.cloudera.com/artifactory/cloudera-repos</url>
+      <name>Cloudera Repositories</name>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>cdh.snapshots.repo</id>
+      <url>https://repository.cloudera.com/artifactory/libs-snapshot-local</url>
+      <name>Cloudera Snapshots Repository</name>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+    </repository>
+    <repository>
+      <id>cloudbees netty</id>
+      <url>http://repository-netty.forge.cloudbees.com/snapshot/</url>
+    </repository>
+    <repository>
       <id>apache release</id>
       <url>https://repository.apache.org/content/repositories/releases/</url>
     </repository>
@@ -482,6 +505,19 @@
             <forkedProcessTimeoutInSeconds>${surefire.timeout}</forkedProcessTimeoutInSeconds>
             <argLine>-enableassertions -Xmx1900m -XX:MaxPermSize=100m -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true -Djava.awt.headless=true</argLine>
             <redirectTestOutputToFile>${test.output.tofile}</redirectTestOutputToFile>
+            <includes>
+              <include>${unittest.include}</include>
+            </includes>
+            <excludes>
+              <exclude>${integrationtest.include}</exclude>
+              <exclude>**/*$*</exclude>
+              <exclude>${test.exclude.pattern}</exclude>
+            </excludes>
+            <environmentVariables>
+              <LD_LIBRARY_PATH>${env.LD_LIBRARY_PATH}:${project.build.directory}/nativelib</LD_LIBRARY_PATH>
+              <DYLD_LIBRARY_PATH>${env.DYLD_LIBRARY_PATH}:${project.build.directory}/nativelib</DYLD_LIBRARY_PATH>
+              <MALLOC_ARENA_MAX>4</MALLOC_ARENA_MAX>
+            </environmentVariables>
           </configuration>
           <executions>
             <execution>
@@ -647,6 +683,8 @@
               <exclude>.git/**</exclude>
               <exclude>.svn/**</exclude>
               <exclude>**/.settings/**</exclude>
+              <exclude>**/cloudera/**</exclude>
+              <exclude>**/debian/**</exclude>
             </excludes>
           </configuration>
         </plugin>
@@ -852,7 +890,7 @@
     <buildDate>${maven.build.timestamp}</buildDate>
     <compileSource>1.6</compileSource>
     <!-- Dependencies -->
-    <hadoop-two.version>2.2.0</hadoop-two.version>
+    <hadoop-two.version>${cdh.hadoop.version}</hadoop-two.version>
     <hadoop-one.version>1.1.2</hadoop-one.version>
     <commons-cli.version>1.2</commons-cli.version>
     <commons-codec.version>1.7</commons-codec.version>
@@ -867,8 +905,8 @@
     <guava.version>12.0.1</guava.version>
     <jackson.version>1.8.8</jackson.version>
     <jasper.version>5.5.23</jasper.version>
-    <jaxb-api.version>2.2.2</jaxb-api.version>
-    <jetty.version>6.1.26</jetty.version>
+    <jaxb-api.version>2.1</jaxb-api.version>
+    <jetty.version>6.1.26.cloudera.2</jetty.version>
     <jetty.jspapi.version>6.1.14</jetty.jspapi.version>
     <jersey.version>1.8</jersey.version>
     <jruby.version>1.6.8</jruby.version>
@@ -879,9 +917,9 @@
     <protobuf.version>2.5.0</protobuf.version>
     <stax-api.version>1.0.1</stax-api.version>
     <thrift.version>0.9.0</thrift.version>
-    <zookeeper.version>3.4.5</zookeeper.version>
     <slf4j.version>1.6.4</slf4j.version>
-    <hadoop-snappy.version>0.0.1-SNAPSHOT</hadoop-snappy.version>
+    <zookeeper.version>${cdh.zookeeper.version}</zookeeper.version>
+    <hadoop-snappy.version>${cdh.hadoop-snappy.version}</hadoop-snappy.version>
     <clover.version>2.6.3</clover.version>
     <jamon-runtime.version>2.3.1</jamon-runtime.version>
     <jettison.version>1.3.1</jettison.version>
@@ -921,6 +959,12 @@
     <surefire.secondPartGroups>org.apache.hadoop.hbase.MediumTests</surefire.secondPartGroups>
     <test.output.tofile>true</test.output.tofile>
     <surefire.timeout>900</surefire.timeout>
+    <!-- For flaky tests exclusion -->
+    <test.exclude></test.exclude>
+    <test.exclude.pattern>**/${test.exclude}.java</test.exclude.pattern>
+    <!-- Test inclusion patterns -->
+    <unittest.include>**/Test*.java</unittest.include>
+    <integrationtest.include>**/IntegrationTest*.java</integrationtest.include>
   </properties>
   <!-- Sorted by groups of dependencies then groupId and artifactId -->
   <dependencyManagement>
@@ -965,12 +1009,12 @@
       </dependency>
       <dependency>
         <groupId>org.apache.hbase</groupId>
-        <artifactId>${compat.module}</artifactId>
+        <artifactId>hbase-hadoop2-compat</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>org.apache.hbase</groupId>
-        <artifactId>${compat.module}</artifactId>
+        <artifactId>hbase-hadoop2-compat</artifactId>
         <version>${project.version}</version>
         <type>test-jar</type>
         <scope>test</scope>
@@ -1458,7 +1502,7 @@
       <activation>
         <property>
             <!--Below formatting for dev-support/generate-hadoopX-poms.sh-->
-            <!--h1--><name>!hadoop.profile</name>
+            <!--h1--><name>hadoop.profile</name><value>1.1</value>
         </property>
       </activation>
       <modules>
@@ -1577,7 +1621,7 @@
       <activation>
         <property>
             <!--Below formatting for dev-support/generate-hadoopX-poms.sh-->
-            <!--h2--><name>hadoop.profile</name><value>2.0</value>
+            <!--h2--><name>!hadoop.profile</name>
         </property>
       </activation>
       <modules>
