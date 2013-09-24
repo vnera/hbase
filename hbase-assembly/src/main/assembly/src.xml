@@ -65,6 +65,12 @@
               <exclude>.settings/</exclude>
             </excludes>
     </fileSet>
+    <!-- Include top level cloudera directory -->
+    <fileSet>
+      <directory>cloudera</directory>
+      <fileMode>0644</fileMode>
+      <directoryMode>0755</directoryMode>
+    </fileSet>
     <!--Include dev tools-->
     <fileSet>
       <directory>${project.basedir}/../dev-tools</directory>
@@ -103,6 +109,13 @@
         <include>README.txt</include>
       </includes>
       <fileMode>0644</fileMode>
+    </fileSet>
+    <!-- Include the cloudera directory -->
+    <fileSet>
+      <directory>${project.basedir}/../cloudera</directory>
+      <outputDirectory>cloudera</outputDirectory>
+      <fileMode>0644</fileMode>
+      <directoryMode>0755</directoryMode>
     </fileSet>
 </fileSets>
 </assembly>
