@@ -1729,7 +1729,7 @@ public class TestHBaseFsck {
    */
   // Disabled because fails sporadically.  Is this test right?  Timing-wise, there could be no
   // files in a column family on initial creation -- as suggested by Matteo.
-  @Ignore @Test(timeout=120000)
+  @Ignore @Test(timeout=180000)
   public void testQuarantineMissingFamdir() throws Exception {
     String table = name.getMethodName();
     ExecutorService exec = new ScheduledThreadPoolExecutor(10);
