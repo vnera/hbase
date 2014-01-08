@@ -1111,6 +1111,7 @@
     <slf4j.version>1.4.3</slf4j.version>
     <log4j.version>1.2.16</log4j.version>
     <mockito-all.version>1.8.5</mockito-all.version>
+    <netty.version>3.6.6.Final</netty.version>
     <protobuf.version>2.4.0a</protobuf.version>
     <stax-api.version>1.0.1</stax-api.version>
     <thrift.version>0.8.0</thrift.version>
@@ -1219,6 +1220,11 @@
       <groupId>commons-logging</groupId>
       <artifactId>commons-logging</artifactId>
       <version>${commons-logging.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty</artifactId>
+      <version>${netty.version}</version>
     </dependency>
     <dependency>
       <groupId>log4j</groupId>
