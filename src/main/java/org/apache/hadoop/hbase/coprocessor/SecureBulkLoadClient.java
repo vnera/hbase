@@ -70,17 +70,11 @@ public class SecureBulkLoadClient {
     }
   }
 
-  public boolean bulkLoadHFiles(List<Pair<byte[], String>> familyPaths, Token<?> userToken,
-      String bulkToken) throws IOException {
-    return bulkLoadHFiles(familyPaths, userToken, bulkToken, false);
-  }
-
-  public boolean bulkLoadHFiles(List<Pair<byte[], String>> familyPaths, Token<?> userToken,
-      String bulkToken, boolean assignSeqNum) throws IOException {
+  public boolean bulkLoadHFiles(List<Pair<byte[], String>> familyPaths,
+                         Token<?> userToken, String bulkToken) throws IOException {
     try {
-      return (Boolean) Methods.call(protocolClazz, proxy, "bulkLoadHFiles", new Class[] {
-          List.class, Token.class, String.class, Boolean.class },
-        new Object[] { familyPaths, userToken, bulkToken, assignSeqNum });
+      return (Boolean)Methods.call(protocolClazz, proxy, "bulkLoadHFiles",
+          new Class[]{List.class, Token.class, String.class},new Object[]{familyPaths, userToken, bulkToken});
     } catch (Exception e) {
       throw new IOException("Failed to bulkLoadHFiles", e);
     }

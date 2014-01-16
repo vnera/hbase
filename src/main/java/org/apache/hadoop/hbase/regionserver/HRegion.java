@@ -494,7 +494,7 @@ public class HRegion implements HeapSize { // , Writable{
     // When hbase.regionserver.optionallogflushinterval <= 0 , deferred log sync is disabled.
     this.deferredLogSyncDisabled = conf.getLong("hbase.regionserver.optionallogflushinterval",
         1 * 1000) <= 0;
-
+    
     if (rsServices != null) {
       this.rsAccounting = this.rsServices.getRegionServerAccounting();
       // don't initialize coprocessors if not running within a regionserver
@@ -608,13 +608,11 @@ public class HRegion implements HeapSize { // , Writable{
           Store store = future.get();
 
           this.stores.put(store.getColumnFamilyName().getBytes(), store);
-          // Do not include bulk loaded files when determining seqIdForReplay
-          long storeSeqIdForReplay = store.getMaxSequenceId(false);
-          maxSeqIdInStores.put(store.getColumnFamilyName().getBytes(), storeSeqIdForReplay);
-          // Include bulk loaded files when determining seqIdForAssignment
-          long storeSeqIdForAssignment = store.getMaxSequenceId(true);
-          if (maxSeqId == -1 || storeSeqIdForAssignment > maxSeqId) {
-            maxSeqId = storeSeqIdForAssignment;
+          long storeSeqId = store.getMaxSequenceId();
+          maxSeqIdInStores.put(store.getColumnFamilyName().getBytes(),
+              storeSeqId);
+          if (maxSeqId == -1 || storeSeqId > maxSeqId) {
+            maxSeqId = storeSeqId;
           }
           long maxStoreMemstoreTS = store.getMaxMemstoreTS();
           if (maxStoreMemstoreTS > maxMemstoreTS) {
@@ -2246,7 +2244,7 @@ public class HRegion implements HeapSize { // , Writable{
     /** Keep track of the locks we hold so we can release them in finally clause */
     List<Integer> acquiredLocks = Lists.newArrayListWithCapacity(batchOp.operations.length);
     Set<HashedBytes> rowsAlreadyLocked = Sets.newHashSet();
-
+      
     // reference family maps directly so coprocessors can mutate them if desired
     Map<byte[],List<KeyValue>>[] familyMaps = new Map[batchOp.operations.length];
     // We try to set up a batch in the range [firstIndex,lastIndexExclusive)
@@ -3622,20 +3620,7 @@ public class HRegion implements HeapSize { // , Writable{
    * @throws IOException if failed unrecoverably.
    */
   public boolean bulkLoadHFiles(List<Pair<byte[], String>> familyPaths) throws IOException {
-    return bulkLoadHFiles(familyPaths, false);
-  }
-
-  /**
-   * Attempts to atomically load a group of hfiles. This is critical for loading rows with multiple
-   * column families atomically.
-   * @param familyPaths List of Pair<byte[] column family, String hfilePath> * @param assignSeqNum
-   *          should we assign sequence numbers
-   * @return true if successful, false if failed recoverably
-   * @throws IOException if failed unrecoverably.
-   */
-  public boolean bulkLoadHFiles(List<Pair<byte[], String>> familyPaths, boolean assignSeqId)
-      throws IOException {
-    return bulkLoadHFiles(familyPaths, null, assignSeqId);
+    return bulkLoadHFiles(familyPaths, null);
   }
 
   /**
@@ -3650,20 +3635,6 @@ public class HRegion implements HeapSize { // , Writable{
    */
   public boolean bulkLoadHFiles(List<Pair<byte[], String>> familyPaths,
       BulkLoadListener bulkLoadListener) throws IOException {
-    return bulkLoadHFiles(familyPaths, bulkLoadListener, false);
-  }
-
-  /**
-   * Attempts to atomically load a group of hfiles. This is critical for loading rows with multiple
-   * column families atomically.
-   * @param familyPaths List of Pair<byte[] column family, String hfilePath>
-   * @param bulkLoadListener Internal hooks enabling massaging/preparation of a file about to be
-   *          bulk loaded * @param assignSeqNum should we assign sequence numbers
-   * @return true if successful, false if failed recoverably
-   * @throws IOException if failed unrecoverably.
-   */
-  public boolean bulkLoadHFiles(List<Pair<byte[], String>> familyPaths,
-      BulkLoadListener bulkLoadListener, boolean assignSeqId) throws IOException {
     Preconditions.checkNotNull(familyPaths);
     // we need writeLock for multi-family bulk load
     startBulkRegionOperation(hasMultipleColumnFamilies(familyPaths));
@@ -3672,7 +3643,7 @@ public class HRegion implements HeapSize { // , Writable{
       this.opMetrics.setWriteRequestCountMetrics( this.writeRequestsCount.get());
 
       // There possibly was a split that happend between when the split keys
-      // were gathered and before the HRegion's write lock was taken.  We need
+      // were gathered and before the HReiogn's write lock was taken.  We need
       // to validate the HFile region before attempting to bulk load all of them
       List<IOException> ioes = new ArrayList<IOException>();
       List<Pair<byte[], String>> failures = new ArrayList<Pair<byte[], String>>();
@@ -3727,7 +3698,7 @@ public class HRegion implements HeapSize { // , Writable{
           if(bulkLoadListener != null) {
             finalPath = bulkLoadListener.prepareBulkLoad(familyName, path);
           }
-          store.bulkLoadHFile(finalPath, assignSeqId ? this.log.obtainSeqNum() : -1);
+          store.bulkLoadHFile(finalPath);
           if(bulkLoadListener != null) {
             bulkLoadListener.doneBulkLoad(familyName, path);
           }
