@@ -976,7 +976,7 @@
     <protobuf.version>2.5.0</protobuf.version>
     <stax-api.version>1.0.1</stax-api.version>
     <thrift.version>0.9.0</thrift.version>
-    <slf4j.version>1.6.4</slf4j.version>
+    <slf4j.version>${cdh.slf4j.version}</slf4j.version>
     <zookeeper.version>${cdh.zookeeper.version}</zookeeper.version>
     <hadoop-snappy.version>${cdh.hadoop-snappy.version}</hadoop-snappy.version>
     <clover.version>2.6.3</clover.version>
