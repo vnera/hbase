@@ -99,6 +99,29 @@ public class ReplicationHLogReaderManager {
   }
 
   /**
+   * Get the next entry, returned and also added in the array
+   * Ported forward to keep compatibility with Search's hbase-indexer
+   * @param entriesArray
+   * @param currentNbEntries
+   * @return a new entry or null
+   * @throws IOException
+   */
+  public HLog.Entry readNextAndSetPosition(HLog.Entry[] entriesArray,
+                                           int currentNbEntries) throws IOException {
+    HLog.Entry entry = this.reader.next(entriesArray[currentNbEntries]);
+    // Store the position so that in the future the reader can start
+    // reading from here. If the above call to next() throws an
+    // exception, the position won't be changed and retry will happen
+    // from the last known good position
+    this.position = this.reader.getPosition();
+    // We need to set the CC to null else it will be compressed when sent to the sink
+    if (entry != null) {
+      entry.getKey().setCompressionContext(null);
+    }
+    return entry;
+  }
+
+  /**
    * Advance the reader to the current position
    * @throws IOException
    */
