@@ -710,8 +710,8 @@ module Hbase
 
     #----------------------------------------------------------------------------------------------
     # Returns a list of snapshots
-    def list_snapshot
-      @admin.listSnapshots
+    def list_snapshot(regex = ".*")
+      @admin.listSnapshots(regex).to_a
     end
 
     # Apply config specific to a table/column to its descriptor
@@ -737,8 +737,10 @@ module Hbase
 
     #----------------------------------------------------------------------------------------------
     # Returns a list of namespaces in hbase
-    def list_namespace
-      @admin.listNamespaceDescriptors.map { |ns| ns.getName }
+    def list_namespace(regex = ".*")
+      pattern = java.util.regex.Pattern.compile(regex)
+      list = @admin.listNamespaceDescriptors.map { |ns| ns.getName }
+      list.select {|s| pattern.match(s) }
     end
 
     #----------------------------------------------------------------------------------------------

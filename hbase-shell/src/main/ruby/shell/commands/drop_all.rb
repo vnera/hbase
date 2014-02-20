@@ -29,8 +29,7 @@ EOF
       end
 
       def command(regex)
-        regex = /^#{regex}$/ unless regex.is_a?(Regexp)
-        list = admin.list.grep(regex)
+        list = admin.list(regex)
         count = list.size
         list.each do |table|
           formatter.row([ table ])
