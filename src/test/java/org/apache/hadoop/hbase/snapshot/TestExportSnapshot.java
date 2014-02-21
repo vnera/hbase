@@ -88,6 +88,8 @@ public class TestExportSnapshot {
     TEST_UTIL.getConfiguration().setInt("hbase.client.pause", 250);
     TEST_UTIL.getConfiguration().setInt("hbase.client.retries.number", 6);
     TEST_UTIL.getConfiguration().setBoolean("hbase.master.enabletable.roundrobin", true);
+    TEST_UTIL.getConfiguration().setInt("mapreduce.map.max.attempts", 10);
+    TEST_UTIL.getConfiguration().setInt("mapred.map.max.attempts", 10);
     TEST_UTIL.startMiniCluster(3);
     TEST_UTIL.startMiniMapReduceCluster();
   }
@@ -183,6 +185,14 @@ public class TestExportSnapshot {
     testExportFileSystemState(tableName, emptySnapshotName, 1);
   }
 
+  @Test
+  public void testConsecutiveExports() throws Exception {
+    Path copyDir = TEST_UTIL.getDataTestDir("export-" + System.currentTimeMillis());
+    testExportFileSystemState(tableName, snapshotName, 2, copyDir, false);
+    testExportFileSystemState(tableName, snapshotName, 2, copyDir, true);
+    removeExportDir(copyDir);
+  }
+
   /**
    * Mock a snapshot with files in the archive dir,
    * two regions, and one reference file.
@@ -233,21 +243,32 @@ public class TestExportSnapshot {
     testExportFileSystemState(tableWithRefsName, Bytes.toBytes(snapshotName), 2);
   }
 
+  private void testExportFileSystemState(final byte[] tableName, final byte[] snapshotName,
+      int filesExpected) throws Exception {
+    Path copyDir = TEST_UTIL.getDataTestDir("export-" + System.currentTimeMillis());
+    testExportFileSystemState(tableName, snapshotName, filesExpected, copyDir, false);
+    removeExportDir(copyDir);
+  }
+
   /**
    * Test ExportSnapshot
    */
   private void testExportFileSystemState(final byte[] tableName, final byte[] snapshotName,
-      int filesExpected) throws Exception {
-    Path copyDir = TEST_UTIL.getDataTestDir("export-" + System.currentTimeMillis());
+      int filesExpected, Path copyDir, boolean overwrite) throws Exception {
     URI hdfsUri = FileSystem.get(TEST_UTIL.getConfiguration()).getUri();
     FileSystem fs = FileSystem.get(copyDir.toUri(), new Configuration());
     copyDir = copyDir.makeQualified(fs);
 
+    List<String> opts = new ArrayList<String>();
+    opts.add("-snapshot");
+    opts.add(Bytes.toString(snapshotName));
+    opts.add("-copy-to");
+    opts.add(copyDir.toString());
+    if (overwrite) opts.add("-overwrite");
+
     // Export Snapshot
-    int res = ExportSnapshot.innerMain(TEST_UTIL.getConfiguration(), new String[] {
-      "-snapshot", Bytes.toString(snapshotName),
-      "-copy-to", copyDir.toString()
-    });
+    int res = ExportSnapshot.innerMain(TEST_UTIL.getConfiguration(),
+        opts.toArray(new String[opts.size()]));
     assertEquals(0, res);
 
     // Verify File-System state
@@ -256,7 +277,8 @@ public class TestExportSnapshot {
     for (FileStatus fileStatus: rootFiles) {
       String name = fileStatus.getPath().getName();
       assertTrue(fileStatus.isDir());
-      assertTrue(name.equals(HConstants.SNAPSHOT_DIR_NAME) || name.equals(".archive"));
+      assertTrue(name.equals(HConstants.SNAPSHOT_DIR_NAME) ||
+                 name.equals(HConstants.HFILE_ARCHIVE_DIRECTORY));
     }
 
     // compare the snapshot metadata and verify the hfiles
@@ -266,9 +288,6 @@ public class TestExportSnapshot {
         fs, new Path(copyDir, snapshotDir));
     verifyArchive(fs, copyDir, tableName, Bytes.toString(snapshotName));
     FSUtils.logFileSystemState(hdfs, snapshotDir, LOG);
-
-    // Remove the exported dir
-    fs.delete(copyDir, true);
   }
 
   /**
@@ -369,5 +388,11 @@ public class TestExportSnapshot {
       }
     }
     return files;
+  }
+
+  private void removeExportDir(final Path path) throws IOException {
+    FileSystem fs = FileSystem.get(path.toUri(), new Configuration());
+    FSUtils.logFileSystemState(fs, path, LOG);
+    fs.delete(path, true);
   }
 }
