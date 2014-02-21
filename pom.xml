@@ -978,6 +978,7 @@
     <thrift.version>0.9.0</thrift.version>
     <slf4j.version>${cdh.slf4j.version}</slf4j.version>
     <zookeeper.version>${cdh.zookeeper.version}</zookeeper.version>
+    <jets3.version>0.9.0</jets3.version>
     <hadoop-snappy.version>${cdh.hadoop-snappy.version}</hadoop-snappy.version>
     <clover.version>2.6.3</clover.version>
     <jamon-runtime.version>2.3.1</jamon-runtime.version>
@@ -1427,6 +1428,11 @@
         <artifactId>htrace-core</artifactId>
         <version>${htrace.version}</version>
       </dependency>
+      <dependency>
+        <groupId>net.java.dev.jets3t</groupId>
+        <artifactId>jets3t</artifactId>
+        <version>${jets3.version}</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
   <!-- Dependencies needed by subprojects -->
@@ -1593,10 +1599,6 @@
                 <artifactId>core</artifactId>
               </exclusion>
               <exclusion>
-                <groupId>net.java.dev.jets3t</groupId>
-                <artifactId>jets3t</artifactId>
-              </exclusion>
-              <exclusion>
                 <groupId>oro</groupId>
                 <artifactId>oro</artifactId>
               </exclusion>
@@ -1651,10 +1653,6 @@
               <exclusion>
                 <groupId>org.eclipse.jdt</groupId>
                 <artifactId>core</artifactId>
-              </exclusion>
-              <exclusion>
-                <groupId>net.java.dev.jets3t</groupId>
-                <artifactId>jets3t</artifactId>
               </exclusion>
               <exclusion>
                 <groupId>oro</groupId>
