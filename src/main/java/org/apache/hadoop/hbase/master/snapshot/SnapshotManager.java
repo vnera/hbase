@@ -949,14 +949,7 @@ public class SnapshotManager implements Stoppable {
     cleaners = conf.getStrings(HConstants.HBASE_MASTER_LOGCLEANER_PLUGINS);
     if (cleaners != null) Collections.addAll(logCleaners, cleaners);
 
-    // check if an older version of snapshot directory was present
-    Path oldSnapshotDir = new Path(mfs.getRootDir(), HConstants.OLD_SNAPSHOT_DIR_NAME);
     FileSystem fs = mfs.getFileSystem();
-    List<SnapshotDescription> ss = getCompletedSnapshots(new Path(rootDir, oldSnapshotDir));
-    if (ss != null && !ss.isEmpty()) {
-      LOG.error("Snapshots from an earlier release were found under: " + oldSnapshotDir);
-      LOG.error("Please rename the directory as " + HConstants.SNAPSHOT_DIR_NAME);
-    }
 
     // If the user has enabled the snapshot, we force the cleaners to be present
     // otherwise we still need to check if cleaners are enabled or not and verify

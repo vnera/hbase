@@ -697,8 +697,10 @@ public final class HConstants {
    * Name of the directory to store all snapshots. See SnapshotDescriptionUtils for
    * remaining snapshot constants; this is here to keep HConstants dependencies at a minimum and
    * uni-directional.
+   *
+   * CDH4 uses the old snapshot dir name for compatibility.
    */
-  public static final String SNAPSHOT_DIR_NAME = ".hbase-snapshot";
+  public static final String SNAPSHOT_DIR_NAME = ".snapshot";
 
   /* Name of old snapshot directory. See HBASE-8352 for details on why it needs to be renamed */
   public static final String OLD_SNAPSHOT_DIR_NAME = ".snapshot";
