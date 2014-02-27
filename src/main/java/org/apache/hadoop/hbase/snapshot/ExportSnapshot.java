@@ -52,6 +52,8 @@ import org.apache.hadoop.hbase.regionserver.StoreFile;
 import org.apache.hadoop.hbase.snapshot.ExportSnapshotException;
 import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
 import org.apache.hadoop.hbase.snapshot.SnapshotReferenceUtil;
+import org.apache.hadoop.hbase.security.User;
+import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.FSUtils;
@@ -555,7 +557,8 @@ public final class ExportSnapshot extends Configured implements Tool {
   /**
    * Run Map-Reduce Job to perform the files copy.
    */
-  private boolean runCopyJob(final Path inputRoot, final Path outputRoot,
+  private boolean runCopyJob(final FileSystem inputFs, final Path inputRoot,
+      final FileSystem outputFs, final Path outputRoot,
       final List<Pair<Path, Long>> snapshotFiles, final boolean verifyChecksum,
       final String filesUser, final String filesGroup, final int filesMode,
       final int mappers) throws IOException, InterruptedException, ClassNotFoundException {
@@ -587,7 +590,66 @@ public final class ExportSnapshot extends Configured implements Tool {
       SequenceFileInputFormat.addInputPath(job, path);
     }
 
-    return job.waitForCompletion(true);
+    FsDelegationToken inputFsToken = new FsDelegationToken("irenewer");
+    FsDelegationToken outputFsToken = new FsDelegationToken("orenewer");
+    try {
+      // Acquire the delegation Tokens
+      LOG.info("Acquire input-fs delegation token");
+      inputFsToken.acquireDelegationToken(inputFs);
+      LOG.info("Acquire output-fs delegation token");
+      outputFsToken.acquireDelegationToken(outputFs);
+
+      // Run the MR Job
+      return job.waitForCompletion(true);
+    } finally {
+      inputFsToken.releaseDelegationToken();
+      outputFsToken.releaseDelegationToken();
+    }
+  }
+
+  /**
+   * Helper class to obtain a filesystem delegation token.
+   * Mainly used by Map-Reduce jobs that requires to read/write data to
+   * a remote file-system (e.g. BulkLoad, ExportSnapshot).
+   */
+  static class FsDelegationToken {
+    private final String renewer;
+
+    private boolean hasForwardedToken = false;
+    private Token<?> userToken = null;
+    private FileSystem fs = null;
+
+    public FsDelegationToken(final String renewer) {
+      this.renewer = renewer;
+    }
+
+    public void acquireDelegationToken(final FileSystem fs)
+        throws IOException {
+      if (User.isSecurityEnabled()) {
+        this.fs = fs;
+        userToken = User.getCurrent().getToken("HDFS_DELEGATION_TOKEN",
+                                               fs.getCanonicalServiceName());
+        if (userToken == null) {
+          hasForwardedToken = false;
+          userToken = fs.getDelegationToken(renewer);
+        } else {
+          hasForwardedToken = true;
+          LOG.info("Use the existing token: " + userToken);
+        }
+      }
+    }
+
+    public void releaseDelegationToken() {
+      if (User.isSecurityEnabled()) {
+        if (userToken != null && !hasForwardedToken) {
+          try {
+            userToken.cancel(this.fs.getConf());
+          } catch (Exception e) {
+            LOG.warn("Failed to cancel HDFS delegation token.", e);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -700,7 +762,7 @@ public final class ExportSnapshot extends Configured implements Tool {
       if (files.size() == 0) {
         LOG.warn("There are 0 store file to be copied. There may be no data in the table.");
       } else {
-        if (!runCopyJob(inputRoot, outputRoot, files, verifyChecksum,
+        if (!runCopyJob(inputFs, inputRoot, outputFs, outputRoot, files, verifyChecksum,
             filesUser, filesGroup, filesMode, mappers)) {
           throw new ExportSnapshotException("Snapshot export failed!");
         }

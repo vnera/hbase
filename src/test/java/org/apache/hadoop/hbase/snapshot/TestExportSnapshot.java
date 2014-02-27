@@ -72,7 +72,7 @@ import org.junit.experimental.categories.Category;
 public class TestExportSnapshot {
   private final Log LOG = LogFactory.getLog(getClass());
 
-  private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
+  protected final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
 
   private final static byte[] FAMILY = Bytes.toBytes("cf");
 
@@ -81,15 +81,21 @@ public class TestExportSnapshot {
   private byte[] tableName;
   private HBaseAdmin admin;
 
+  public static void setUpBaseConf(Configuration conf) {
+    conf.setBoolean(SnapshotManager.HBASE_SNAPSHOT_ENABLED, true);
+    conf.setInt("hbase.regionserver.msginterval", 100);
+    conf.setInt("hbase.client.pause", 250);
+    conf.setInt(HConstants.HBASE_CLIENT_RETRIES_NUMBER, 6);
+    conf.setBoolean("hbase.master.enabletable.roundrobin", true);
+    conf.setInt("mapreduce.map.max.attempts", 10);
+    conf.setInt("mapred.map.max.attempts", 10);
+  }
+
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    TEST_UTIL.getConfiguration().setBoolean(SnapshotManager.HBASE_SNAPSHOT_ENABLED, true);
-    TEST_UTIL.getConfiguration().setInt("hbase.regionserver.msginterval", 100);
-    TEST_UTIL.getConfiguration().setInt("hbase.client.pause", 250);
-    TEST_UTIL.getConfiguration().setInt("hbase.client.retries.number", 6);
-    TEST_UTIL.getConfiguration().setBoolean("hbase.master.enabletable.roundrobin", true);
     TEST_UTIL.getConfiguration().setInt("mapreduce.map.max.attempts", 10);
     TEST_UTIL.getConfiguration().setInt("mapred.map.max.attempts", 10);
+    setUpBaseConf(TEST_UTIL.getConfiguration());
     TEST_UTIL.startMiniCluster(3);
     TEST_UTIL.startMiniMapReduceCluster();
   }
@@ -245,7 +251,7 @@ public class TestExportSnapshot {
 
   private void testExportFileSystemState(final byte[] tableName, final byte[] snapshotName,
       int filesExpected) throws Exception {
-    Path copyDir = TEST_UTIL.getDataTestDir("export-" + System.currentTimeMillis());
+    Path copyDir = getHdfsDestinationDir();
     testExportFileSystemState(tableName, snapshotName, filesExpected, copyDir, false);
     removeExportDir(copyDir);
   }
@@ -370,6 +376,13 @@ public class TestExportSnapshot {
           assertTrue(path + " should not be empty", fs.getFileStatus(path).getLen() > 0);
         }
     });
+  }
+
+  private Path getHdfsDestinationDir() {
+    Path rootDir = TEST_UTIL.getHBaseCluster().getMaster().getMasterFileSystem().getRootDir();
+    Path path = new Path(new Path(rootDir, "export-test"), "export-" + System.currentTimeMillis());
+    LOG.info("HDFS export destination path: " + path);
+    return path;
   }
 
   private Set<String> listFiles(final FileSystem fs, final Path root, final Path dir)
