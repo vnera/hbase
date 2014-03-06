@@ -49,6 +49,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import javax.management.ObjectName;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.HBaseZeroCopyByteString;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -968,7 +969,8 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
     return allUserRegionsOffline;
   }
 
-  void tryRegionServerReport(long reportStartTime, long reportEndTime)
+  @VisibleForTesting
+  protected void tryRegionServerReport(long reportStartTime, long reportEndTime)
   throws IOException {
     if (this.rssStub == null) {
       // the current server is stopping.
