@@ -23,7 +23,7 @@
     <parent>
         <artifactId>hbase</artifactId>
         <groupId>org.apache.hbase</groupId>
-        <version>0.98.1</version>
+        <version>0.98.1-cdh5.1.0-SNAPSHOT</version>
         <relativePath>..</relativePath>
     </parent>
     <artifactId>hbase-testing-util</artifactId>
@@ -92,13 +92,13 @@
         </dependency>
         <dependency>
             <groupId>org.apache.hbase</groupId>
-            <artifactId>${compat.module}</artifactId>
+            <artifactId>hbase-hadoop2-compat</artifactId>
             <type>jar</type>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.hbase</groupId>
-            <artifactId>${compat.module}</artifactId>
+            <artifactId>hbase-hadoop2-compat</artifactId>
             <type>test-jar</type>
             <scope>compile</scope>
         </dependency>
@@ -167,7 +167,7 @@
             <activation>
                 <property>
                     <!--Below formatting for dev-support/generate-hadoopX-poms.sh-->
-                    <!--h2--><name>!hadoop.profile</name>
+                    <!--h2--><name>hadoop.profile</name><value>2.0</value>
                 </property>
             </activation>
             <dependencies>
@@ -194,6 +194,54 @@
                 <dependency>
                     <groupId>org.apache.hadoop</groupId>
                     <artifactId>hadoop-mapreduce-client-jobclient</artifactId>
+                    <scope>compile</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.hadoop</groupId>
+                    <artifactId>hadoop-hdfs</artifactId>
+                    <scope>compile</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.hadoop</groupId>
+                    <artifactId>hadoop-hdfs</artifactId>
+                    <type>test-jar</type>
+                    <scope>compile</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.hadoop</groupId>
+                    <artifactId>hadoop-annotations</artifactId>
+                    <scope>compile</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.hadoop</groupId>
+                    <artifactId>hadoop-minicluster</artifactId>
+                    <scope>compile</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>cdh5</id>
+            <activation>
+                <property>
+                    <!--Below formatting for dev-support/generate-hadoopX-poms.sh-->
+                    <!--h2--><name>!hadoop.profile</name>
+                </property>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>org.apache.hadoop</groupId>
+                    <artifactId>hadoop-common</artifactId>
+                    <scope>compile</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.hadoop</groupId>
+                    <artifactId>hadoop-auth</artifactId>
+                    <scope>compile</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.hadoop</groupId>
+                    <artifactId>hadoop-core</artifactId>
                     <scope>compile</scope>
                 </dependency>
                 <dependency>
