@@ -3665,7 +3665,7 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
       }
       FlushRegionResponse.Builder builder = FlushRegionResponse.newBuilder();
       if (shouldFlush) {
-        boolean result = region.flushcache();
+        boolean result = region.flushcache().isCompactionNeeded();
         if (result) {
           this.compactSplitThread.requestSystemCompaction(region,
               "Compaction through user triggered flush");
