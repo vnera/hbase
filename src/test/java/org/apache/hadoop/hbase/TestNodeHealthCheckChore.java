@@ -116,7 +116,7 @@ public class TestNodeHealthCheckChore {
     conf.set(HConstants.HEALTH_SCRIPT_LOC,
       healthScriptFile.getAbsolutePath());
     conf.setLong(HConstants.HEALTH_FAILURE_THRESHOLD, 3);
-    conf.setLong(HConstants.HEALTH_SCRIPT_TIMEOUT, 200);
+    conf.setLong(HConstants.HEALTH_SCRIPT_TIMEOUT, 2000);
     return conf;
   }
 
