@@ -151,7 +151,7 @@ public class ReplicationSyncUp extends Configured implements Tool {
 
     @Override
     public ServerName getServerName() {
-      return ServerName.valueOf(hostname, 1234, 1L);
+      return new ServerName(hostname, 1234, 1L);
     }
 
     @Override

@@ -325,7 +325,7 @@ public final class ProtobufUtil {
     if (proto.hasStartCode()) {
       startCode = proto.getStartCode();
     }
-    return ServerName.valueOf(hostName, port, startCode);
+    return new ServerName(hostName, port, startCode);
   }
 
   /**

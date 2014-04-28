@@ -761,7 +761,7 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
       this.abort("Failed to reach zk cluster when creating procedure handler.", e);
     }
     this.tableLockManager = TableLockManager.createTableLockManager(conf, zooKeeper,
-        ServerName.valueOf(isa.getHostName(), isa.getPort(), startcode));
+        new ServerName(isa.getHostName(), isa.getPort(), startcode));
 
     // register watcher for recovering regions
     if(this.distributedLogReplay) {
@@ -1219,8 +1219,8 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
         // The hostname the master sees us as.
         if (key.equals(HConstants.KEY_FOR_HOSTNAME_SEEN_BY_MASTER)) {
           String hostnameFromMasterPOV = e.getValue();
-          this.serverNameFromMasterPOV = ServerName.valueOf(hostnameFromMasterPOV,
-              this.isa.getPort(), this.startcode);
+          this.serverNameFromMasterPOV = new ServerName(hostnameFromMasterPOV,
+            this.isa.getPort(), this.startcode);
           if (!hostnameFromMasterPOV.equals(this.isa.getHostName())) {
             LOG.info("Master passed us a different hostname to use; was=" +
               this.isa.getHostName() + ", but now=" + hostnameFromMasterPOV);
@@ -2251,7 +2251,7 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
   public ServerName getServerName() {
     // Our servername could change after we talk to the master.
     return this.serverNameFromMasterPOV == null?
-        ServerName.valueOf(this.isa.getHostName(), this.isa.getPort(), this.startcode) :
+      new ServerName(this.isa.getHostName(), this.isa.getPort(), this.startcode):
         this.serverNameFromMasterPOV;
   }
 

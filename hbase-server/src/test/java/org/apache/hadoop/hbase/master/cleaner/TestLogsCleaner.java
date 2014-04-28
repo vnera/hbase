@@ -28,6 +28,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.catalog.CatalogTracker;
+import org.apache.hadoop.hbase.master.cleaner.LogCleaner;
 import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
 import org.apache.hadoop.hbase.replication.regionserver.Replication;
@@ -157,7 +158,7 @@ public class TestLogsCleaner {
 
     @Override
     public ServerName getServerName() {
-      return ServerName.valueOf("regionserver,60020,000000");
+      return new ServerName("regionserver,60020,000000");
     }
 
     @Override

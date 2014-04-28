@@ -55,8 +55,8 @@ public class TestMasterStatusServlet {
   private Configuration conf;
   private HBaseAdmin admin;
 
-  static final ServerName FAKE_HOST =
-      ServerName.valueOf("fakehost", 12345, 1234567890);
+  static final ServerName FAKE_HOST = 
+    new ServerName("fakehost", 12345, 1234567890);
   static final HTableDescriptor FAKE_TABLE =
     new HTableDescriptor(TableName.valueOf("mytable"));
   static final HRegionInfo FAKE_HRI =
@@ -124,7 +124,7 @@ public class TestMasterStatusServlet {
     setupMockTables();
     
     new MasterStatusTmpl()
-      .setMetaLocation(ServerName.valueOf("metaserver:123,12345"))
+      .setMetaLocation(new ServerName("metaserver:123,12345"))
       .render(new StringWriter(),
         master, admin);
   }
@@ -134,16 +134,16 @@ public class TestMasterStatusServlet {
     setupMockTables();
     
     List<ServerName> servers = Lists.newArrayList(
-        ServerName.valueOf("rootserver:123,12345"),
-        ServerName.valueOf("metaserver:123,12345"));
+        new ServerName("rootserver:123,12345"),
+        new ServerName("metaserver:123,12345"));
     Set<ServerName> deadServers = new HashSet<ServerName>(
         Lists.newArrayList(
-            ServerName.valueOf("badserver:123,12345"),
-            ServerName.valueOf("uglyserver:123,12345"))
+        new ServerName("badserver:123,12345"),
+        new ServerName("uglyserver:123,12345"))
     );
 
     new MasterStatusTmpl()
-      .setMetaLocation(ServerName.valueOf("metaserver:123,12345"))
+      .setMetaLocation(new ServerName("metaserver:123,12345"))
       .setServers(servers)
       .setDeadServers(deadServers)
       .render(new StringWriter(),

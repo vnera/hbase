@@ -52,6 +52,7 @@ import org.apache.hadoop.hbase.ipc.RpcServer;
 import org.apache.hadoop.hbase.ipc.RpcServer.BlockingServiceAndInterface;
 import org.apache.hadoop.hbase.ipc.RpcServerInterface;
 import org.apache.hadoop.hbase.ipc.ServerRpcController;
+import org.apache.hadoop.hbase.ipc.SimpleRpcScheduler;
 import org.apache.hadoop.hbase.protobuf.generated.AuthenticationProtos;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
@@ -159,7 +160,7 @@ public class TestTokenAuthentication {
 
     @Override
     public ServerName getServerName() {
-      return ServerName.valueOf(isa.getHostName(), isa.getPort(), startcode);
+      return new ServerName(isa.getHostName(), isa.getPort(), startcode);
     }
 
     @Override
@@ -387,8 +388,8 @@ public class TestTokenAuthentication {
         Configuration c = server.getConfiguration();
         RpcClient rpcClient = new RpcClient(c, clusterId.toString());
         ServerName sn =
-            ServerName.valueOf(server.getAddress().getHostName(), server.getAddress().getPort(),
-                System.currentTimeMillis());
+          new ServerName(server.getAddress().getHostName(), server.getAddress().getPort(),
+            System.currentTimeMillis());
         try {
           BlockingRpcChannel channel = rpcClient.createBlockingRpcChannel(sn,
             User.getCurrent(), HConstants.DEFAULT_HBASE_RPC_TIMEOUT);

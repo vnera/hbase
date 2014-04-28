@@ -156,7 +156,7 @@ public class TestBaseLoadBalancer extends BalancerTestBase {
       // The old server would have had same host and port, but different
       // start code!
       ServerName snWithOldStartCode =
-          ServerName.valueOf(sn.getHostname(), sn.getPort(), sn.getStartcode() - 10);
+          new ServerName(sn.getHostname(), sn.getPort(), sn.getStartcode() - 10);
       existing.put(regions.get(i), snWithOldStartCode);
     }
     List<ServerName> listOfServerNames = getListOfServerNames(servers);
@@ -249,7 +249,7 @@ public class TestBaseLoadBalancer extends BalancerTestBase {
     List<ServerName> oldServers = new ArrayList<ServerName>(servers.size());
     for (ServerName sn : servers) {
       // The old server would have had same host and port, but different start code!
-      oldServers.add(ServerName.valueOf(sn.getHostname(), sn.getPort(), sn.getStartcode() - 10));
+      oldServers.add(new ServerName(sn.getHostname(), sn.getPort(), sn.getStartcode() - 10));
     }
 
     regions = randomRegions(9); // some more regions
@@ -296,7 +296,7 @@ public class TestBaseLoadBalancer extends BalancerTestBase {
     when(locationFinder.getTopBlockLocations(regions.get(42))).thenReturn(
       Lists.newArrayList(servers.get(4), servers.get(9), servers.get(5)));
     when(locationFinder.getTopBlockLocations(regions.get(43))).thenReturn(
-      Lists.newArrayList(ServerName.valueOf("foo", 0, 0))); // this server does not exists in clusterStatus
+      Lists.newArrayList(new ServerName("foo", 0, 0))); // this server does not exists in clusterStatus
 
     BaseLoadBalancer.Cluster cluster = new Cluster(clusterState, null, locationFinder);
 

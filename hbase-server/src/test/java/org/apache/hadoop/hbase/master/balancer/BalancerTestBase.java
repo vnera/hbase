@@ -220,7 +220,7 @@ public class BalancerTestBase {
     String host = "srv" + rand.nextInt(100000);
     int port = rand.nextInt(60000);
     long startCode = rand.nextLong();
-    ServerName sn = ServerName.valueOf(host, port, startCode);
+    ServerName sn = new ServerName(host, port, startCode);
     return new ServerAndLoad(sn, numRegionsPerServer);
   }
 

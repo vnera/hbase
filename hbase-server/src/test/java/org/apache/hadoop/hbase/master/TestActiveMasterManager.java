@@ -73,7 +73,7 @@ public class TestActiveMasterManager {
     } catch(KeeperException.NoNodeException nne) {}
 
     // Create the master node with a dummy address
-    ServerName master = ServerName.valueOf("localhost", 1, System.currentTimeMillis());
+    ServerName master = new ServerName("localhost", 1, System.currentTimeMillis());
     // Should not have a master yet
     DummyMaster dummyMaster = new DummyMaster(zk,master);
     ClusterStatusTracker clusterStatusTracker =
@@ -116,9 +116,9 @@ public class TestActiveMasterManager {
 
     // Create the master node with a dummy address
     ServerName firstMasterAddress =
-        ServerName.valueOf("localhost", 1, System.currentTimeMillis());
+      new ServerName("localhost", 1, System.currentTimeMillis());
     ServerName secondMasterAddress =
-        ServerName.valueOf("localhost", 2, System.currentTimeMillis());
+      new ServerName("localhost", 2, System.currentTimeMillis());
 
     // Should not have a master yet
     DummyMaster ms1 = new DummyMaster(zk,firstMasterAddress);

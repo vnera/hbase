@@ -1017,7 +1017,7 @@ public final class RequestConverter {
       buildRegionSpecifier(RegionSpecifierType.ENCODED_REGION_NAME,encodedRegionName));
     if (destServerName != null) {
       builder.setDestServerName(
-        ProtobufUtil.toServerName(ServerName.valueOf(Bytes.toString(destServerName))));
+        ProtobufUtil.toServerName(new ServerName(Bytes.toString(destServerName))));
     }
     return builder.build();
   }

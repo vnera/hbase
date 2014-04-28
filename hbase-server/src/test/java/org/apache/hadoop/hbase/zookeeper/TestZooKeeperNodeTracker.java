@@ -25,6 +25,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.Random;
 import java.util.concurrent.Semaphore;
 
@@ -32,10 +33,12 @@ import junit.framework.Assert;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.*;
+import org.apache.hadoop.hbase.client.HConnectionManager;
 import org.apache.hadoop.hbase.master.TestActiveMasterManager.NodeDeletionListener;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs.Ids;
@@ -318,7 +321,7 @@ public class TestZooKeeperNodeTracker {
     ZooKeeperWatcher zkw = new ZooKeeperWatcher(TEST_UTIL.getConfiguration(),
         "testNodeTracker", new TestZooKeeperNodeTracker.StubAbortable());
 
-    final ServerName sn = ServerName.valueOf("127.0.0.1:52", 45L);
+    final ServerName sn = new ServerName("127.0.0.1:52",45L);
 
     ZKUtil.createAndFailSilent(zkw,
         TEST_UTIL.getConfiguration().get(HConstants.ZOOKEEPER_ZNODE_PARENT,
@@ -333,7 +336,7 @@ public class TestZooKeeperNodeTracker {
 
     // Check that we don't delete if we're not supposed to
     ZKUtil.setData(zkw, nodeName, MasterAddressTracker.toByteArray(sn));
-    MasterAddressTracker.deleteIfEquals(zkw, ServerName.valueOf("127.0.0.2:52", 45L).toString());
+    MasterAddressTracker.deleteIfEquals(zkw, new ServerName("127.0.0.2:52",45L).toString());
     Assert.assertFalse(ZKUtil.getData(zkw, nodeName) == null);
 
     // Check that we delete when we're supposed to

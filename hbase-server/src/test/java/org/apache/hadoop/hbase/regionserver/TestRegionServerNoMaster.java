@@ -389,7 +389,7 @@ public class TestRegionServerNoMaster {
     Assert.assertTrue(getRS().getRegion(regionName).isAvailable());
 
     ServerName sn = getRS().getServerName();
-    ServerName earlierServerName = ServerName.valueOf(sn.getHostname(), sn.getPort(), 1);
+    ServerName earlierServerName = new ServerName(sn.getHostname(), sn.getPort(), 1);
 
     try {
       CloseRegionRequest request = RequestConverter.buildCloseRegionRequest(earlierServerName, regionName, true);
