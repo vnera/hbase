@@ -25,10 +25,8 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
-import com.google.protobuf.HBaseZeroCopyByteString;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
@@ -37,7 +35,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.CellUtil;
-import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HDFSBlocksDistribution;
 import org.apache.hadoop.hbase.HDFSBlocksDistribution.HostAndWeight;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -49,18 +46,15 @@ import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.TableSnapshotScanner;
 import org.apache.hadoop.hbase.client.metrics.ScanMetrics;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
-import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.RegionSpecifier;
-import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.RegionSpecifier.RegionSpecifierType;
 import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescription;
+import org.apache.hadoop.hbase.protobuf.generated.SnapshotProtos.SnapshotRegionManifest;
 import org.apache.hadoop.hbase.protobuf.generated.MapReduceProtos;
 import org.apache.hadoop.hbase.regionserver.HRegion;
-import org.apache.hadoop.hbase.regionserver.HRegionFileSystem;
 import org.apache.hadoop.hbase.snapshot.ExportSnapshot;
 import org.apache.hadoop.hbase.snapshot.RestoreSnapshotHelper;
 import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
-import org.apache.hadoop.hbase.snapshot.SnapshotReferenceUtil;
-import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.FSTableDescriptors;
+import org.apache.hadoop.hbase.snapshot.SnapshotManifest;
+import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapreduce.InputFormat;
 import org.apache.hadoop.mapreduce.InputSplit;
@@ -126,15 +120,18 @@ public class TableSnapshotInputFormat extends InputFormat<ImmutableBytesWritable
   private static final String SNAPSHOT_NAME_KEY = "hbase.TableSnapshotInputFormat.snapshot.name";
   private static final String TABLE_DIR_KEY = "hbase.TableSnapshotInputFormat.table.dir";
 
-  public static class TableSnapshotRegionSplit extends InputSplit implements Writable {
-    private String regionName;
+  @VisibleForTesting
+  static class TableSnapshotRegionSplit extends InputSplit implements Writable {
+    private HTableDescriptor htd;
+    private HRegionInfo regionInfo;
     private String[] locations;
 
     // constructor for mapreduce framework / Writable
     public TableSnapshotRegionSplit() { }
 
-    TableSnapshotRegionSplit(String regionName, List<String> locations) {
-      this.regionName = regionName;
+    TableSnapshotRegionSplit(HTableDescriptor htd, HRegionInfo regionInfo, List<String> locations) {
+      this.htd = htd;
+      this.regionInfo = regionInfo;
       if (locations == null || locations.isEmpty()) {
         this.locations = new String[0];
       } else {
@@ -158,9 +155,8 @@ public class TableSnapshotInputFormat extends InputFormat<ImmutableBytesWritable
     public void write(DataOutput out) throws IOException {
     MapReduceProtos.TableSnapshotRegionSplit.Builder builder =
       MapReduceProtos.TableSnapshotRegionSplit.newBuilder()
-        .setRegion(RegionSpecifier.newBuilder()
-          .setType(RegionSpecifierType.ENCODED_REGION_NAME)
-          .setValue(HBaseZeroCopyByteString.wrap(Bytes.toBytes(regionName))).build());
+        .setTable(htd.convert())
+        .setRegion(HRegionInfo.convert(regionInfo));
 
       for (String location : locations) {
         builder.addLocations(location);
@@ -182,7 +178,8 @@ public class TableSnapshotInputFormat extends InputFormat<ImmutableBytesWritable
       in.readFully(buf);
       MapReduceProtos.TableSnapshotRegionSplit split =
           MapReduceProtos.TableSnapshotRegionSplit.PARSER.parseFrom(buf);
-      this.regionName = Bytes.toString(split.getRegion().getValue().toByteArray());
+      this.htd = HTableDescriptor.convert(split.getTable());
+      this.regionInfo = HRegionInfo.convert(split.getRegion());
       List<String> locationsList = split.getLocationsList();
       this.locations = locationsList.toArray(new String[locationsList.size()]);
     }
@@ -205,22 +202,12 @@ public class TableSnapshotInputFormat extends InputFormat<ImmutableBytesWritable
 
       Configuration conf = context.getConfiguration();
       this.split = (TableSnapshotRegionSplit) split;
-      String regionName = this.split.regionName;
-      String snapshotName = getSnapshotName(conf);
-      Path rootDir = new Path(conf.get(HConstants.HBASE_DIR));
-      FileSystem fs = rootDir.getFileSystem(conf);
+      HTableDescriptor htd = this.split.htd;
+      HRegionInfo hri = this.split.regionInfo;
+      FileSystem fs = FSUtils.getCurrentFileSystem(conf);
 
       Path tmpRootDir = new Path(conf.get(TABLE_DIR_KEY)); // This is the user specified root
       // directory where snapshot was restored
-
-      Path snapshotDir = SnapshotDescriptionUtils.getCompletedSnapshotDir(snapshotName, rootDir);
-
-      //load table descriptor
-      HTableDescriptor htd = FSTableDescriptors.getTableDescriptorFromFs(fs, snapshotDir);
-
-      //load region descriptor
-      Path regionDir = new Path(snapshotDir, regionName);
-      HRegionInfo hri = HRegionFileSystem.loadRegionInfoFileContent(fs, regionDir);
 
       // create scan
       String scanStr = conf.get(TableInputFormat.SCAN);
@@ -294,31 +281,28 @@ public class TableSnapshotInputFormat extends InputFormat<ImmutableBytesWritable
     Configuration conf = job.getConfiguration();
     String snapshotName = getSnapshotName(conf);
 
-    Path rootDir = new Path(conf.get(HConstants.HBASE_DIR));
+    Path rootDir = FSUtils.getRootDir(conf);
     FileSystem fs = rootDir.getFileSystem(conf);
 
     Path snapshotDir = SnapshotDescriptionUtils.getCompletedSnapshotDir(snapshotName, rootDir);
-
-    Set<String> snapshotRegionNames
-      = SnapshotReferenceUtil.getSnapshotRegionNames(fs, snapshotDir);
-    if (snapshotRegionNames == null) {
+    SnapshotDescription snapshotDesc = SnapshotDescriptionUtils.readSnapshotInfo(fs, snapshotDir);
+    SnapshotManifest manifest = SnapshotManifest.open(conf, fs, snapshotDir, snapshotDesc);
+    List<SnapshotRegionManifest> regionManifests = manifest.getRegionManifests();
+    if (regionManifests == null) {
       throw new IllegalArgumentException("Snapshot seems empty");
     }
 
     // load table descriptor
-    HTableDescriptor htd = FSTableDescriptors.getTableDescriptorFromFs(fs,
-        snapshotDir);
+    HTableDescriptor htd = manifest.getTableDescriptor();
 
     Scan scan = TableMapReduceUtil.convertStringToScan(conf
       .get(TableInputFormat.SCAN));
     Path tableDir = new Path(conf.get(TABLE_DIR_KEY));
 
     List<InputSplit> splits = new ArrayList<InputSplit>();
-    for (String regionName : snapshotRegionNames) {
+    for (SnapshotRegionManifest regionManifest : regionManifests) {
       // load region descriptor
-      Path regionDir = new Path(snapshotDir, regionName);
-      HRegionInfo hri = HRegionFileSystem.loadRegionInfoFileContent(fs,
-          regionDir);
+      HRegionInfo hri = HRegionInfo.convert(regionManifest.getRegionInfo());
 
       if (CellUtil.overlappingKeys(scan.getStartRow(), scan.getStopRow(),
           hri.getStartKey(), hri.getEndKey())) {
@@ -329,7 +313,7 @@ public class TableSnapshotInputFormat extends InputFormat<ImmutableBytesWritable
 
         int len = Math.min(3, hosts.size());
         hosts = hosts.subList(0, len);
-        splits.add(new TableSnapshotRegionSplit(regionName, hosts));
+        splits.add(new TableSnapshotRegionSplit(htd, hri, hosts));
       }
     }
 
@@ -391,7 +375,7 @@ public class TableSnapshotInputFormat extends InputFormat<ImmutableBytesWritable
     Configuration conf = job.getConfiguration();
     conf.set(SNAPSHOT_NAME_KEY, snapshotName);
 
-    Path rootDir = new Path(conf.get(HConstants.HBASE_DIR));
+    Path rootDir = FSUtils.getRootDir(conf);
     FileSystem fs = rootDir.getFileSystem(conf);
 
     restoreDir = new Path(restoreDir, UUID.randomUUID().toString());

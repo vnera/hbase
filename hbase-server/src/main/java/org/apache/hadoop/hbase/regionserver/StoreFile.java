@@ -222,7 +222,7 @@ public class StoreFile {
    * @return the StoreFile object associated to this StoreFile.
    *         null if the StoreFile is not a reference.
    */
-  StoreFileInfo getFileInfo() {
+  public StoreFileInfo getFileInfo() {
     return this.fileInfo;
   }
 
@@ -607,7 +607,7 @@ public class StoreFile {
       if (comparator == null) {
         comparator = KeyValue.COMPARATOR;
       }
-      return new Writer(fs, filePath, 
+      return new Writer(fs, filePath,
           conf, cacheConf, comparator, bloomType, maxKeyCount, favoredNodes, fileContext);
     }
   }
@@ -687,7 +687,7 @@ public class StoreFile {
 
     /** Bytes per Checksum */
     protected int bytesPerChecksum;
-    
+
     TimeRangeTracker timeRangeTracker = new TimeRangeTracker();
     /* isTimeRangeTrackerSet keeps track if the timeRange has already been set
      * When flushing a memstore, we set TimeRange and use this variable to
@@ -716,7 +716,7 @@ public class StoreFile {
         final Configuration conf,
         CacheConfig cacheConf,
         final KVComparator comparator, BloomType bloomType, long maxKeys,
-        InetSocketAddress[] favoredNodes, HFileContext fileContext) 
+        InetSocketAddress[] favoredNodes, HFileContext fileContext)
             throws IOException {
       writer = HFile.getWriterFactory(conf, cacheConf)
           .withPath(fs, path)
