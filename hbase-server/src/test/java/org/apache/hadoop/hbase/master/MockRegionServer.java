@@ -551,6 +551,11 @@ ClientProtos.ClientService.BlockingInterface, RegionServerServices {
   }
 
   @Override
+  public long getDeadline(RPCProtos.RequestHeader header, Message param) {
+    return 0;
+  }
+
+  @Override
   public UpdateFavoredNodesResponse updateFavoredNodes(RpcController controller,
       UpdateFavoredNodesRequest request) throws ServiceException {
     return null;

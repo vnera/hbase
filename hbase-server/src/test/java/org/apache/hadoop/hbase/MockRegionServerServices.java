@@ -111,7 +111,7 @@ class MockRegionServerServices implements RegionServerServices {
   public void setRpcServer(RpcServerInterface rpc) {
     this.rpcServer = rpc;
   }
-  
+
   @Override
   public ConcurrentSkipListMap<byte[], Boolean> getRegionsInTransitionInRS() {
     return rit;
@@ -219,6 +219,11 @@ class MockRegionServerServices implements RegionServerServices {
 
   @Override
   public int getPriority(RPCProtos.RequestHeader header, Message param) {
+    return 0;
+  }
+
+  @Override
+  public long getDeadline(RPCProtos.RequestHeader header, Message param) {
     return 0;
   }
 

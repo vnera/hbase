@@ -23,6 +23,7 @@ import java.util.Map;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.ipc.PriorityFunction;
@@ -69,6 +70,10 @@ import com.google.protobuf.TextFormat;
 class AnnotationReadingPriorityFunction implements PriorityFunction {
   public static final Log LOG =
     LogFactory.getLog(AnnotationReadingPriorityFunction.class.getName());
+
+  /** Used to control the scan delay, currently sqrt(numNextCall * weight) */
+  public static final String SCAN_VTIME_WEIGHT_CONF_KEY = "ipc.server.scan.vtime.weight";
+
   private final Map<String, Integer> annotatedQos;
   //We need to mock the regionserver instance for some unit tests (set via
   //setRegionServer method.
@@ -92,8 +97,9 @@ class AnnotationReadingPriorityFunction implements PriorityFunction {
   private final Map<String, Map<Class<? extends Message>, Method>> methodMap =
     new HashMap<String, Map<Class<? extends Message>, Method>>();
 
+  private final float scanVirtualTimeWeight;
+
   AnnotationReadingPriorityFunction(final HRegionServer hrs) {
-    this.hRegionServer = hrs;
     Map<String, Integer> qosMap = new HashMap<String, Integer>();
     for (Method m : HRegionServer.class.getMethods()) {
       QosPriority p = m.getAnnotation(QosPriority.class);
@@ -107,6 +113,7 @@ class AnnotationReadingPriorityFunction implements PriorityFunction {
         qosMap.put(capitalizedMethodName, p.priority());
       }
     }
+    this.hRegionServer = hrs;
     this.annotatedQos = qosMap;
     if (methodMap.get("getRegion") == null) {
       methodMap.put("hasRegion", new HashMap<Class<? extends Message>, Method>());
@@ -121,6 +128,9 @@ class AnnotationReadingPriorityFunction implements PriorityFunction {
         throw new RuntimeException(e);
       }
     }
+
+    Configuration conf = hRegionServer.getConfiguration();
+    scanVirtualTimeWeight = conf.getFloat(SCAN_VTIME_WEIGHT_CONF_KEY, 1.0f);
   }
 
   private String capitalize(final String s) {
@@ -139,6 +149,14 @@ class AnnotationReadingPriorityFunction implements PriorityFunction {
     return region.getRegionInfo().isMetaTable();
   }
 
+  /**
+   * Returns a 'priority' based on the request type.
+   *
+   * Currently the returned priority is used for queue selection.
+   * See the SimpleRpcScheduler as example. It maintains a queue per 'priory type'
+   * HIGH_QOS (meta requests), REPLICATION_QOS (replication requests),
+   * NORMAL_QOS (user requests).
+   */
   @Override
   public int getPriority(RequestHeader header, Message param) {
     String methodName = header.getMethodName();
@@ -197,6 +215,31 @@ class AnnotationReadingPriorityFunction implements PriorityFunction {
       }
     }
     return HConstants.NORMAL_QOS;
+  }
+
+  /**
+   * Based on the request content, returns the deadline of the request.
+   *
+   * @param header
+   * @param param
+   * @return Deadline of this request. 0 now, otherwise msec of 'delay'
+   */
+  @Override
+  public long getDeadline(RequestHeader header, Message param) {
+    String methodName = header.getMethodName();
+    if (methodName.equalsIgnoreCase("scan")) {
+      ScanRequest request = (ScanRequest)param;
+      if (!request.hasScannerId()) {
+        return 0;
+      }
+
+      // get the 'virtual time' of the scanner, and applies sqrt() to get a
+      // nice curve for the delay. More a scanner is used the less priority it gets.
+      // The weight is used to have more control on the delay.
+      long vtime = hRegionServer.getScannerVirtualTime(request.getScannerId());
+      return Math.round(Math.sqrt(vtime * scanVirtualTimeWeight));
+    }
+    return 0;
   }
 
   @VisibleForTesting

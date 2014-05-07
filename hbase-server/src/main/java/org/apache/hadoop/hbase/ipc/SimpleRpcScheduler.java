@@ -17,6 +17,9 @@
  */
 package org.apache.hadoop.hbase.ipc;
 
+
+import java.util.Comparator;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
@@ -24,22 +27,59 @@ import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.util.BoundedPriorityBlockingQueue;
 
 /**
- * A scheduler that maintains isolated handler pools for general, high-priority and replication
- * requests.
+ * A scheduler that maintains isolated handler pools for general,
+ * high-priority, and replication requests.
  */
 @InterfaceAudience.LimitedPrivate({HBaseInterfaceAudience.COPROC, HBaseInterfaceAudience.PHOENIX})
 @InterfaceStability.Evolving
 public class SimpleRpcScheduler extends RpcScheduler {
   public static final Log LOG = LogFactory.getLog(SimpleRpcScheduler.class);
 
-  public static final String CALL_QUEUE_READ_SHARE_CONF_KEY =
-    "hbase.ipc.server.callqueue.read.share";
+  public static final String CALL_QUEUE_READ_SHARE_CONF_KEY = "hbase.ipc.server.callqueue.read.share";
   public static final String CALL_QUEUE_HANDLER_FACTOR_CONF_KEY =
-    "hbase.ipc.server.callqueue.handler.factor";
-  public static final String CALL_QUEUE_MAX_LENGTH_CONF_KEY =
-    "hbase.ipc.server.max.callqueue.length";
+      "hbase.ipc.server.callqueue.handler.factor";
+
+  /** If set to 'deadline', uses a priority queue and deprioritize long-running scans */
+  public static final String CALL_QUEUE_TYPE_CONF_KEY = "hbase.ipc.server.callqueue.type";
+  public static final String CALL_QUEUE_TYPE_DEADLINE_CONF_VALUE = "deadline";
+  public static final String CALL_QUEUE_TYPE_FIFO_CONF_VALUE = "fifo";
+
+  /** max delay in msec used to bound the deprioritized requests */
+  public static final String QUEUE_MAX_CALL_DELAY_CONF_KEY
+      = "hbase.ipc.server.queue.max.call.delay";
+
+  /**
+   * Comparator used by the "normal callQueue" if DEADLINE_CALL_QUEUE_CONF_KEY is set to true.
+   * It uses the calculated "deadline" e.g. to deprioritize long-running job
+   *
+   * If multiple requests have the same deadline BoundedPriorityBlockingQueue will order them in
+   * FIFO (first-in-first-out) manner.
+   */
+  private static class CallPriorityComparator implements Comparator<CallRunner> {
+    private final static int DEFAULT_MAX_CALL_DELAY = 5000;
+
+    private final PriorityFunction priority;
+    private final int maxDelay;
+
+    public CallPriorityComparator(final Configuration conf, final PriorityFunction priority) {
+      this.priority = priority;
+      this.maxDelay = conf.getInt(QUEUE_MAX_CALL_DELAY_CONF_KEY, DEFAULT_MAX_CALL_DELAY);
+    }
+
+    @Override
+    public int compare(CallRunner a, CallRunner b) {
+      RpcServer.Call callA = a.getCall();
+      RpcServer.Call callB = b.getCall();
+      long deadlineA = priority.getDeadline(callA.getHeader(), callA.param);
+      long deadlineB = priority.getDeadline(callB.getHeader(), callB.param);
+      deadlineA = callA.timestamp + Math.min(deadlineA, maxDelay);
+      deadlineB = callB.timestamp + Math.min(deadlineB, maxDelay);
+      return (int)(deadlineA - deadlineB);
+    }
+  }
 
   private int port;
   private final PriorityFunction priority;
@@ -65,29 +105,39 @@ public class SimpleRpcScheduler extends RpcScheduler {
       int replicationHandlerCount,
       PriorityFunction priority,
       int highPriorityLevel) {
-    int maxQueueLength = conf.getInt(CALL_QUEUE_MAX_LENGTH_CONF_KEY,
-      conf.getInt("ipc.server.max.callqueue.length",
-        handlerCount * RpcServer.DEFAULT_MAX_CALLQUEUE_LENGTH_PER_HANDLER));
+    int maxQueueLength = conf.getInt("hbase.ipc.server.max.callqueue.length",
+        handlerCount * RpcServer.DEFAULT_MAX_CALLQUEUE_LENGTH_PER_HANDLER);
     this.priority = priority;
     this.highPriorityLevel = highPriorityLevel;
 
-    float callqReadShare = conf.getFloat(CALL_QUEUE_READ_SHARE_CONF_KEY,
-      conf.getFloat("ipc.server.callqueue.read.share", 0));
+    String callQueueType = conf.get(CALL_QUEUE_TYPE_CONF_KEY, CALL_QUEUE_TYPE_DEADLINE_CONF_VALUE);
+    float callqReadShare = conf.getFloat(CALL_QUEUE_READ_SHARE_CONF_KEY, 0);
 
-    float callQueuesHandlersFactor = conf.getFloat(CALL_QUEUE_HANDLER_FACTOR_CONF_KEY,
-      conf.getFloat("ipc.server.callqueue.handler.factor", 0));
+    float callQueuesHandlersFactor = conf.getFloat(CALL_QUEUE_HANDLER_FACTOR_CONF_KEY, 0);
     int numCallQueues = Math.max(1, (int)Math.round(handlerCount * callQueuesHandlersFactor));
 
-    LOG.info("Using default user call queue, count=" + numCallQueues);
+    LOG.info("Using " + callQueueType + " as user call queue, count=" + numCallQueues);
 
     if (numCallQueues > 1 && callqReadShare > 0) {
       // multiple read/write queues
-      callExecutor = new RWQueueRpcExecutor("RW.Default", handlerCount, numCallQueues,
-          callqReadShare, maxQueueLength);
+      if (callQueueType.equals(CALL_QUEUE_TYPE_DEADLINE_CONF_VALUE)) {
+        CallPriorityComparator callPriority = new CallPriorityComparator(conf, this.priority);
+        callExecutor = new RWQueueRpcExecutor("default", handlerCount, numCallQueues,
+            callqReadShare, maxQueueLength, BoundedPriorityBlockingQueue.class, callPriority);
+      } else {
+        callExecutor = new RWQueueRpcExecutor("default", handlerCount, numCallQueues,
+            callqReadShare, maxQueueLength);
+      }
     } else {
       // multiple queues
-      callExecutor = new BalancedQueueRpcExecutor("B.Default", handlerCount,
-          numCallQueues, maxQueueLength);
+      if (callQueueType.equals(CALL_QUEUE_TYPE_DEADLINE_CONF_VALUE)) {
+        CallPriorityComparator callPriority = new CallPriorityComparator(conf, this.priority);
+        callExecutor = new BalancedQueueRpcExecutor("default", handlerCount, numCallQueues,
+            BoundedPriorityBlockingQueue.class, maxQueueLength, callPriority);
+      } else {
+        callExecutor = new BalancedQueueRpcExecutor("default", handlerCount,
+            numCallQueues, maxQueueLength);
+      }
     }
 
    this.priorityExecutor =
@@ -103,7 +153,7 @@ public class SimpleRpcScheduler extends RpcScheduler {
     this.port = context.getListenerAddress().getPort();
   }
 
-    @Override
+  @Override
   public void start() {
     callExecutor.start(port);
     if (priorityExecutor != null) priorityExecutor.start(port);

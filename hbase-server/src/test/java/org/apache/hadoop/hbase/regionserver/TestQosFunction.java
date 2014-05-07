@@ -17,7 +17,10 @@ package org.apache.hadoop.hbase.regionserver;
 * limitations under the License.
 */
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.when;
 
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.SmallTests;
 import org.apache.hadoop.hbase.protobuf.generated.ClientProtos.MultiRequest;
@@ -36,8 +39,12 @@ import com.google.protobuf.Message;
 public class TestQosFunction {
   @Test
   public void testPriority() {
-    HRegionServer hrs = Mockito.mock(HRegionServer.class);
-    AnnotationReadingPriorityFunction qosFunction = new AnnotationReadingPriorityFunction(hrs);
+    Configuration conf = HBaseConfiguration.create();
+    HRegionServer rpcServices = Mockito.mock(HRegionServer.class);
+    when(rpcServices.getConfiguration()).thenReturn(conf);
+
+    AnnotationReadingPriorityFunction qosFunction =
+      new AnnotationReadingPriorityFunction(rpcServices);
 
     // Set method name in pb style with the method name capitalized.
     checkMethod("ReplicateWALEntry", HConstants.REPLICATION_QOS, qosFunction);

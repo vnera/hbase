@@ -673,6 +673,11 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
     return priority.getPriority(header, param);
   }
 
+  @Override
+  public long getDeadline(RequestHeader header, Message param) {
+    return priority.getDeadline(header, param);
+  }
+
   @Retention(RetentionPolicy.RUNTIME)
   protected @interface QosPriority {
     int priority() default 0;
@@ -689,6 +694,19 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
       return scannerHolder.s;
     }
     return null;
+  }
+
+  /**
+   * Get the vtime associated with the scanner.
+   * Currently the vtime is the number of "next" calls.
+   */
+  long getScannerVirtualTime(long scannerId) {
+    String scannerIdString = Long.toString(scannerId);
+    RegionScannerHolder scannerHolder = scanners.get(scannerIdString);
+    if (scannerHolder != null) {
+      return scannerHolder.nextCallSeq;
+    }
+    return 0L;
   }
 
   /**
@@ -2691,10 +2709,10 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
       String regionNameStr = regionName == null?
         encodedRegionName: Bytes.toStringBinary(regionName);
       if (isOpening != null && isOpening.booleanValue()) {
-        throw new RegionOpeningException("Region " + regionNameStr + 
+        throw new RegionOpeningException("Region " + regionNameStr +
           " is opening on " + this.serverNameFromMasterPOV);
       }
-      throw new NotServingRegionException("Region " + regionNameStr + 
+      throw new NotServingRegionException("Region " + regionNameStr +
         " is not online on " + this.serverNameFromMasterPOV);
     }
     return region;
@@ -3695,7 +3713,7 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
                 region.getEncodedName())) {
             // check if current region open is for distributedLogReplay. This check is to support
             // rolling restart/upgrade where we want to Master/RS see same configuration
-            if (!regionOpenInfo.hasOpenForDistributedLogReplay() 
+            if (!regionOpenInfo.hasOpenForDistributedLogReplay()
                   || regionOpenInfo.getOpenForDistributedLogReplay()) {
               this.recoveringRegions.put(region.getEncodedName(), null);
             } else {
@@ -4602,7 +4620,7 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
         minSeqIdForLogReplay = storeSeqIdForReplay;
       }
     }
-    
+
     try {
       long lastRecordedFlushedSequenceId = -1;
       String nodePath = ZKUtil.joinZNode(this.zooKeeper.recoveringRegionsZNode,
@@ -4626,7 +4644,7 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
         LOG.warn("Can't find failed region server for recovering region " + region.getEncodedName());
       }
     } catch (NoNodeException ignore) {
-      LOG.debug("Region " + region.getEncodedName() + 
+      LOG.debug("Region " + region.getEncodedName() +
         " must have completed recovery because its recovery znode has been removed", ignore);
     }
   }
