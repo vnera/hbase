@@ -18,27 +18,17 @@
  */
 package org.apache.hadoop.hbase.thrift;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.CompatibilityFactory;
-import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.LargeTests;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.filter.ParseFilter;
+import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.test.MetricsAssertHelper;
 import org.apache.hadoop.hbase.thrift.ThriftServerRunner.HBaseHandler;
 import org.apache.hadoop.hbase.thrift.generated.BatchMutation;
@@ -48,16 +38,27 @@ import org.apache.hadoop.hbase.thrift.generated.IOError;
 import org.apache.hadoop.hbase.thrift.generated.Mutation;
 import org.apache.hadoop.hbase.thrift.generated.TAppend;
 import org.apache.hadoop.hbase.thrift.generated.TCell;
-import org.apache.hadoop.hbase.thrift.generated.TScan;
 import org.apache.hadoop.hbase.thrift.generated.TIncrement;
 import org.apache.hadoop.hbase.thrift.generated.TRegionInfo;
 import org.apache.hadoop.hbase.thrift.generated.TRowResult;
+import org.apache.hadoop.hbase.thrift.generated.TScan;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Threads;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Unit testing for ThriftServerRunner.HBaseHandler, a part of the
@@ -136,7 +137,8 @@ public class TestThriftServer {
    */
   public void doTestTableCreateDrop() throws Exception {
     ThriftServerRunner.HBaseHandler handler =
-      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+        UserProvider.instantiate(UTIL.getConfiguration()));
     doTestTableCreateDrop(handler);
   }
 
@@ -150,7 +152,7 @@ public class TestThriftServer {
 
     protected MySlowHBaseHandler(Configuration c)
         throws IOException {
-      super(c);
+      super(c, UserProvider.instantiate(c));
     }
 
     @Override
@@ -255,7 +257,8 @@ public class TestThriftServer {
 
   public void doTestIncrements() throws Exception {
     ThriftServerRunner.HBaseHandler handler =
-        new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+        UserProvider.instantiate(UTIL.getConfiguration()));
     createTestTables(handler);
     doTestIncrements(handler);
     dropTestTables(handler);
@@ -302,7 +305,8 @@ public class TestThriftServer {
    */
   public void doTestTableMutations() throws Exception {
     ThriftServerRunner.HBaseHandler handler =
-      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+        UserProvider.instantiate(UTIL.getConfiguration()));
     doTestTableMutations(handler);
   }
 
@@ -380,7 +384,8 @@ public class TestThriftServer {
   public void doTestTableTimestampsAndColumns() throws Exception {
     // Setup
     ThriftServerRunner.HBaseHandler handler =
-      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+        UserProvider.instantiate(UTIL.getConfiguration()));
     handler.createTable(tableAname, getColumnDescriptors());
 
     // Apply timestamped Mutations to rowA
@@ -459,7 +464,8 @@ public class TestThriftServer {
   public void doTestTableScanners() throws Exception {
     // Setup
     ThriftServerRunner.HBaseHandler handler =
-      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+        UserProvider.instantiate(UTIL.getConfiguration()));
     handler.createTable(tableAname, getColumnDescriptors());
 
     // Apply timestamped Mutations to rowA
@@ -567,7 +573,8 @@ public class TestThriftServer {
    */
   public void doTestGetTableRegions() throws Exception {
     ThriftServerRunner.HBaseHandler handler =
-      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+        UserProvider.instantiate(UTIL.getConfiguration()));
     doTestGetTableRegions(handler);
   }
 
@@ -602,7 +609,8 @@ public class TestThriftServer {
 
   public void doTestGetRegionInfo() throws Exception {
     ThriftServerRunner.HBaseHandler handler =
-      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+        UserProvider.instantiate(UTIL.getConfiguration()));
     doTestGetRegionInfo(handler);
   }
 
@@ -630,7 +638,8 @@ public class TestThriftServer {
    */
   public static void doTestAppend() throws Exception {
     ThriftServerRunner.HBaseHandler handler =
-        new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+        new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+            UserProvider.instantiate(UTIL.getConfiguration()));
     handler.createTable(tableAname, getColumnDescriptors());
     try {
       List<Mutation> mutations = new ArrayList<Mutation>(1);
@@ -663,7 +672,8 @@ public class TestThriftServer {
    */
   public static void doTestCheckAndPut() throws Exception {
     ThriftServerRunner.HBaseHandler handler =
-        new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+        new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+            UserProvider.instantiate(UTIL.getConfiguration()));
     handler.createTable(tableAname, getColumnDescriptors());
     try {
       List<Mutation> mutations = new ArrayList<Mutation>(1);
