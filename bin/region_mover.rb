@@ -281,7 +281,7 @@ end
 # Now get list of regions on targetServer
 def getRegions(config, servername)
   connection = HConnectionManager::getConnection(config);
-  return ProtobufUtil::getOnlineRegions(connection.getAdmin(ServerName.valueOf(servername)));
+  return ProtobufUtil::getOnlineRegions(connection.getAdmin(ServerName.new(servername)));
 end
 
 def deleteFile(filename)
