@@ -319,14 +319,12 @@ public class Scan extends Query {
    * @see #setMaxVersions(int)
    * @return this
    */
-  public Scan setTimeStamp(long timestamp)
-  throws IOException {
+  public Scan setTimeStamp(long timestamp) {
     try {
       tr = new TimeRange(timestamp, timestamp+1);
     } catch(IOException e) {
       // This should never happen, unless integer overflow or something extremely wrong...
       LOG.error("TimeRange failed, likely caused by integer overflow. ", e);
-      throw e;
     }
     return this;
   }
