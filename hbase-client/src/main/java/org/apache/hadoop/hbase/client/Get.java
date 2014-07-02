@@ -159,14 +159,12 @@ public class Get extends Query
    * @param timestamp version timestamp
    * @return this for invocation chaining
    */
-  public Get setTimeStamp(long timestamp)
-  throws IOException {
+  public Get setTimeStamp(long timestamp) {
     try {
       tr = new TimeRange(timestamp, timestamp+1);
     } catch(IOException e) {
       // This should never happen, unless integer overflow or something extremely wrong...
       LOG.error("TimeRange failed, likely caused by integer overflow. ", e);
-      throw e;
     }
     return this;
   }
