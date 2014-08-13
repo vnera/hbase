@@ -638,7 +638,8 @@ public class TestThriftServer {
    */
   public static void doTestAppend() throws Exception {
     ThriftServerRunner.HBaseHandler handler =
-        new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+        UserProvider.instantiate(UTIL.getConfiguration()));
     handler.createTable(tableAname, getColumnDescriptors());
     try {
       List<Mutation> mutations = new ArrayList<Mutation>(1);
@@ -671,7 +672,8 @@ public class TestThriftServer {
    */
   public static void doTestCheckAndPut() throws Exception {
     ThriftServerRunner.HBaseHandler handler =
-        new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration());
+      new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+        UserProvider.instantiate(UTIL.getConfiguration()));
     handler.createTable(tableAname, getColumnDescriptors());
     try {
       List<Mutation> mutations = new ArrayList<Mutation>(1);
