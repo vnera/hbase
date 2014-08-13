@@ -48,6 +48,7 @@
           <tarLongFileMode>gnu</tarLongFileMode>
           <descriptors>
             <descriptor>${assembly.file}</descriptor>
+	    <descriptor>src/main/assembly/src.xml</descriptor>
           </descriptors>
         </configuration>
       </plugin>
