@@ -1019,7 +1019,7 @@ possible configurations would overwhelm and obscure the important.
   </property>
   <property>
       <name>hbase.snapshot.format.version</name>
-      <value>1</value>
+      <value>2</value>
       <description>The Snapshot format version to use for new snapshots.
         1 is the old format used by 0.94, 0.96 and 0.98 as default.
         2 is the new format, which should be used if all the clients that are
