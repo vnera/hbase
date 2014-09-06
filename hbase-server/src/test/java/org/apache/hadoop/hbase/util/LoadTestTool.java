@@ -110,9 +110,9 @@ public class LoadTestTool extends AbstractHBaseTool {
         + "compression) to use for data blocks in the test column family, "
         + "one of " + Arrays.toString(DataBlockEncoding.values()) + ".";
 
-  private static final String OPT_BLOOM = "bloom";
-  private static final String OPT_COMPRESSION = "compression";
-  private static final String OPT_DEFERRED_LOG_FLUSH = "deferredlogflush";
+  public static final String OPT_BLOOM = "bloom";
+  public static final String OPT_COMPRESSION = "compression";
+  public static final String OPT_DEFERRED_LOG_FLUSH = "deferredlogflush";
   public static final String OPT_DEFERRED_LOG_FLUSH_USAGE = "Enable deferred log flush.";
   public static final String OPT_DATA_BLOCK_ENCODING =
       HColumnDescriptor.DATA_BLOCK_ENCODING.toLowerCase();
@@ -142,7 +142,7 @@ public class LoadTestTool extends AbstractHBaseTool {
   protected static final String OPT_BATCHUPDATE = "batchupdate";
   protected static final String OPT_UPDATE = "update";
 
-  protected static final String OPT_ENCRYPTION = "encryption";
+  public static final String OPT_ENCRYPTION = "encryption";
   protected static final String OPT_ENCRYPTION_USAGE =
     "Enables transparent encryption on the test table, one of " +
     Arrays.toString(Encryption.getSupportedCiphers());
