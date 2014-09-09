@@ -30,12 +30,10 @@ import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.executor.EventHandler;
 import org.apache.hadoop.hbase.executor.EventType;
 import org.apache.hadoop.hbase.master.AssignmentManager;
-import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionTransition.TransitionCode;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.RegionServerAccounting;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 import org.apache.hadoop.hbase.util.CancelableProgressable;
-import org.apache.hadoop.hbase.util.ConfigUtil;
 import org.apache.hadoop.hbase.zookeeper.ZKAssign;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.zookeeper.KeeperException;
@@ -62,8 +60,6 @@ public class OpenRegionHandler extends EventHandler {
   private volatile int version = -1;
   //version of the offline node that was set by the master
   private volatile int versionOfOfflineNode = -1;
-
-  private final boolean useZKForAssignment;
 
   public OpenRegionHandler(final Server server,
       final RegionServerServices rsServices, HRegionInfo regionInfo,
@@ -92,7 +88,6 @@ public class OpenRegionHandler extends EventHandler {
     assignmentTimeout = this.server.getConfiguration().
       getInt(AssignmentManager.ASSIGNMENT_TIMEOUT,
         AssignmentManager.DEFAULT_ASSIGNMENT_TIMEOUT_DEFAULT);
-    useZKForAssignment = ConfigUtil.useZKForAssignment(server.getConfiguration());
   }
 
   public HRegionInfo getRegionInfo() {
@@ -133,8 +128,7 @@ public class OpenRegionHandler extends EventHandler {
         return;
       }
 
-      if (useZKForAssignment
-          && !transitionZookeeperOfflineToOpening(encodedName, versionOfOfflineNode)) {
+      if (!transitionZookeeperOfflineToOpening(encodedName, versionOfOfflineNode)) {
         LOG.warn("Region was hijacked? Opening cancelled for encodedName=" + encodedName);
         // This is a desperate attempt: the znode is unlikely to be ours. But we can't do more.
         return;
@@ -148,7 +142,7 @@ public class OpenRegionHandler extends EventHandler {
       }
 
       boolean failed = true;
-      if (!useZKForAssignment || tickleOpening("post_region_open")) {
+      if (tickleOpening("post_region_open")) {
         if (updateMeta(region)) {
           failed = false;
         }
@@ -159,7 +153,7 @@ public class OpenRegionHandler extends EventHandler {
       }
 
 
-      if (!isRegionStillOpening() || (useZKForAssignment && !transitionToOpened(region))) {
+      if (!isRegionStillOpening() || !transitionToOpened(region)) {
         // If we fail to transition to opened, it's because of one of two cases:
         //    (a) we lost our ZK lease
         // OR (b) someone else opened the region before us
@@ -224,16 +218,10 @@ public class OpenRegionHandler extends EventHandler {
           cleanupFailedOpen(region);
         }
       } finally {
-        if (!useZKForAssignment) {
-          rsServices.reportRegionTransition(TransitionCode.FAILED_OPEN, regionInfo);
-        } else {
         // Even if cleanupFailed open fails we need to do this transition
         // See HBASE-7698
         tryTransitionFromOpeningToFailedOpen(regionInfo);
-        }
       }
-    } else if (!useZKForAssignment) {
-      rsServices.reportRegionTransition(TransitionCode.FAILED_OPEN, regionInfo);
     } else {
       // If still transition to OPENING is not done, we need to transition znode
       // to FAILED_OPEN
@@ -274,9 +262,7 @@ public class OpenRegionHandler extends EventHandler {
       if (elapsed > period) {
         // Only tickle OPENING if postOpenDeployTasks is taking some time.
         lastUpdate = now;
-        if (useZKForAssignment) {
-          tickleOpening = tickleOpening("post_open_deploy");
-        }
+        tickleOpening = tickleOpening("post_open_deploy");
       }
       synchronized (signaller) {
         try {
@@ -318,7 +304,7 @@ public class OpenRegionHandler extends EventHandler {
    * .
    */
   static class PostOpenDeployTasksThread extends Thread {
-    private Throwable exception = null;
+    private Exception exception = null;
     private final Server server;
     private final RegionServerServices services;
     private final HRegion region;
@@ -338,16 +324,13 @@ public class OpenRegionHandler extends EventHandler {
       try {
         this.services.postOpenDeployTasks(this.region,
           this.server.getCatalogTracker());
-      } catch (Throwable e) {
-        String msg =
-            "Exception running postOpenDeployTasks; region="
-                + this.region.getRegionInfo().getEncodedName();
+      } catch (KeeperException e) {
+        server.abort("Exception running postOpenDeployTasks; region=" +
+            this.region.getRegionInfo().getEncodedName(), e);
+      } catch (Exception e) {
+        LOG.warn("Exception running postOpenDeployTasks; region=" +
+          this.region.getRegionInfo().getEncodedName(), e);
         this.exception = e;
-        if (e instanceof IOException && isRegionStillOpening(region.getRegionInfo(), services)) {
-          server.abort(msg, e);
-        } else {
-          LOG.warn(msg, e);
-        }
       }
       // We're done.  Set flag then wake up anyone waiting on thread to complete.
       this.signaller.set(true);
@@ -359,7 +342,7 @@ public class OpenRegionHandler extends EventHandler {
     /**
      * @return Null or the run exception; call this method after thread is done.
      */
-    Throwable getException() {
+    Exception getException() {
       return this.exception;
     }
   }
@@ -484,20 +467,12 @@ public class OpenRegionHandler extends EventHandler {
           this.server.getConfiguration(),
           this.rsServices,
         new CancelableProgressable() {
-              public boolean progress() {
-                if (useZKForAssignment) {
-                  // We may lose the znode ownership during the open. Currently its
-                  // too hard interrupting ongoing region open. Just let it complete
-                  // and check we still have the znode after region open.
-                  // if tickle failed, we need to cancel opening region.
-                  return tickleOpening("open_region_progress");
-                }
-                if (!isRegionStillOpening()) {
-                  LOG.warn("Open region aborted since it isn't opening any more");
-                  return false;
-                }
-                return true;
-              }
+          public boolean progress() {
+            // We may lose the znode ownership during the open.  Currently its
+            // too hard interrupting ongoing region open.  Just let it complete
+            // and check we still have the znode after region open.
+            return tickleOpening("open_region_progress");
+          }
         });
     } catch (Throwable t) {
       // We failed open. Our caller will see the 'null' return value
@@ -525,15 +500,10 @@ public class OpenRegionHandler extends EventHandler {
     }
   }
 
-  private static boolean isRegionStillOpening(HRegionInfo regionInfo,
-      RegionServerServices rsServices) {
+  private boolean isRegionStillOpening() {
     byte[] encodedName = regionInfo.getEncodedNameAsBytes();
     Boolean action = rsServices.getRegionsInTransitionInRS().get(encodedName);
     return Boolean.TRUE.equals(action); // true means opening for RIT
-  }
-
-  private boolean isRegionStillOpening() {
-    return isRegionStillOpening(regionInfo, rsServices);
   }
 
   /**

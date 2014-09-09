@@ -21,25 +21,27 @@ package org.apache.hadoop.hbase.master.handler;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Set;
 import java.util.concurrent.locks.Lock;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.catalog.CatalogTracker;
 import org.apache.hadoop.hbase.catalog.MetaReader;
+import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.executor.EventHandler;
 import org.apache.hadoop.hbase.executor.EventType;
 import org.apache.hadoop.hbase.master.AssignmentManager;
 import org.apache.hadoop.hbase.master.DeadServer;
-import org.apache.hadoop.hbase.master.MasterFileSystem;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.master.RegionState;
 import org.apache.hadoop.hbase.master.RegionState.State;
@@ -161,14 +163,14 @@ public class ServerShutdownHandler extends EventHandler {
       // completed (zk is updated after edits to hbase:meta have gone in).  See
       // {@link SplitTransaction}.  We'd also have to be figure another way for
       // doing the below hbase:meta daughters fixup.
-      Set<HRegionInfo> hris = null;
+      NavigableMap<HRegionInfo, Result> hris = null;
       while (!this.server.isStopped()) {
         try {
           this.server.getCatalogTracker().waitForMeta();
           // Skip getting user regions if the server is stopped.
           if (!this.server.isStopped()) {
             hris = MetaReader.getServerUserRegions(this.server.getCatalogTracker(),
-              this.serverName).keySet();
+                this.serverName);
           }
           break;
         } catch (InterruptedException e) {
@@ -194,8 +196,9 @@ public class ServerShutdownHandler extends EventHandler {
           LOG.info("Splitting logs for " + serverName + " before assignment.");
           if (distributedLogReplay) {
             LOG.info("Mark regions in recovery before assignment.");
-            MasterFileSystem mfs = this.services.getMasterFileSystem();
-            mfs.prepareLogReplay(serverName, hris);
+            Set<ServerName> serverNames = new HashSet<ServerName>();
+            serverNames.add(serverName);
+            this.services.getMasterFileSystem().prepareLogReplay(serverNames);
           } else {
             this.services.getMasterFileSystem().splitLog(serverName);
           }
@@ -221,9 +224,10 @@ public class ServerShutdownHandler extends EventHandler {
       toAssignRegions.addAll(regionsInTransition);
 
       // Iterate regions that were on this server and assign them
-      if (hris != null && !hris.isEmpty()) {
+      if (hris != null) {
         RegionStates regionStates = am.getRegionStates();
-        for (HRegionInfo hri: hris) {
+        for (Map.Entry<HRegionInfo, Result> e: hris.entrySet()) {
+          HRegionInfo hri = e.getKey();
           if (regionsInTransition.contains(hri)) {
             continue;
           }
@@ -231,7 +235,7 @@ public class ServerShutdownHandler extends EventHandler {
           Lock lock = am.acquireRegionLock(encodedName);
           try {
             RegionState rit = regionStates.getRegionTransitionState(hri);
-            if (processDeadRegion(hri, am, server.getCatalogTracker())) {
+            if (processDeadRegion(hri, e.getValue(), am, server.getCatalogTracker())) {
               ServerName addressFromAM = regionStates.getRegionServerOfRegion(hri);
               if (addressFromAM != null && !addressFromAM.equals(this.serverName)) {
                 // If this region is in transition on the dead server, it must be
@@ -257,7 +261,7 @@ public class ServerShutdownHandler extends EventHandler {
                 }
               } else if (regionStates.isRegionInState(
                   hri, State.SPLITTING_NEW, State.MERGING_NEW)) {
-                regionStates.updateRegionState(hri, State.OFFLINE);
+                regionStates.regionOffline(hri);
               }
               toAssignRegions.add(hri);
             } else if (rit != null) {
@@ -330,12 +334,13 @@ public class ServerShutdownHandler extends EventHandler {
    * Process a dead region from a dead RS. Checks if the region is disabled or
    * disabling or if the region has a partially completed split.
    * @param hri
+   * @param result
    * @param assignmentManager
    * @param catalogTracker
    * @return Returns true if specified region should be assigned, false if not.
    * @throws IOException
    */
-  public static boolean processDeadRegion(HRegionInfo hri,
+  public static boolean processDeadRegion(HRegionInfo hri, Result result,
       AssignmentManager assignmentManager, CatalogTracker catalogTracker)
   throws IOException {
     boolean tablePresent = assignmentManager.getZKTable().isTablePresent(hri.getTable());

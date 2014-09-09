@@ -114,22 +114,17 @@ public class TestSplitTransactionOnCluster {
   private static volatile boolean secondSplit = false;
   private static volatile boolean callRollBack = false;
   private static volatile boolean firstSplitCompleted = false;
-  private static boolean useZKForAssignment = true;
 
-  static final HBaseTestingUtility TESTING_UTIL =
+  private static final HBaseTestingUtility TESTING_UTIL =
     new HBaseTestingUtility();
 
-  static void setupOnce() throws Exception {
-    TESTING_UTIL.getConfiguration().setInt("hbase.balancer.period", 60000);
-    useZKForAssignment =
-        TESTING_UTIL.getConfiguration().getBoolean("hbase.assignment.usezk", false);
-    TESTING_UTIL.startMiniCluster(NB_SERVERS);
-  }
-
   @BeforeClass public static void before() throws Exception {
-    // Use ZK for region assignment
-    TESTING_UTIL.getConfiguration().setBoolean("hbase.assignment.usezk", true);
-    setupOnce();
+    TESTING_UTIL.getConfiguration().setInt("hbase.balancer.period", 60000);
+    // Needed because some tests have splits happening on RS that are killed
+    // We don't want to wait 3min for the master to figure it out
+    TESTING_UTIL.getConfiguration().setInt(
+        "hbase.master.assignment.timeoutmonitor.timeout", 4000);
+    TESTING_UTIL.startMiniCluster(NB_SERVERS);
   }
 
   @AfterClass public static void after() throws Exception {
@@ -178,12 +173,6 @@ public class TestSplitTransactionOnCluster {
   public void testShouldFailSplitIfZNodeDoesNotExistDueToPrevRollBack() throws Exception {
     final TableName tableName =
         TableName.valueOf("testShouldFailSplitIfZNodeDoesNotExistDueToPrevRollBack");
-
-    if (!useZKForAssignment) {
-      // This test doesn't apply if not using ZK for assignment
-      return;
-    }
-
     try {
       // Create table then get the single region for our new table.
       HTable t = createTableAndWait(tableName.getName(), Bytes.toBytes("cf"));
@@ -360,46 +349,42 @@ public class TestSplitTransactionOnCluster {
       AssignmentManager.TEST_SKIP_SPLIT_HANDLING = true;
       // Now try splitting and it should work.
       split(hri, server, regionCount);
-        // Assert the ephemeral node is up in zk.
+      // Get daughters
+      List<HRegion> daughters = checkAndGetDaughters(tableName);
+      // Assert the ephemeral node is up in zk.
       String path = ZKAssign.getNodeName(TESTING_UTIL.getZooKeeperWatcher(),
         hri.getEncodedName());
       RegionTransition rt = null;
       Stat stats = null;
-      List<HRegion> daughters = null;
-      if (useZKForAssignment) {
-        daughters = checkAndGetDaughters(tableName);
-
-        // Wait till the znode moved to SPLIT
-        for (int i=0; i<100; i++) {
-          stats = TESTING_UTIL.getZooKeeperWatcher().getRecoverableZooKeeper().exists(path, false);
-          rt = RegionTransition.parseFrom(ZKAssign.getData(TESTING_UTIL.getZooKeeperWatcher(),
-            hri.getEncodedName()));
-          if (rt.getEventType().equals(EventType.RS_ZK_REGION_SPLIT)) break;
-          Thread.sleep(100);
-        }
-        LOG.info("EPHEMERAL NODE BEFORE SERVER ABORT, path=" + path + ", stats=" + stats);
-        assertTrue(rt != null && rt.getEventType().equals(EventType.RS_ZK_REGION_SPLIT));
-        // Now crash the server
-        cluster.abortRegionServer(tableRegionIndex);
+      // Wait till the znode moved to SPLIT
+      for (int i=0; i<100; i++) {
+        stats = TESTING_UTIL.getZooKeeperWatcher().getRecoverableZooKeeper().exists(path, false);
+        rt = RegionTransition.parseFrom(ZKAssign.getData(TESTING_UTIL.getZooKeeperWatcher(),
+          hri.getEncodedName()));
+        if (rt.getEventType().equals(EventType.RS_ZK_REGION_SPLIT)) break;
+        Thread.sleep(100);
       }
+      LOG.info("EPHEMERAL NODE BEFORE SERVER ABORT, path=" + path + ", stats=" + stats);
+      assertTrue(rt != null && rt.getEventType().equals(EventType.RS_ZK_REGION_SPLIT));
+      // Now crash the server
+      cluster.abortRegionServer(tableRegionIndex);
       waitUntilRegionServerDead();
-      awaitDaughters(tableName, 2);
-      if (useZKForAssignment) {
-        regions = cluster.getRegions(tableName);
-        for (HRegion r: regions) {
-          assertTrue(daughters.contains(r));
-        }
+      awaitDaughters(tableName, daughters.size());
 
-        // Finally assert that the ephemeral SPLIT znode was cleaned up.
-        for (int i=0; i<100; i++) {
-          // wait a bit (10s max) for the node to disappear
-          stats = TESTING_UTIL.getZooKeeperWatcher().getRecoverableZooKeeper().exists(path, false);
-          if (stats == null) break;
-          Thread.sleep(100);
-        }
-        LOG.info("EPHEMERAL NODE AFTER SERVER ABORT, path=" + path + ", stats=" + stats);
-        assertTrue(stats == null);
+      // Assert daughters are online.
+      regions = cluster.getRegions(tableName);
+      for (HRegion r: regions) {
+        assertTrue(daughters.contains(r));
       }
+      // Finally assert that the ephemeral SPLIT znode was cleaned up.
+      for (int i=0; i<100; i++) {
+        // wait a bit (10s max) for the node to disappear
+        stats = TESTING_UTIL.getZooKeeperWatcher().getRecoverableZooKeeper().exists(path, false);
+        if (stats == null) break;
+        Thread.sleep(100);
+      }
+      LOG.info("EPHEMERAL NODE AFTER SERVER ABORT, path=" + path + ", stats=" + stats);
+      assertTrue(stats == null);
     } finally {
       // Set this flag back.
       AssignmentManager.TEST_SKIP_SPLIT_HANDLING = false;
@@ -422,8 +407,6 @@ public class TestSplitTransactionOnCluster {
 
     int tableRegionIndex = ensureTableRegionNotOnSameServerAsMeta(admin, hri);
 
-    RegionStates regionStates = cluster.getMaster().getAssignmentManager().getRegionStates();
-
     // Turn off balancer so it doesn't cut in and mess up our placements.
     this.admin.setBalancerRunning(false, true);
     // Turn off the meta scanner so it don't remove parent on us.
@@ -438,12 +421,8 @@ public class TestSplitTransactionOnCluster {
       // Insert into zk a blocking znode, a znode of same name as region
       // so it gets in way of our splitting.
       ServerName fakedServer = ServerName.valueOf("any.old.server", 1234, -1);
-      if (useZKForAssignment) {
-        ZKAssign.createNodeClosing(TESTING_UTIL.getZooKeeperWatcher(),
-          hri, fakedServer);
-      } else {
-        regionStates.updateRegionState(hri, RegionState.State.CLOSING);
-      }
+      ZKAssign.createNodeClosing(TESTING_UTIL.getZooKeeperWatcher(),
+        hri, fakedServer);
       // Now try splitting.... should fail.  And each should successfully
       // rollback.
       this.admin.split(hri.getRegionNameAsString());
@@ -454,13 +433,9 @@ public class TestSplitTransactionOnCluster {
         Thread.sleep(100);
         assertEquals(regionCount, ProtobufUtil.getOnlineRegions(server).size());
       }
-      if (useZKForAssignment) {
-        // Now clear the zknode
-        ZKAssign.deleteClosingNode(TESTING_UTIL.getZooKeeperWatcher(),
-          hri, fakedServer);
-      } else {
-        regionStates.regionOnline(hri, server.getServerName());
-      }
+      // Now clear the zknode
+      ZKAssign.deleteClosingNode(TESTING_UTIL.getZooKeeperWatcher(),
+        hri, fakedServer);
       // Now try splitting and it should work.
       split(hri, server, regionCount);
       // Get daughters
@@ -652,11 +627,6 @@ public class TestSplitTransactionOnCluster {
       KeeperException, DeserializationException, ServiceException {
     final byte[] tableName = Bytes.toBytes("testMasterRestartWhenSplittingIsPartial");
 
-    if (!useZKForAssignment) {
-      // This test doesn't apply if not using ZK for assignment
-      return;
-    }
-
     // Create table then get the single region for our new table.
     HTable t = createTableAndWait(tableName, HConstants.CATALOG_FAMILY);
     List<HRegion> regions = cluster.getRegions(tableName);
@@ -816,7 +786,7 @@ public class TestSplitTransactionOnCluster {
    * @throws InterruptedException
    * @throws KeeperException
    */
-  @Test(timeout = 60000)
+  @Test
   public void testSplitBeforeSettingSplittingInZK() throws Exception,
       InterruptedException, KeeperException {
     testSplitBeforeSettingSplittingInZKInternals();
@@ -887,7 +857,7 @@ public class TestSplitTransactionOnCluster {
    * If a table has regions that have no store files in a region, they should split successfully
    * into two regions with no store files.
    */
-  @Test(timeout = 60000)
+  @Test
   public void testSplitRegionWithNoStoreFiles()
       throws Exception {
     final TableName tableName =
@@ -1150,21 +1120,13 @@ public class TestSplitTransactionOnCluster {
   private void split(final HRegionInfo hri, final HRegionServer server, final int regionCount)
       throws IOException, InterruptedException {
     this.admin.split(hri.getRegionNameAsString());
-    try {
-      for (int i = 0; ProtobufUtil.getOnlineRegions(server).size() <= regionCount && i < 300; i++) {
-        LOG.debug("Waiting on region to split");
-        Thread.sleep(100);
-      }
-
-      assertFalse("Waited too long for split",
-        ProtobufUtil.getOnlineRegions(server).size() <= regionCount);
-    } catch (RegionServerStoppedException e) {
-      if (useZKForAssignment) {
-        // If not using ZK for assignment, the exception may be expected.
-        LOG.error(e);
-        throw e;
-      }
+    for (int i = 0; ProtobufUtil.getOnlineRegions(server).size() <= regionCount && i < 300; i++) {
+      LOG.debug("Waiting on region to split");
+      Thread.sleep(100);
     }
+
+    assertFalse("Waited too long for split",
+        ProtobufUtil.getOnlineRegions(server).size() <= regionCount);
   }
 
   /**

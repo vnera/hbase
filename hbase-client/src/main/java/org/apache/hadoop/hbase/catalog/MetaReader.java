@@ -160,7 +160,6 @@ public class MetaReader {
    * @return An {@link HTable} for <code>tableName</code>
    * @throws IOException
    */
-  @SuppressWarnings("deprecation")
   private static HTable getHTable(final CatalogTracker catalogTracker,
       final TableName tableName)
   throws IOException {
@@ -483,11 +482,8 @@ public class MetaReader {
       @Override
       void add(Result r) {
         if (r == null || r.isEmpty()) return;
-        if (HRegionInfo.getHRegionInfo(r) == null) return;
         ServerName sn = HRegionInfo.getServerName(r);
-        if (sn != null && sn.equals(serverName)) {
-          this.results.add(r);
-        }
+        if (sn != null && sn.equals(serverName)) this.results.add(r);
       }
     };
     fullScan(catalogTracker, v);
@@ -495,8 +491,8 @@ public class MetaReader {
     if (results != null && !results.isEmpty()) {
       // Convert results to Map keyed by HRI
       for (Result r: results) {
-        HRegionInfo hri = HRegionInfo.getHRegionInfo(r);
-        if (hri != null) hris.put(hri, r);
+        Pair<HRegionInfo, ServerName> p = HRegionInfo.getHRegionInfoAndServerName(r);
+        if (p != null && p.getFirst() != null) hris.put(p.getFirst(), r);
       }
     }
     return hris;

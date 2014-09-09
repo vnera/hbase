@@ -65,7 +65,6 @@ public class TestRegionServerNoMaster {
 
   @BeforeClass
   public static void before() throws Exception {
-    HTU.getConfiguration().setBoolean("hbase.assignment.usezk", true);
     HTU.startMiniCluster(NB_SERVERS);
     final byte[] tableName = Bytes.toBytes(TestRegionServerNoMaster.class.getSimpleName());
 

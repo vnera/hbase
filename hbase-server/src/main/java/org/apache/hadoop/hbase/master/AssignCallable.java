@@ -34,18 +34,15 @@ public class AssignCallable implements Callable<Object> {
   private AssignmentManager assignmentManager;
 
   private HRegionInfo hri;
-  private boolean newPlan;
 
-  public AssignCallable(
-      AssignmentManager assignmentManager, HRegionInfo hri, boolean newPlan) {
+  public AssignCallable(AssignmentManager assignmentManager, HRegionInfo hri) {
     this.assignmentManager = assignmentManager;
-    this.newPlan = newPlan;
     this.hri = hri;
   }
 
   @Override
   public Object call() throws Exception {
-    assignmentManager.assign(hri, true, newPlan);
+    assignmentManager.assign(hri, true, true);
     return null;
   }
 }

@@ -28,10 +28,8 @@ import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.executor.EventHandler;
 import org.apache.hadoop.hbase.executor.EventType;
-import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionTransition.TransitionCode;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
-import org.apache.hadoop.hbase.util.ConfigUtil;
 import org.apache.hadoop.hbase.zookeeper.ZKAssign;
 import org.apache.zookeeper.KeeperException;
 
@@ -64,7 +62,6 @@ public class CloseRegionHandler extends EventHandler {
   // CLOSING.
   private final boolean zk;
   private ServerName destination;
-  private final boolean useZKForAssignment;
 
   // This is executed after receiving an CLOSE RPC from the master.
   public CloseRegionHandler(final Server server,
@@ -103,8 +100,9 @@ public class CloseRegionHandler extends EventHandler {
     this(server, rsServices, regionInfo, abort, zk, versionOfClosingNode, eventType, null);
   }
 
-  protected CloseRegionHandler(final Server server, final RegionServerServices rsServices,
-      HRegionInfo regionInfo, boolean abort, final boolean zk, final int versionOfClosingNode,
+    protected CloseRegionHandler(final Server server,
+      final RegionServerServices rsServices, HRegionInfo regionInfo,
+      boolean abort, final boolean zk, final int versionOfClosingNode,
       EventType eventType, ServerName destination) {
     super(server, eventType);
     this.server = server;
@@ -114,7 +112,6 @@ public class CloseRegionHandler extends EventHandler {
     this.zk = zk;
     this.expectedVersion = versionOfClosingNode;
     this.destination = destination;
-    useZKForAssignment = ConfigUtil.useZKForAssignment(server.getConfiguration());
   }
 
   public HRegionInfo getRegionInfo() {
@@ -140,8 +137,7 @@ public class CloseRegionHandler extends EventHandler {
 
       // Close the region
       try {
-        if (zk && useZKForAssignment
-            && !ZKAssign.checkClosingState(server.getZooKeeper(), regionInfo, expectedVersion)) {
+        if (zk && !ZKAssign.checkClosingState(server.getZooKeeper(), regionInfo, expectedVersion)){
           // bad znode state
           return; // We're node deleting the znode, but it's not ours...
         }
@@ -166,18 +162,16 @@ public class CloseRegionHandler extends EventHandler {
       }
 
       this.rsServices.removeFromOnlineRegions(region, destination);
-      if (!useZKForAssignment) {
-        rsServices.reportRegionTransition(TransitionCode.CLOSED, regionInfo);
-      } else {
-        if (this.zk) {
-          if (setClosedState(this.expectedVersion, region)) {
-            LOG.debug("Set closed state in zk for " + name + " on " + this.server.getServerName());
-          } else {
-            LOG.debug("Set closed state in zk UNSUCCESSFUL for " + name + " on "
-                + this.server.getServerName());
-          }
+
+      if (this.zk) {
+        if (setClosedState(this.expectedVersion, region)) {
+          LOG.debug("Set closed state in zk for " + name + " on " + this.server.getServerName());
+        } else {
+          LOG.debug("Set closed state in zk UNSUCCESSFUL for " + name + " on " +
+            this.server.getServerName());
         }
       }
+
       // Done!  Region is closed on this RS
       LOG.debug("Closed " + region.getRegionNameAsString());
     } finally {

@@ -40,17 +40,14 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MediumTests;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
-import org.apache.hadoop.hbase.MiniHBaseCluster.MiniHBaseClusterRegionServer;
 import org.apache.hadoop.hbase.ServerLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.UnknownRegionException;
 import org.apache.hadoop.hbase.Waiter;
 import org.apache.hadoop.hbase.catalog.MetaEditor;
-import org.apache.hadoop.hbase.catalog.MetaReader;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
-import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.coprocessor.BaseRegionObserver;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
@@ -59,10 +56,8 @@ import org.apache.hadoop.hbase.coprocessor.RegionObserver;
 import org.apache.hadoop.hbase.executor.EventType;
 import org.apache.hadoop.hbase.master.RegionState.State;
 import org.apache.hadoop.hbase.master.balancer.StochasticLoadBalancer;
-import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionTransition.TransitionCode;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.ConfigUtil;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.zookeeper.ZKAssign;
@@ -80,10 +75,11 @@ import org.junit.experimental.categories.Category;
 public class TestAssignmentManagerOnCluster {
   private final static byte[] FAMILY = Bytes.toBytes("FAMILY");
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
-  final static Configuration conf = TEST_UTIL.getConfiguration();
+  private final static Configuration conf = TEST_UTIL.getConfiguration();
   private static HBaseAdmin admin;
 
-  static void setupOnce() throws Exception {
+  @BeforeClass
+  public static void setUpBeforeClass() throws Exception {
     // Using the our load balancer to control region plans
     conf.setClass(HConstants.HBASE_MASTER_LOADBALANCER_CLASS,
       MyLoadBalancer.class, LoadBalancer.class);
@@ -92,15 +88,8 @@ public class TestAssignmentManagerOnCluster {
     // Reduce the maximum attempts to speed up the test
     conf.setInt("hbase.assignment.maximum.attempts", 3);
 
-    TEST_UTIL.startMiniCluster(1, 4, null, MyMaster.class, MyRegionServer.class);
+    TEST_UTIL.startMiniCluster(1, 4, null, MyMaster.class, null);
     admin = TEST_UTIL.getHBaseAdmin();
-  }
-
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    // Use ZK for region assignment
-    conf.setBoolean("hbase.assignment.usezk", true);
-    setupOnce();
   }
 
   @AfterClass
@@ -145,7 +134,7 @@ public class TestAssignmentManagerOnCluster {
       TEST_UTIL.deleteTable(Bytes.toBytes(table));
     }
   }
-  
+
   /**
    * This tests region assignment on a simulated restarted server
    */
@@ -382,9 +371,7 @@ public class TestAssignmentManagerOnCluster {
       master.assignRegion(hri);
       AssignmentManager am = master.getAssignmentManager();
       assertTrue(am.waitForAssignment(hri));
-      ServerName sn = am.getRegionStates().getRegionServerOfRegion(hri);
-      TEST_UTIL.assertRegionOnServer(hri, sn, 6000);
-      
+
       MyRegionObserver.preCloseEnabled.set(true);
       am.unassign(hri);
       RegionState state = am.getRegionStates().getRegionState(hri);
@@ -404,7 +391,7 @@ public class TestAssignmentManagerOnCluster {
 
       ServerName serverName = master.getAssignmentManager().
         getRegionStates().getRegionServerOfRegion(hri);
-      TEST_UTIL.assertRegionOnlyOnServer(hri, serverName, 6000);
+      TEST_UTIL.assertRegionOnlyOnServer(hri, serverName, 200);
     } finally {
       MyRegionObserver.preCloseEnabled.set(false);
       TEST_UTIL.deleteTable(Bytes.toBytes(table));
@@ -431,8 +418,6 @@ public class TestAssignmentManagerOnCluster {
       master.assignRegion(hri);
       AssignmentManager am = master.getAssignmentManager();
       assertTrue(am.waitForAssignment(hri));
-      ServerName sn = am.getRegionStates().getRegionServerOfRegion(hri);
-      TEST_UTIL.assertRegionOnServer(hri, sn, 6000);
 
       MyRegionObserver.preCloseEnabled.set(true);
       am.unassign(hri);
@@ -569,18 +554,16 @@ public class TestAssignmentManagerOnCluster {
       }
       am.regionOffline(hri);
       ZooKeeperWatcher zkw = TEST_UTIL.getHBaseCluster().getMaster().getZooKeeper();
-      am.getRegionStates().updateRegionState(hri, State.PENDING_OPEN, destServerName);
-      if (ConfigUtil.useZKForAssignment(conf)) {
-        ZKAssign.createNodeOffline(zkw, hri, destServerName);
-        ZKAssign.transitionNodeOpening(zkw, hri, destServerName);
-  
-        // Wait till the event is processed and the region is in transition
-        long timeoutTime = System.currentTimeMillis() + 20000;
-        while (!am.getRegionStates().isRegionInTransition(hri)) {
-          assertTrue("Failed to process ZK opening event in time",
-            System.currentTimeMillis() < timeoutTime);
-          Thread.sleep(100);
-        }
+      am.getRegionStates().updateRegionState(hri, State.OFFLINE);
+      ZKAssign.createNodeOffline(zkw, hri, destServerName);
+      ZKAssign.transitionNodeOpening(zkw, hri, destServerName);
+
+      // Wait till the event is processed and the region is in transition
+      long timeoutTime = System.currentTimeMillis() + 20000;
+      while (!am.getRegionStates().isRegionInTransition(hri)) {
+        assertTrue("Failed to process ZK opening event in time",
+          System.currentTimeMillis() < timeoutTime);
+        Thread.sleep(100);
       }
 
       am.getZKTable().setDisablingTable(table);
@@ -617,8 +600,6 @@ public class TestAssignmentManagerOnCluster {
       master.assignRegion(hri);
       AssignmentManager am = master.getAssignmentManager();
       assertTrue(am.waitForAssignment(hri));
-      ServerName sn = am.getRegionStates().getRegionServerOfRegion(hri);
-      TEST_UTIL.assertRegionOnServer(hri, sn, 6000);
 
       MyRegionObserver.postCloseEnabled.set(true);
       am.unassign(hri);
@@ -715,7 +696,9 @@ public class TestAssignmentManagerOnCluster {
 
       ServerName serverName = master.getAssignmentManager().
         getRegionStates().getRegionServerOfRegion(hri);
-      TEST_UTIL.assertRegionOnlyOnServer(hri, serverName, 6000);
+      TEST_UTIL.assertRegionOnlyOnServer(hri, serverName, 200);
+      assertFalse("Region should be assigned on a new region server",
+        oldServerName.equals(serverName));
     } finally {
       MyRegionObserver.postOpenEnabled.set(false);
       TEST_UTIL.deleteTable(Bytes.toBytes(table));
@@ -836,100 +819,6 @@ public class TestAssignmentManagerOnCluster {
       TEST_UTIL.deleteTable(Bytes.toBytes(table));
     }
   }
-  
-  /**
-   * Test that region state transition call is idempotent
-   */
-  @Test(timeout = 60000)
-  public void testReportRegionStateTransition() throws Exception {
-    String table = "testReportRegionStateTransition";
-    try {
-      MyRegionServer.simulateRetry = true;
-      HTableDescriptor desc = new HTableDescriptor(TableName.valueOf(table));
-      desc.addFamily(new HColumnDescriptor(FAMILY));
-      admin.createTable(desc);
-      HTable meta = new HTable(conf, TableName.META_TABLE_NAME);
-      HRegionInfo hri =
-          new HRegionInfo(desc.getTableName(), Bytes.toBytes("A"), Bytes.toBytes("Z"));
-      MetaEditor.addRegionToMeta(meta, hri);
-      HMaster master = TEST_UTIL.getHBaseCluster().getMaster();
-      master.assignRegion(hri);
-      AssignmentManager am = master.getAssignmentManager();
-      am.waitForAssignment(hri);
-      RegionStates regionStates = am.getRegionStates();
-      ServerName serverName = regionStates.getRegionServerOfRegion(hri);
-      // Assert the the region is actually open on the server
-      TEST_UTIL.assertRegionOnServer(hri, serverName, 200);
-      // Closing region should just work fine
-      admin.disableTable(TableName.valueOf(table));
-      assertTrue(regionStates.isRegionOffline(hri));
-      List<HRegionInfo> regions = TEST_UTIL.getHBaseAdmin().getOnlineRegions(serverName);
-      assertTrue(!regions.contains(hri));
-    } finally {
-      MyRegionServer.simulateRetry = false;
-      TEST_UTIL.deleteTable(Bytes.toBytes(table));
-    }
-  }
-
-  /**
-   * Test concurrent updates to meta when meta is not on master. Only for zk-less assignment
-   * @throws Exception
-   */
-  @Test(timeout = 30000)
-  public void testUpdatesRemoteMeta() throws Exception {
-    // Not for zk less assignment
-    if (conf.getBoolean("hbase.assignment.usezk", true)) {
-      return;
-    }
-    conf.setInt("hbase.regionstatestore.meta.connection", 3);
-    final RegionStateStore rss = new RegionStateStore(new MyRegionServer(conf));
-    rss.start();
-    // Create 10 threads and make each do 10 puts related to region state update
-    Thread[] th = new Thread[10];
-    List<String> nameList = new ArrayList<String>();
-    List<TableName> tableNameList = new ArrayList<TableName>();
-    for (int i = 0; i < th.length; i++) {
-      th[i] = new Thread() {
-        @Override
-        public void run() {
-          HRegionInfo[] hri = new HRegionInfo[10];
-          ServerName serverName = ServerName.valueOf("dummyhost", 1000, 1234);
-          for (int i = 0; i < 10; i++) {
-            hri[i] = new HRegionInfo(TableName.valueOf(Thread.currentThread().getName() + "_" + i));
-            RegionState newState = new RegionState(hri[i], RegionState.State.OPEN, serverName);
-            RegionState oldState =
-                new RegionState(hri[i], RegionState.State.PENDING_OPEN, serverName);
-            rss.updateRegionState(1, newState, oldState);
-          }
-        }
-      };
-      th[i].start();
-      nameList.add(th[i].getName());
-    }
-    for (int i = 0; i < th.length; i++) {
-      th[i].join();
-    }
-    // Add all the expected table names in meta to tableNameList
-    for (String name : nameList) {
-      for (int i = 0; i < 10; i++) {
-        tableNameList.add(TableName.valueOf(name + "_" + i));
-      }
-    }
-    List<Result> metaRows =
-        MetaReader.fullScan(TEST_UTIL.getMiniHBaseCluster().getMaster().getCatalogTracker());
-    int count = 0;
-    // Check all 100 rows are in meta
-    for (Result result : metaRows) {
-      if (tableNameList.contains(HRegionInfo.getTable(result.getRow()))) {
-        count++;
-        if (count == 100) {
-          break;
-        }
-      }
-    }
-    assertTrue(count == 100);
-    rss.stop();
-  }
 
   static class MyLoadBalancer extends StochasticLoadBalancer {
     // For this region, if specified, always assign to nowhere
@@ -965,34 +854,6 @@ public class TestAssignmentManagerOnCluster {
       }
     }
   }
-  
-  public static class MyRegionServer extends MiniHBaseClusterRegionServer {
-    static volatile ServerName abortedServer = null;
-    static volatile boolean simulateRetry;
-
-    public MyRegionServer(Configuration conf)
-      throws IOException, KeeperException,
-        InterruptedException {
-      super(conf);
-    }
-
-    @Override
-    public boolean
-        reportRegionTransition(TransitionCode code, long openSeqNum, HRegionInfo... hris) {
-      if (simulateRetry == true) {
-        // Simulate retry by calling the method twice
-        super.reportRegionTransition(code, openSeqNum, hris);
-        return super.reportRegionTransition(code, openSeqNum, hris);
-      }
-      return super.reportRegionTransition(code, openSeqNum, hris);
-    }
-
-    @Override
-    public boolean isAborted() {
-      return getServerName().equals(abortedServer) || super.isAborted();
-    }
-  }
-
 
   public static class MyRegionObserver extends BaseRegionObserver {
     // If enabled, fail all preClose calls

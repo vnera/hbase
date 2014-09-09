@@ -40,7 +40,6 @@ import org.apache.hadoop.hbase.master.RegionStates;
 import org.apache.hadoop.hbase.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.ConfigUtil;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.zookeeper.ZKAssign;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
@@ -492,9 +491,7 @@ public class TestScannersFromClientSide {
       RegionStates states = master.getAssignmentManager().getRegionStates();
       states.regionOffline(hri);
       states.updateRegionState(hri, State.OPENING);
-      if (ConfigUtil.useZKForAssignment(TEST_UTIL.getConfiguration())) {
-        ZKAssign.createNodeOffline(zkw, hri, loc.getServerName());
-      }
+      ZKAssign.createNodeOffline(zkw, hri, loc.getServerName());
       ProtobufUtil.openRegion(rs, rs.getServerName(), hri);
       startTime = EnvironmentEdgeManager.currentTimeMillis();
       while (true) {

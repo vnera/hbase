@@ -17,6 +17,9 @@
  */
 package org.apache.hadoop.hbase.master;
 
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
 import java.util.Date;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -32,7 +35,7 @@ import org.apache.hadoop.hbase.protobuf.generated.ClusterStatusProtos;
  * So it is almost immutable.
  */
 @InterfaceAudience.Private
-public class RegionState {
+public class RegionState implements org.apache.hadoop.io.Writable {
 
   @InterfaceAudience.Public
   @InterfaceStability.Evolving
@@ -71,11 +74,6 @@ public class RegionState {
 
   public RegionState(HRegionInfo region, State state) {
     this(region, state, System.currentTimeMillis(), null);
-  }
-
-  public RegionState(HRegionInfo region,
-      State state, ServerName serverName) {
-    this(region, state, System.currentTimeMillis(), serverName);
   }
 
   public RegionState(HRegionInfo region,
@@ -400,11 +398,25 @@ public class RegionState {
   }
 
   /**
-   * Don't count timestamp in hash code calculation
+   * @deprecated Writables are going away
    */
+  @Deprecated
   @Override
-  public int hashCode() {
-    return (serverName != null ? serverName.hashCode() * 11 : 0)
-      + hri.hashCode() + 5 * state.ordinal();
+  public void readFields(DataInput in) throws IOException {
+    hri = new HRegionInfo();
+    hri.readFields(in);
+    state = State.valueOf(in.readUTF());
+    stamp.set(in.readLong());
+  }
+
+  /**
+   * @deprecated Writables are going away
+   */
+  @Deprecated
+  @Override
+  public void write(DataOutput out) throws IOException {
+    hri.write(out);
+    out.writeUTF(state.name());
+    out.writeLong(stamp.get());
   }
 }
