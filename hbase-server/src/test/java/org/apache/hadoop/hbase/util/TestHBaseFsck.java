@@ -2056,7 +2056,7 @@ public class TestHBaseFsck {
     HBaseFsck hbck = doFsck(conf, false);
     assertNoErrors(hbck);
 
-    ServerName mockName = new ServerName("localhost", 60000, 1);
+    ServerName mockName = ServerName.valueOf("localhost", 60000, 1);
 
     // obtain one lock
     final TableLockManager tableLockManager = TableLockManager.createTableLockManager(conf, TEST_UTIL.getZooKeeperWatcher(), mockName);
