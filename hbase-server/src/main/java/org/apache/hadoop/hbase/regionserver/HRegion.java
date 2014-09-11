@@ -113,6 +113,7 @@ import org.apache.hadoop.hbase.ipc.CallerDisconnectedException;
 import org.apache.hadoop.hbase.ipc.RpcCallContext;
 import org.apache.hadoop.hbase.ipc.RpcServer;
 import org.apache.hadoop.hbase.master.AssignmentManager;
+import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.monitoring.MonitoredTask;
 import org.apache.hadoop.hbase.monitoring.TaskMonitor;
 import org.apache.hadoop.hbase.protobuf.generated.AdminProtos.GetRegionInfoResponse.CompactionState;
@@ -3393,6 +3394,9 @@ public class HRegion implements HeapSize { // , Writable{
   }
 
   protected HStore instantiateHStore(final HColumnDescriptor family) throws IOException {
+    if (MobUtils.isMobFamily(family)) {
+      return new HMobStore(this, family, this.conf);
+    }
     return new HStore(this, family, this.conf);
   }
 
@@ -3941,7 +3945,7 @@ public class HRegion implements HeapSize { // , Writable{
         int offset = 0;
         short length = 0;
         if (current != null) {
-          currentRow = current.getBuffer();
+          currentRow = current.getRowArray();
           offset = current.getRowOffset();
           length = current.getRowLength();
         }
