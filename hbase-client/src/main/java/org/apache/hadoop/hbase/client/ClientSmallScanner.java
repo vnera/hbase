@@ -88,6 +88,16 @@ public class ClientSmallScanner extends ClientScanner {
   }
 
   /**
+   * @deprecated Restructure your code to use {@link Scan#setSmall(boolean)} instead
+   **/
+  @Deprecated
+  public ClientSmallScanner(final Configuration conf, final Scan scan,
+      final TableName tableName, HConnection connection,
+      RpcRetryingCallerFactory rpcFactory) throws IOException {
+    super(conf, scan, tableName, connection, rpcFactory, RpcControllerFactory.instantiate(conf));
+  }
+
+  /**
    * Create a new ShortClientScanner for the specified table Note that the
    * passed {@link Scan}'s start row maybe changed changed.
    * 
