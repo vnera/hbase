@@ -58,7 +58,7 @@ import org.apache.zookeeper.KeeperException;
 
 /**
  * The store implementation to save MOBs (medium objects), it extends the HStore.
- * When a descriptor of a column family has the value "is_mob", it means this column family
+ * When a descriptor of a column family has the value "IS_MOB", it means this column family
  * is a mob one. When a HRegion instantiate a store for this column family, the HMobStore is
  * created.
  * HMobStore is almost the same with the HStore except using different types of scanners.
@@ -66,7 +66,7 @@ import org.apache.zookeeper.KeeperException;
  * In these scanners, a additional seeks in the mob files should be performed after the seek
  * to HBase is done.
  * The store implements how we save MOBs by extending HStore. When a descriptor
- * of a column family has the value "isMob", it means this column family is a mob one. When a
+ * of a column family has the value "IS_MOB", it means this column family is a mob one. When a
  * HRegion instantiate a store for this column family, the HMobStore is created. HMobStore is
  * almost the same with the HStore except using different types of scanners. In the method of
  * getScanner, the MobStoreScanner and MobReversedStoreScanner are returned. In these scanners, a
