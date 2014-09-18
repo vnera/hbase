@@ -71,9 +71,9 @@ public class DefaultCompactor extends Compactor {
         }
         // Create the writer even if no kv(Empty store file is also ok),
         // because we need record the max seq id for the store file, see HBASE-6059
-        writer = store.createWriterInTmp(fd.maxKeyCount, this.compactionCompression, true,
-            fd.maxMVCCReadpoint >= smallestReadPoint, fd.maxTagsLength > 0);
-        boolean finished = performCompaction(scanner, writer, smallestReadPoint);
+        writer = createTmpWriter(fd, smallestReadPoint);
+        boolean finished = performCompaction(fd, scanner, writer, smallestReadPoint);
+
         if (!finished) {
           writer.close();
           store.getFileSystem().delete(writer.getPath(), false);
@@ -95,6 +95,20 @@ public class DefaultCompactor extends Compactor {
       }
     }
     return newFiles;
+  }
+
+  /**
+   * Creates a writer for a new file in a temporary directory.
+   * @param fd The file details.
+   * @param smallestReadPoint The smallest mvcc readPoint across all the scanners in this region.
+   * @return Writer for a new StoreFile in the tmp dir.
+   * @throws IOException
+   */
+  protected StoreFile.Writer createTmpWriter(FileDetails fd, long smallestReadPoint)
+      throws IOException {
+    StoreFile.Writer writer = store.createWriterInTmp(fd.maxKeyCount, this.compactionCompression,
+        true, fd.maxMVCCReadpoint >= smallestReadPoint, fd.maxTagsLength > 0);
+    return writer;
   }
 
   /**
