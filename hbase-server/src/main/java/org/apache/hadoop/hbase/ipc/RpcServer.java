@@ -503,6 +503,10 @@ public class RpcServer implements RpcServerInterface {
         this.responder.doRespond(this);
       }
     }
+
+    public UserGroupInformation getRemoteUser() {
+      return connection.user;
+    }
   }
 
   /** Listens on the socket. Creates jobs for the handler threads*/
@@ -2396,6 +2400,7 @@ public class RpcServer implements RpcServerInterface {
     }
   }
 
+  @Override
   public RpcScheduler getScheduler() {
     return scheduler;
   }

@@ -44,6 +44,7 @@ import org.apache.hadoop.hbase.master.RegionPlan;
 import org.apache.hadoop.hbase.master.RegionState;
 import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescription;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.GetTableDescriptorsRequest;
+import org.apache.hadoop.hbase.protobuf.generated.QuotaProtos.Quotas;
 import org.apache.hadoop.hbase.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
@@ -616,11 +617,11 @@ public class TestMasterObserver {
         ObserverContext<MasterCoprocessorEnvironment> ctx) throws IOException {
       preMasterInitializationCalled = true;
     }
-    
+
     public boolean wasMasterInitializationCalled(){
       return preMasterInitializationCalled;
     }
-    
+
     @Override
     public void postStartMaster(ObserverContext<MasterCoprocessorEnvironment> ctx)
         throws IOException {
@@ -931,6 +932,56 @@ public class TestMasterObserver {
 
     public boolean wasGetTableDescriptorsCalled() {
       return preGetTableDescriptorsCalled && postGetTableDescriptorsCalled;
+    }
+
+    @Override
+    public void preSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+        final String userName, final Quotas quotas) throws IOException {
+    }
+
+    @Override
+    public void postSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+        final String userName, final Quotas quotas) throws IOException {
+    }
+
+    @Override
+    public void preSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+        final String userName, final TableName tableName, final Quotas quotas) throws IOException {
+    }
+
+    @Override
+    public void postSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+        final String userName, final TableName tableName, final Quotas quotas) throws IOException {
+    }
+
+    @Override
+    public void preSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+        final String userName, final String namespace, final Quotas quotas) throws IOException {
+    }
+
+    @Override
+    public void postSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+        final String userName, final String namespace, final Quotas quotas) throws IOException {
+    }
+
+    @Override
+    public void preSetTableQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+        final TableName tableName, final Quotas quotas) throws IOException {
+    }
+
+    @Override
+    public void postSetTableQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+        final TableName tableName, final Quotas quotas) throws IOException {
+    }
+
+    @Override
+    public void preSetNamespaceQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+        final String namespace, final Quotas quotas) throws IOException {
+    }
+
+    @Override
+    public void postSetNamespaceQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+        final String namespace, final Quotas quotas) throws IOException {
     }
   }
 
@@ -1280,7 +1331,7 @@ public class TestMasterObserver {
     try {
       UTIL.createMultiRegions(table, TEST_FAMILY);
       UTIL.waitUntilAllRegionsAssigned(TEST_TABLE);
-  
+
       NavigableMap<HRegionInfo, ServerName> regions = table.getRegionLocations();
       Map.Entry<HRegionInfo, ServerName> firstGoodPair = null;
       for (Map.Entry<HRegionInfo, ServerName> e: regions.entrySet()) {
@@ -1312,15 +1363,15 @@ public class TestMasterObserver {
         firstGoodPair.getKey().getEncodedNameAsBytes(),Bytes.toBytes(destName)));
       assertTrue("Coprocessor should have been called on region move",
         cp.wasMoveCalled());
-  
+
       // make sure balancer is on
       master.balanceSwitch(true);
       assertTrue("Coprocessor should have been called on balance switch",
           cp.wasBalanceSwitchCalled());
-  
+
       // turn balancer off
       master.balanceSwitch(false);
-  
+
       // wait for assignments to finish, if any
       AssignmentManager mgr = master.getAssignmentManager();
       Collection<RegionState> transRegions =
@@ -1328,7 +1379,7 @@ public class TestMasterObserver {
       for (RegionState state : transRegions) {
         mgr.getRegionStates().waitOnRegionToClearRegionsInTransition(state.getRegion());
       }
-  
+
       // move half the open regions from RS 0 to RS 1
       HRegionServer rs = cluster.getRegionServer(0);
       byte[] destRS = Bytes.toBytes(cluster.getRegionServer(1).getServerName().toString());

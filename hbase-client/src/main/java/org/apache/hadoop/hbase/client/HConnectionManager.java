@@ -107,6 +107,8 @@ import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.OfflineRegionResp
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.RestoreSnapshotResponse;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.RunCatalogScanResponse;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SetBalancerRunningResponse;
+import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SetQuotaRequest;
+import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SetQuotaResponse;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.ShutdownResponse;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SnapshotResponse;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.StopMasterResponse;
@@ -2130,9 +2132,16 @@ public class HConnectionManager {
             throws ServiceException {
           return stub.getClusterStatus(controller, request);
         }
+
+        @Override
+        public SetQuotaResponse setQuota(
+            RpcController controller, SetQuotaRequest request)
+            throws ServiceException {
+          return stub.setQuota(controller, request);
+        }
       };
     }
- 
+
 
     private static void release(MasterServiceState mss) {
       if (mss != null && mss.connection != null) {
@@ -2753,7 +2762,7 @@ public class HConnectionManager {
    * Look for an exception we know in the remote exception:
    * - hadoop.ipc wrapped exceptions
    * - nested exceptions
-   * 
+   *
    * Looks for: RegionMovedException / RegionOpeningException / RegionTooBusyException
    * @return null if we didn't find the exception, the exception otherwise.
    */

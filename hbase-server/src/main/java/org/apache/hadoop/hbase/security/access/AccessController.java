@@ -84,6 +84,7 @@ import org.apache.hadoop.hbase.protobuf.ResponseConverter;
 import org.apache.hadoop.hbase.protobuf.generated.AccessControlProtos;
 import org.apache.hadoop.hbase.protobuf.generated.AccessControlProtos.AccessControlService;
 import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescription;
+import org.apache.hadoop.hbase.protobuf.generated.QuotaProtos.Quotas;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
 import org.apache.hadoop.hbase.regionserver.MiniBatchOperationInProgress;
@@ -2196,4 +2197,35 @@ public class AccessController extends BaseMasterAndRegionObserver
   @Override
   public void postRollBackMerge(ObserverContext<RegionServerCoprocessorEnvironment> ctx,
       HRegion regionA, HRegion regionB) throws IOException { }
+
+
+  @Override
+  public void preSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+      final String userName, final Quotas quotas) throws IOException {
+    requirePermission("setUserQuota", Action.ADMIN);
+  }
+
+  @Override
+  public void preSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+      final String userName, final TableName tableName, final Quotas quotas) throws IOException {
+    requirePermission("setUserTableQuota", tableName, null, null, Action.ADMIN);
+  }
+
+  @Override
+  public void preSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+      final String userName, final String namespace, final Quotas quotas) throws IOException {
+    requirePermission("setUserNamespaceQuota", Action.ADMIN);
+  }
+
+  @Override
+  public void preSetTableQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+      final TableName tableName, final Quotas quotas) throws IOException {
+    requirePermission("setTableQuota", tableName, null, null, Action.ADMIN);
+  }
+
+  @Override
+  public void preSetNamespaceQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+      final String namespace, final Quotas quotas) throws IOException {
+    requirePermission("setNamespaceQuota", Action.ADMIN);
+  }
 }

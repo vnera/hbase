@@ -185,6 +185,8 @@ import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.RunCatalogScanReq
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.RunCatalogScanResponse;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SetBalancerRunningRequest;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SetBalancerRunningResponse;
+import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SetQuotaRequest;
+import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SetQuotaResponse;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.ShutdownRequest;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.ShutdownResponse;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SnapshotRequest;
@@ -207,6 +209,7 @@ import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.Repor
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.ReportRSFatalErrorResponse;
 import org.apache.hadoop.hbase.protobuf.generated.ZooKeeperProtos.SplitLogTask.RecoveryMode;
 import org.apache.hadoop.hbase.replication.regionserver.Replication;
+import org.apache.hadoop.hbase.quotas.MasterQuotaManager;
 import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.snapshot.ClientSnapshotDescriptionUtils;
 import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
@@ -383,6 +386,8 @@ MasterServices, Server {
   private SnapshotManager snapshotManager;
   // monitor for distributed procedures
   private MasterProcedureManagerHost mpmHost;
+
+  private MasterQuotaManager quotaManager;
 
   /** The health check chore. */
   private HealthCheckChore healthCheckChore;
@@ -921,6 +926,9 @@ MasterServices, Server {
     status.setStatus("Starting namespace manager");
     initNamespace();
 
+    status.setStatus("Starting quota manager");
+    initQuotaManager();
+
     if (this.cpHost != null) {
       try {
         this.cpHost.preMasterInitialization();
@@ -1041,6 +1049,11 @@ MasterServices, Server {
     //create namespace manager
     tableNamespaceManager = new TableNamespaceManager(this);
     tableNamespaceManager.start();
+  }
+
+  void initQuotaManager() throws IOException {
+    quotaManager = new MasterQuotaManager(this);
+    quotaManager.start();
   }
 
   private void splitMetaLogBeforeAssignment(ServerName currentMetaServer) throws IOException {
@@ -1218,6 +1231,7 @@ MasterServices, Server {
     // Clean up and close up shop
     if (this.logCleaner!= null) this.logCleaner.interrupt();
     if (this.hfileCleaner != null) this.hfileCleaner.interrupt();
+    if (this.quotaManager != null) this.quotaManager.stop();
 
     if (this.infoServer != null) {
       LOG.info("Stopping infoServer");
@@ -2295,6 +2309,11 @@ MasterServices, Server {
   }
 
   @Override
+  public MasterQuotaManager getMasterQuotaManager() {
+    return quotaManager;
+  }
+
+  @Override
   public ServerName getServerName() {
     return this.serverName;
   }
@@ -3195,4 +3214,14 @@ MasterServices, Server {
     return tableNames;
   }
 
+  @Override
+  public SetQuotaResponse setQuota(RpcController c, SetQuotaRequest req)
+      throws ServiceException {
+    try {
+      checkInitialized();
+      return getMasterQuotaManager().setQuota(req);
+    } catch (Exception e) {
+      throw new ServiceException(e);
+    }
+  }
 }

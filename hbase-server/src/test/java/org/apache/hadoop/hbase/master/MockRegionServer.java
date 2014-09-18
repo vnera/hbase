@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Random;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -85,6 +86,7 @@ import org.apache.hadoop.hbase.protobuf.generated.ClientProtos.MutateResponse;
 import org.apache.hadoop.hbase.protobuf.generated.ClientProtos.ScanRequest;
 import org.apache.hadoop.hbase.protobuf.generated.ClientProtos.ScanResponse;
 import org.apache.hadoop.hbase.protobuf.generated.RPCProtos;
+import org.apache.hadoop.hbase.quotas.RegionServerQuotaManager;
 import org.apache.hadoop.hbase.regionserver.CompactionRequestor;
 import org.apache.hadoop.hbase.regionserver.FlushRequester;
 import org.apache.hadoop.hbase.regionserver.HRegion;
@@ -303,8 +305,14 @@ ClientProtos.ClientService.BlockingInterface, RegionServerServices {
     return null;
   }
 
+  @Override
   public TableLockManager getTableLockManager() {
     return new NullTableLockManager();
+  }
+
+  @Override
+  public RegionServerQuotaManager getRegionServerQuotaManager() {
+    return null;
   }
 
   @Override
@@ -500,6 +508,12 @@ ClientProtos.ClientService.BlockingInterface, RegionServerServices {
 
   @Override
   public List<HRegion> getOnlineRegions(TableName tableName) throws IOException {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public Set<TableName> getOnlineTables() {
     // TODO Auto-generated method stub
     return null;
   }
