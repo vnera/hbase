@@ -22,16 +22,19 @@ import com.google.protobuf.Service;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.executor.ExecutorService;
 import org.apache.hadoop.hbase.ipc.RpcServerInterface;
 import org.apache.hadoop.hbase.master.TableLockManager;
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition.TransitionCode;
 import org.apache.hadoop.hbase.wal.WAL;
+import org.apache.hadoop.hbase.quotas.RegionServerQuotaManager;
 import org.apache.zookeeper.KeeperException;
 
 /**
@@ -68,6 +71,11 @@ public interface RegionServerServices
    * @return RegionServer's instance of {@link TableLockManager}
    */
   TableLockManager getTableLockManager();
+
+  /**
+   * @return RegionServer's instance of {@link RegionServerQuotaManager}
+   */
+  RegionServerQuotaManager getRegionServerQuotaManager();
 
   /**
    * Tasks to perform after region open to complete deploy of region on
@@ -139,4 +147,9 @@ public interface RegionServerServices
    * @return heap memory manager instance
    */
   HeapMemoryManager getHeapMemoryManager();
+
+  /**
+   * @return all the online tables in this RS
+   */
+  Set<TableName> getOnlineTables();
 }

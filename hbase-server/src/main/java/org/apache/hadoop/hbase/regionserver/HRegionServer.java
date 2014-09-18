@@ -125,6 +125,7 @@ import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.Regio
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.ReportRSFatalErrorRequest;
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionRequest;
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionResponse;
+import org.apache.hadoop.hbase.quotas.RegionServerQuotaManager;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionProgress;
 import org.apache.hadoop.hbase.regionserver.handler.CloseMetaHandler;
 import org.apache.hadoop.hbase.regionserver.handler.CloseRegionHandler;
@@ -405,6 +406,8 @@ public class HRegionServer extends HasThread implements
   private RegionServerCoprocessorHost rsHost;
 
   private RegionServerProcedureManagerHost rspmHost;
+
+  private RegionServerQuotaManager rsQuotaManager;
 
   // Table level lock manager for locking for region operations
   protected TableLockManager tableLockManager;
@@ -780,6 +783,9 @@ public class HRegionServer extends HasThread implements
       nonceManagerChore = this.nonceManager.createCleanupChore(this);
     }
 
+    // Setup the Quota Manager
+    rsQuotaManager = new RegionServerQuotaManager(this);
+
     // Setup RPC client for master communication
     rpcClient = RpcClientFactory.createClient(conf, clusterId, new InetSocketAddress(
         rpcServices.isa.getAddress(), 0));
@@ -837,6 +843,9 @@ public class HRegionServer extends HasThread implements
         // start the snapshot handler and other procedure handlers,
         // since the server is ready to run
         rspmHost.start();
+
+        // Start the Quota Manager
+        rsQuotaManager.start(getRpcServer().getScheduler());
       }
 
       // We registered with the Master.  Go into run mode.
@@ -928,6 +937,11 @@ public class HRegionServer extends HasThread implements
     }
     if (this.storefileRefresher != null) {
       this.storefileRefresher.interrupt();
+    }
+
+    // Stop the quota manager
+    if (rsQuotaManager != null) {
+      rsQuotaManager.stop();
     }
 
     // Stop the snapshot and other procedure handlers, forcefully killing all running tasks
@@ -2408,6 +2422,11 @@ public class HRegionServer extends HasThread implements
     return service;
   }
 
+  @Override
+  public RegionServerQuotaManager getRegionServerQuotaManager() {
+    return rsQuotaManager;
+  }
+
   //
   // Main program and support routines
   //
@@ -2525,6 +2544,22 @@ public class HRegionServer extends HasThread implements
      }
      return tableRegions;
    }
+
+  /**
+   * Gets the online tables in this RS.
+   * This method looks at the in-memory onlineRegions.
+   * @return all the online tables in this RS
+   */
+  @Override
+  public Set<TableName> getOnlineTables() {
+    Set<TableName> tables = new HashSet<TableName>();
+    synchronized (this.onlineRegions) {
+      for (HRegion region: this.onlineRegions.values()) {
+        tables.add(region.getTableDesc().getTableName());
+      }
+    }
+    return tables;
+  }
 
   // used by org/apache/hbase/tmpl/regionserver/RSStatusTmpl.jamon (HBASE-4070).
   public String[] getRegionServerCoprocessors() {
