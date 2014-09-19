@@ -355,6 +355,7 @@ MasterServices, Server {
   private CatalogJanitor catalogJanitorChore;
   private LogCleaner logCleaner;
   private HFileCleaner hfileCleaner;
+  private ExpiredMobFileCleanerChore expiredMobFileCleanerChore;
 
   private MasterCoprocessorHost cpHost;
   private final ServerName serverName;
@@ -945,6 +946,9 @@ MasterServices, Server {
     // master initialization. See HBASE-5916.
     this.serverManager.clearDeadServersWithSameHostNameAndPortOfOnlineServer();
 
+    this.expiredMobFileCleanerChore = new ExpiredMobFileCleanerChore(this);
+    Threads.setDaemonThreadRunning(expiredMobFileCleanerChore.getThread());
+
     if (!masterRecovery) {
       if (this.cpHost != null) {
         // don't let cp initialization errors kill the master
@@ -1265,6 +1269,9 @@ MasterServices, Server {
   }
 
   private void stopChores() {
+    if (this.expiredMobFileCleanerChore != null) {
+      this.expiredMobFileCleanerChore.interrupt();
+    }
     if (this.balancerChore != null) {
       this.balancerChore.interrupt();
     }
