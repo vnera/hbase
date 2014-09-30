@@ -476,7 +476,8 @@ public class AccessController extends BaseRegionObserver
   private void requireGlobalPermission(String request, Action perm, TableName tableName,
       Map<byte[], ? extends Collection<byte[]>> familyMap) throws IOException {
     User user = getActiveUser();
-    if (authManager.authorize(user, perm)) {
+    if (authManager.authorize(user, perm) || (tableName != null &&
+        authManager.authorize(user, tableName.getNamespaceAsString(), perm))) {
       logResult(AuthResult.allow(request, "Global check allowed", user, perm, tableName, familyMap));
     } else {
       logResult(AuthResult.deny(request, "Global check failed", user, perm, tableName, familyMap));
