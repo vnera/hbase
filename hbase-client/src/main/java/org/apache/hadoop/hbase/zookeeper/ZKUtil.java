@@ -1340,8 +1340,8 @@ public class ZKUtil {
           deleteNodeRecursively(zkw, joinZNode(node, child));
         }
       }
-      //Zookeeper Watches are one time triggers; When children of parent nodes are deleted recursively.
-      //Must set another watch, get notified of delete node
+      //Zookeeper Watches are one time triggers; When children of parent nodes are deleted recursively. 
+      //Must set another watch, get notified of delete node   
       if (zkw.getRecoverableZooKeeper().exists(node, zkw) != null){
         zkw.getRecoverableZooKeeper().delete(node, -1);
       }
