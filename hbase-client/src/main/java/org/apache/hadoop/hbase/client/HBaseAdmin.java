@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
@@ -128,6 +129,12 @@ import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SnapshotResponse;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.StopMasterRequest;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.UnassignRegionRequest;
 import org.apache.hadoop.hbase.snapshot.ClientSnapshotDescriptionUtils;
+
+import org.apache.hadoop.hbase.regionserver.wal.FailedLogCloseException;
+import org.apache.hadoop.hbase.snapshot.HBaseSnapshotException;
+import org.apache.hadoop.hbase.snapshot.RestoreSnapshotException;
+import org.apache.hadoop.hbase.snapshot.SnapshotCreationException;
+import org.apache.hadoop.hbase.snapshot.UnknownSnapshotException;
 import org.apache.hadoop.hbase.util.Addressing;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
@@ -136,6 +143,7 @@ import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.zookeeper.KeeperException;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ServiceException;
 
@@ -213,21 +221,46 @@ public class HBaseAdmin implements Abortable, Closeable {
    * @throws IOException
    * @see #cleanupCatalogTracker(CatalogTracker)
    */
-  private synchronized CatalogTracker getCatalogTracker()
+  @VisibleForTesting
+  synchronized CatalogTracker getCatalogTracker()
   throws ZooKeeperConnectionException, IOException {
+    boolean succeeded = false;
     CatalogTracker ct = null;
     try {
       ct = new CatalogTracker(this.conf);
-      ct.start();
+      startCatalogTracker(ct);
+      succeeded = true;
     } catch (InterruptedException e) {
       // Let it out as an IOE for now until we redo all so tolerate IEs
-      Thread.currentThread().interrupt();
-      throw new IOException("Interrupted", e);
+      throw (InterruptedIOException)new InterruptedIOException("Interrupted").initCause(e);
+    } finally {
+      // If we did not succeed but created a catalogtracker, clean it up. CT has a ZK instance
+      // in it and we'll leak if we don't do the 'stop'.
+      if (!succeeded && ct != null) {
+        try {
+          ct.stop();
+        } catch (RuntimeException re) {
+          LOG.error("Failed to clean up HBase's internal catalog tracker after a failed initialization. " +
+            "We may have leaked network connections to ZooKeeper; they won't be cleaned up until " +
+            "the JVM exits. If you see a large number of stale connections to ZooKeeper this is likely " +
+            "the cause. The following exception details will be needed for assistance from the " +
+            "HBase community.", re);
+        }
+        ct = null;
+      }
     }
     return ct;
   }
 
-  private void cleanupCatalogTracker(final CatalogTracker ct) {
+  @VisibleForTesting
+  CatalogTracker startCatalogTracker(final CatalogTracker ct)
+  throws IOException, InterruptedException {
+    ct.start();
+    return ct;
+  }
+
+  @VisibleForTesting
+  void cleanupCatalogTracker(final CatalogTracker ct) {
     ct.stop();
   }
 
@@ -1026,7 +1059,7 @@ public class HBaseAdmin implements Abortable, Closeable {
       throw new TableNotFoundException(tableName);
     }
   }
-  
+
   /**
    * @param tableName name of table to check
    * @return true if table is on-line
