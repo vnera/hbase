@@ -124,6 +124,7 @@ import org.apache.hadoop.hbase.ipc.ServerNotRunningYetException;
 import org.apache.hadoop.hbase.ipc.ServerRpcController;
 import org.apache.hadoop.hbase.master.SplitLogManager;
 import org.apache.hadoop.hbase.master.TableLockManager;
+import org.apache.hadoop.hbase.mob.MobCacheConfig;
 import org.apache.hadoop.hbase.procedure.RegionServerProcedureManagerHost;
 import org.apache.hadoop.hbase.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.protobuf.RequestConverter;
@@ -453,6 +454,8 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
 
   // Cache configuration and block cache reference
   final CacheConfig cacheConfig;
+  // Cache configuration for mob
+  final MobCacheConfig mobCacheConfig;
 
   /** The health check chore. */
   private HealthCheckChore healthCheckChore;
@@ -625,6 +628,7 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
       "hbase.regionserver.kerberos.principal", this.isa.getHostName());
     regionServerAccounting = new RegionServerAccounting();
     cacheConfig = new CacheConfig(conf);
+    mobCacheConfig = new MobCacheConfig(conf);
     uncaughtExceptionHandler = new UncaughtExceptionHandler() {
       @Override
       public void uncaughtException(Thread t, Throwable e) {
@@ -958,6 +962,7 @@ public class HRegionServer implements ClientProtos.ClientService.BlockingInterfa
     if (cacheConfig.isBlockCacheEnabled()) {
       cacheConfig.getBlockCache().shutdown();
     }
+    mobCacheConfig.getMobFileCache().shutdown();
 
     if (movedRegionsCleaner != null) {
       movedRegionsCleaner.stop("Region Server stopping");

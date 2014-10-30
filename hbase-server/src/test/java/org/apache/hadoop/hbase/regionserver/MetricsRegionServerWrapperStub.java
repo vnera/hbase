@@ -243,11 +243,82 @@ public class MetricsRegionServerWrapperStub implements MetricsRegionServerWrappe
 
   @Override
   public long getHedgedReadOps() {
-    return 100;
+      return 100;
   }
 
   @Override
   public long getHedgedReadWins() {
+      return 10;
+  }
+
+  @Override
+  public long getMobCompactedIntoMobCellsCount() {
+    return 20;
+  }
+
+  @Override
+  public long getMobCompactedFromMobCellsCount() {
     return 10;
   }
+
+  @Override
+  public long getMobCompactedIntoMobCellsSize() {
+    return 200;
+  }
+
+  @Override
+  public long getMobCompactedFromMobCellsSize() {
+    return 100;
+  }
+
+  @Override
+  public long getMobFlushCount() {
+    return 1;
+  }
+
+  @Override
+  public long getMobFlushedCellsCount() {
+    return 10;
+  }
+
+  @Override
+  public long getMobFlushedCellsSize() {
+    return 1000;
+  }
+
+  @Override
+  public long getMobScanCellsCount() {
+    return 10;
+  }
+
+  @Override
+  public long getMobScanCellsSize() {
+    return 1000;
+  }
+
+  @Override
+  public long getMobFileCacheAccessCount() {
+    return 100;
+  }
+
+  @Override
+  public long getMobFileCacheMissCount() {
+    return 50;
+  }
+
+  @Override
+  public long getMobFileCacheEvictedCount() {
+    return 0;
+  }
+
+  @Override
+  public long getMobFileCacheCount() {
+    return 100;
+  }
+
+  @Override
+  public int getMobFileCacheHitPercent() {
+    return 50;
+  }
+
 }
