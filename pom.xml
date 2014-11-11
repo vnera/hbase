@@ -1007,7 +1007,7 @@
     <jackson.version>${cdh.jackson.version}</jackson.version>
     <jasper.version>5.5.23</jasper.version>
     <jaxb-api.version>2.1</jaxb-api.version>
-    <jetty.version>6.1.26.cloudera.3</jetty.version>
+    <jetty.version>6.1.26.cloudera.4</jetty.version>
     <jetty.jspapi.version>6.1.14</jetty.jspapi.version>
     <jersey.version>1.8</jersey.version>
     <jruby.version>1.6.8</jruby.version>
