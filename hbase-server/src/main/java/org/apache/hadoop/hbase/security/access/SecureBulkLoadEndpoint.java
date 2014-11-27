@@ -172,10 +172,7 @@ public class SecureBulkLoadEndpoint extends SecureBulkLoadService
                               RpcCallback<CleanupBulkLoadResponse> done) {
     try {
       getAccessController().preCleanupBulkLoad(env);
-      fs.delete(createStagingDir(baseStagingDir,
-          getActiveUser(),
-          new Path(request.getBulkToken()).getName()),
-          true);
+      fs.delete(new Path(request.getBulkToken()), true);
       done.run(CleanupBulkLoadResponse.newBuilder().build());
     } catch (IOException e) {
       ResponseConverter.setControllerException(controller, e);
