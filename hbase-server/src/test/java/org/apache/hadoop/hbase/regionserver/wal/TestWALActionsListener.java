@@ -151,7 +151,7 @@ public class TestWALActionsListener {
     }
 
     @Override
-    public void logRollRequested() {
+    public void logRollRequested(boolean tooFewReplicas) {
       // Not interested
     }
 
