@@ -504,8 +504,8 @@
           <artifactId>maven-compiler-plugin</artifactId>
           <version>2.5.1</version>
           <configuration>
-            <source>${compileSource}</source>
-            <target>${compileSource}</target>
+            <source>${sourceJavaVersion}</source>
+            <target>${targetJavaVersion}</target>
             <showWarnings>true</showWarnings>
             <showDeprecation>false</showDeprecation>
             <compilerArgument>-Xlint:-options</compilerArgument>
@@ -784,7 +784,7 @@
             </requireMavenVersion>
             <!-- The earliest JVM version we verify builds for via ASF Jenkins -->
             <requireJavaVersion>
-              <version>[${java.min.version},)</version>
+              <version>[${javaVersion}.0,${javaVersion}.1000}]</version>
               <message>Java is out of date.
   HBase requirs at least version ${java.min.version} of the JDK to properly build from source.
   You appear to be using an older version. You can use either "mvn -version" or
@@ -800,6 +800,27 @@
             <goals>
               <goal>enforce</goal>
             </goals>
+          </execution>
+          <execution>
+            <id>clean</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <phase>pre-clean</phase>
+          </execution>
+          <execution>
+            <id>default</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+          <execution>
+            <id>site</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <phase>pre-site</phase>
           </execution>
         </executions>
       </plugin>
@@ -1029,7 +1050,10 @@
     <compileSource>1.7</compileSource>
     <!-- Build dependencies -->
     <maven.min.version>3.0.3</maven.min.version>
-    <java.min.version>${compileSource}</java.min.version>
+    <javaVersion>1.7</javaVersion>
+    <targetJavaVersion>1.7</targetJavaVersion>
+    <sourceJavaVersion>${targetJavaVersion}</sourceJavaVersion>
+    <java.min.version>${javaVersion}</java.min.version>
     <!-- Dependencies -->
     <hadoop-two.version>${cdh.hadoop.version}</hadoop-two.version>
     <hadoop-three.version>3.0.0-SNAPSHOT</hadoop-three.version>
