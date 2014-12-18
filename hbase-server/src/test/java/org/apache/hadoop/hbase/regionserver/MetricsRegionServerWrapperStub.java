@@ -249,5 +249,15 @@ public class MetricsRegionServerWrapperStub implements MetricsRegionServerWrappe
   @Override
   public int getSplitQueueSize() {
     return 0;
+    
+  }
+  @Override
+  public long getHedgedReadOps() {
+    return 0;
+  }
+
+  @Override
+  public long getHedgedReadWins() {
+    return 10;
   }
 }
