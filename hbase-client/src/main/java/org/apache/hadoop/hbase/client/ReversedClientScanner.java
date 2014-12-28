@@ -53,7 +53,8 @@ public class ReversedClientScanner extends ClientScanner {
       TableName tableName, ClusterConnection connection,
       RpcRetryingCallerFactory rpcFactory, RpcControllerFactory controllerFactory,
       ExecutorService pool, int primaryOperationTimeout) throws IOException {
-    super(conf, scan, tableName, connection, rpcFactory, controllerFactory, pool, primaryOperationTimeout);
+    super(conf, scan, tableName, connection, rpcFactory, controllerFactory, pool,
+        primaryOperationTimeout);
   }
 
   @Override
