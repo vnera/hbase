@@ -28,7 +28,6 @@ import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.classification.InterfaceStability;
 import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.util.Strings;
-import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.net.DNS;
 import org.apache.hadoop.security.UserGroupInformation;
 
@@ -44,15 +43,31 @@ public class AuthUtil {
     super();
   }
 
+  @Deprecated
+  public static void launchAuthChore(Configuration conf) throws IOException {
+    final ChoreService choreService = new ChoreService("authUtilCore");
+    final ScheduledChore authChore = AuthUtil.getAuthChore(conf);
+    if (authChore != null) {
+      choreService.scheduleChore(authChore);
+    }
+    // Shutdown the chore on exit
+    Runtime.getRuntime().addShutdownHook(new Thread() {
+      @Override
+      public void run() {
+        choreService.shutdown();
+      }
+    });
+  }
+
   /**
    * Checks if security is enabled and if so, launches chore for refreshing kerberos ticket.
    */
-  public static void launchAuthChore(Configuration conf) throws IOException {
+  public static ScheduledChore getAuthChore(Configuration conf) throws IOException {
     UserProvider userProvider = UserProvider.instantiate(conf);
     // login the principal (if using secure Hadoop)
     boolean securityEnabled =
         userProvider.isHadoopSecurityEnabled() && userProvider.isHBaseSecurityEnabled();
-    if (!securityEnabled) return;
+    if (!securityEnabled) return null;
     String host = null;
     try {
       host = Strings.domainNamePointerToHostName(DNS.getDefaultHost(
@@ -87,7 +102,8 @@ public class AuthUtil {
     // e.g. 5min tgt * 0.8 = 4min refresh so interval is better be way less than 1min
     final int CHECK_TGT_INTERVAL = 30 * 1000; // 30sec
 
-    Chore refreshCredentials = new Chore("RefreshCredentials", CHECK_TGT_INTERVAL, stoppable) {
+    ScheduledChore refreshCredentials =
+        new ScheduledChore("RefreshCredentials", stoppable, CHECK_TGT_INTERVAL) {
       @Override
       protected void chore() {
         try {
@@ -97,7 +113,7 @@ public class AuthUtil {
         }
       }
     };
-    // Start the chore for refreshing credentials
-    Threads.setDaemonThreadRunning(refreshCredentials.getThread());
+
+    return refreshCredentials;
   }
 }

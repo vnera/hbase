@@ -32,7 +32,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.Chore;
+import org.apache.hadoop.hbase.ScheduledChore;
 import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.HTable;
@@ -89,7 +89,7 @@ public class QuotaCache implements Stoppable {
     Configuration conf = rsServices.getConfiguration();
     int period = conf.getInt(REFRESH_CONF_KEY, REFRESH_DEFAULT_PERIOD);
     refreshChore = new QuotaRefresherChore(period, this);
-    Threads.setDaemonThreadRunning(refreshChore.getThread());
+    rsServices.getChoreService().scheduleChore(refreshChore);
   }
 
   @Override
@@ -201,11 +201,11 @@ public class QuotaCache implements Stoppable {
   }
 
   // TODO: Remove this once we have the notification bus
-  private class QuotaRefresherChore extends Chore {
+  private class QuotaRefresherChore extends ScheduledChore {
     private long lastUpdate = 0;
 
     public QuotaRefresherChore(final int period, final Stoppable stoppable) {
-      super("QuotaRefresherChore", period, stoppable);
+      super("QuotaRefresherChore", stoppable, period);
     }
 
     @Override
