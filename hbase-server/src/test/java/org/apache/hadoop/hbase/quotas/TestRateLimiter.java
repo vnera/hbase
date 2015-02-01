@@ -20,7 +20,7 @@ package org.apache.hadoop.hbase.quotas;
 
 import java.util.concurrent.TimeUnit;
 
-import org.apache.hadoop.hbase.SmallTests;
+import org.apache.hadoop.hbase.testclassification.SmallTests;
 
 import org.junit.Assert;
 import org.junit.Test;

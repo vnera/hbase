@@ -31,6 +31,7 @@ import org.apache.hadoop.hbase.util.LoadTestTool;
 import org.apache.hadoop.util.ToolRunner;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.apache.hadoop.hbase.testclassification.IntegrationTests;
 
 /**
  * Integration Test for MOB ingest.
