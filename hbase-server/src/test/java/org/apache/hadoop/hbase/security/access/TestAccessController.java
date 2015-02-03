@@ -2480,7 +2480,6 @@ public class TestAccessController extends SecureTestUtil {
     TEST_UTIL.getMiniHBaseCluster().getMaster().deleteNamespace(ns);
   }
 
-  @Test
   private void verifyAnyCreate(AccessTestAction action) throws Exception {
     verifyAllowed(action, SUPERUSER, USER_ADMIN, USER_OWNER, USER_CREATE, USER_ADMIN_CF);
     verifyDenied(action, USER_NONE, USER_RO, USER_RW);
