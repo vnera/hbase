@@ -1004,12 +1004,12 @@
       <plugin>
         <groupId>org.asciidoctor</groupId>
         <artifactId>asciidoctor-maven-plugin</artifactId>
-        <version>1.5.2</version> 
+        <version>1.5.2</version>
         <executions>
           <execution>
-            <id>output-html</id> 
+            <id>output-html</id>
             <goals>
-              <goal>process-asciidoc</goal> 
+              <goal>process-asciidoc</goal>
             </goals>
             <phase>site</phase>
             <configuration>
@@ -1107,6 +1107,7 @@
     <jetty.version>6.1.26.cloudera.4</jetty.version>
     <jetty.jspapi.version>6.1.14</jetty.jspapi.version>
     <jersey.version>1.9</jersey.version>
+    <jmock-junit4.version>2.6.0</jmock-junit4.version>
     <jruby.version>1.6.8</jruby.version>
     <junit.version>4.11</junit.version>
     <hamcrest.version>1.3</hamcrest.version>
@@ -1638,6 +1639,18 @@
         <artifactId>jets3t</artifactId>
         <version>${jets3.version}</version>
       </dependency>
+      <dependency>
+        <groupId>org.jmock</groupId>
+        <artifactId>jmock-junit4</artifactId>
+        <version>${jmock-junit4.version}</version>
+        <scope>test</scope>
+        <exclusions>
+          <exclusion>
+            <artifactId>junit-dep</artifactId>
+            <groupId>junit</groupId>
+          </exclusion>
+        </exclusions>
+      </dependency>
     </dependencies>
   </dependencyManagement>
   <!-- Dependencies needed by subprojects -->
@@ -1660,6 +1673,10 @@
     <dependency>
       <groupId>org.mockito</groupId>
       <artifactId>mockito-all</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jmock</groupId>
+      <artifactId>jmock-junit4</artifactId>
     </dependency>
   </dependencies>
   <!--
