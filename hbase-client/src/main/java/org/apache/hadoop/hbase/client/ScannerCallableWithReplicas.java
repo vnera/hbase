@@ -18,6 +18,8 @@
 
 package org.apache.hadoop.hbase.client;
 
+import static org.apache.hadoop.hbase.client.ClientScanner.createClosestRowBefore;
+
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.util.ArrayList;
@@ -42,6 +44,7 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.util.Pair;
 
 import com.google.common.annotations.VisibleForTesting;
+
 /**
  * This class has the logic for handling scanners for regions with and without replicas.
  * 1. A scan is attempted on the default (primary) region

@@ -88,6 +88,7 @@ import org.apache.hadoop.hbase.protobuf.generated.SecureBulkLoadProtos.PrepareBu
 import org.apache.hadoop.hbase.protobuf.generated.QuotaProtos.Quotas;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
+import org.apache.hadoop.hbase.regionserver.InternalScanner.NextState;
 import org.apache.hadoop.hbase.regionserver.MiniBatchOperationInProgress;
 import org.apache.hadoop.hbase.regionserver.RegionScanner;
 import org.apache.hadoop.hbase.regionserver.ScanType;
@@ -812,7 +813,7 @@ public class AccessController extends BaseMasterAndRegionObserver
       do {
         cells.clear();
         // scan with limit as 1 to hold down memory use on wide rows
-        more = scanner.next(cells, 1);
+        more = NextState.hasMoreValues(scanner.next(cells, 1));
         for (Cell cell: cells) {
           if (LOG.isTraceEnabled()) {
             LOG.trace("Found cell " + cell);
