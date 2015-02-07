@@ -236,7 +236,7 @@ public class TestChoreService {
     }
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testInitialChorePrecedence() throws InterruptedException {
     ChoreService service = ChoreService.getInstance(TEST_SERVER_NAME);
 
@@ -260,7 +260,7 @@ public class TestChoreService {
     assertFalse(brokeOutOfLoop);
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testCancelChore() throws InterruptedException {
     final int period = 100;
     ScheduledChore chore1 = new DoNothingChore("chore1", period);
@@ -274,7 +274,7 @@ public class TestChoreService {
     assertTrue(service.getNumberOfScheduledChores() == 0);
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testScheduledChoreConstruction() {
     final String NAME = "chore";
     final int PERIOD = 100;
@@ -307,7 +307,7 @@ public class TestChoreService {
       invalidDelayChore.getInitialDelay());
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testChoreServiceConstruction() {
     final int corePoolSize = 10;
     final int defaultCorePoolSize = ChoreService.MIN_CORE_POOL_SIZE;
@@ -322,7 +322,7 @@ public class TestChoreService {
     assertEquals(defaultCorePoolSize, invalidInit.getCorePoolSize());
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testFrequencyOfChores() throws InterruptedException {
     final int period = 100;
     // Small delta that acts as time buffer (allowing chores to complete if running slowly)
@@ -338,7 +338,7 @@ public class TestChoreService {
     assertTrue(chore.getCountOfChoreCalls() == 21);
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testForceTrigger() throws InterruptedException {
     final int period = 100;
     final int delta = 5;
@@ -369,7 +369,7 @@ public class TestChoreService {
     assertTrue(chore.getCountOfChoreCalls() == 26);
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testCorePoolIncrease() throws InterruptedException {
     final int initialCorePoolSize = 3;
     ChoreService service = new ChoreService(TEST_SERVER_NAME, initialCorePoolSize);
@@ -404,7 +404,7 @@ public class TestChoreService {
       service.getCorePoolSize());
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testCorePoolDecrease() throws InterruptedException {
     final int initialCorePoolSize = 3;
     ChoreService service = new ChoreService(TEST_SERVER_NAME, initialCorePoolSize);
@@ -506,7 +506,7 @@ public class TestChoreService {
     assertEquals("Should not change", 3, service.getCorePoolSize());
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testNumberOfRunningChores() throws InterruptedException {
     ChoreService service = new ChoreService(TEST_SERVER_NAME);
 
@@ -543,7 +543,7 @@ public class TestChoreService {
     assertEquals("Scheduled chore mismatch", 0, service.getNumberOfScheduledChores());
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testNumberOfChoresMissingStartTime() throws InterruptedException {
     ChoreService service = new ChoreService(TEST_SERVER_NAME);
 
@@ -587,7 +587,7 @@ public class TestChoreService {
    * been scheduled with the service. For example, if 4 ScheduledChores are scheduled with a
    * ChoreService, the number of threads in the ChoreService's core pool should never exceed 4
    */
-  @Test
+  @Test (timeout=20000)
   public void testMaximumChoreServiceThreads() throws InterruptedException {
     ChoreService service = new ChoreService(TEST_SERVER_NAME);
 
@@ -630,7 +630,7 @@ public class TestChoreService {
     assertTrue(service.getCorePoolSize() <= service.getNumberOfScheduledChores());
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testScheduledChoreReset() throws InterruptedException {
     final int period = 100;
     ChoreService service = new ChoreService(TEST_SERVER_NAME);
@@ -657,7 +657,7 @@ public class TestChoreService {
     assertTrue(chore.getTimeOfThisRun() == -1);
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testChangingChoreServices() throws InterruptedException {
     final int period = 100;
     final int sleepTime = 10;
@@ -691,7 +691,7 @@ public class TestChoreService {
     assertTrue(chore.getChoreServicer() == null);
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testTriggerNowFailsWhenNotScheduled() throws InterruptedException {
     final int period = 100;
     // Small sleep time buffer to allow CountingChore to complete
@@ -716,7 +716,7 @@ public class TestChoreService {
     assertEquals(5, chore.getCountOfChoreCalls());
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testStopperForScheduledChores() throws InterruptedException {
     ChoreService service = ChoreService.getInstance(TEST_SERVER_NAME);
     Stoppable stopperForGroup1 = new SampleStopper();
@@ -767,7 +767,7 @@ public class TestChoreService {
     assertFalse(chore3_group2.isScheduled());
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testShutdownCancelsScheduledChores() throws InterruptedException {
     final int period = 100;
     ChoreService service = new ChoreService(TEST_SERVER_NAME);
@@ -789,7 +789,7 @@ public class TestChoreService {
     assertFalse(successChore3.isScheduled());
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testShutdownWorksWhileChoresAreExecuting() throws InterruptedException {
     final int period = 100;
     final int sleep = 5 * period;
@@ -814,7 +814,7 @@ public class TestChoreService {
     assertTrue(service.isTerminated());
   }
 
-  @Test
+  @Test (timeout=20000)
   public void testShutdownRejectsNewSchedules() throws InterruptedException {
     final int period = 100;
     ChoreService service = new ChoreService(TEST_SERVER_NAME);
