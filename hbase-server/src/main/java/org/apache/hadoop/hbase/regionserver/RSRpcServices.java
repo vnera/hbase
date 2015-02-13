@@ -150,6 +150,9 @@ import org.apache.hadoop.hbase.protobuf.generated.RPCProtos.RequestHeader;
 import org.apache.hadoop.hbase.protobuf.generated.WALProtos.CompactionDescriptor;
 import org.apache.hadoop.hbase.quotas.OperationQuota;
 import org.apache.hadoop.hbase.quotas.RegionServerQuotaManager;
+import org.apache.hadoop.hbase.quotas.ThrottlingException;
+import org.apache.hadoop.hbase.protobuf.generated.WALProtos.FlushDescriptor;
+import org.apache.hadoop.hbase.protobuf.generated.WALProtos.RegionEventDescriptor;
 import org.apache.hadoop.hbase.regionserver.HRegion.Operation;
 import org.apache.hadoop.hbase.regionserver.Leases.LeaseStillHeldException;
 import org.apache.hadoop.hbase.regionserver.handler.OpenMetaHandler;
@@ -716,8 +719,23 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         if (metaCells != null && !metaCells.isEmpty()) {
           for (Cell metaCell : metaCells) {
             CompactionDescriptor compactionDesc = WALEdit.getCompaction(metaCell);
+            boolean isDefaultReplica = RegionReplicaUtil.isDefaultReplica(region.getRegionInfo());
             if (compactionDesc != null) {
-              region.completeCompactionMarker(compactionDesc);
+              // replay the compaction. Remove the files from stores only if we are the primary
+              // region replica (thus own the files)
+              region.replayWALCompactionMarker(compactionDesc, !isDefaultReplica, isDefaultReplica,
+                replaySeqId);
+              continue;
+            }
+            FlushDescriptor flushDesc = WALEdit.getFlushDescriptor(metaCell);
+            if (flushDesc != null && !isDefaultReplica) {
+              region.replayWALFlushMarker(flushDesc);
+              continue;
+            }
+            RegionEventDescriptor regionEvent = WALEdit.getRegionEventDescriptor(metaCell);
+            if (regionEvent != null && !isDefaultReplica) {
+              region.replayWALRegionEventMarker(regionEvent);
+              continue;
             }
           }
           it.remove();
