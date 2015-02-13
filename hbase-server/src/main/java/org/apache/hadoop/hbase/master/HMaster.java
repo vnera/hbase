@@ -26,7 +26,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -406,6 +405,12 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     }
 
     RedirectServlet.regionServerInfoPort = infoServer.getPort();
+    // In CDH5.4+, master and region server would be sharing the same info port.
+    // The below changes is to ensure that info server still starts on master info port.
+    // Please see release notes for more details.
+    if(RedirectServlet.regionServerInfoPort == infoPort) {
+      return infoPort;
+    }
     masterJettyServer = new org.mortbay.jetty.Server();
     Connector connector = new SelectChannelConnector();
     connector.setHost(addr);
