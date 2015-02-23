@@ -3535,6 +3535,9 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
   }
 
   public void setReadsEnabled(boolean readsEnabled) {
+   if (readsEnabled && !this.writestate.readsEnabled) {
+     LOG.info(getRegionInfo().getEncodedName() + " : Enabling reads for region.");
+    }
     this.writestate.setReadsEnabled(readsEnabled);
   }
 
