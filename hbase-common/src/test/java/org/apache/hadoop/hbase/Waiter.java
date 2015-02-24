@@ -98,6 +98,21 @@ public final class Waiter {
   }
 
   /**
+   * A mixin interface, can be used with {@link Waiter} to explain failed state.
+   */
+  @InterfaceAudience.Private
+  public interface ExplainingPredicate<E extends Exception> extends Predicate<E> {
+
+    /**
+     * Perform a predicate evaluation.
+     *
+     * @return explanation of failed state
+     */
+    String explainFailure() throws E;
+
+  }
+
+  /**
    * Makes the current thread sleep for the duration equal to the specified time in milliseconds
    * multiplied by the {@link #getWaitForRatio(Configuration)}.
    * @param conf the configuration
