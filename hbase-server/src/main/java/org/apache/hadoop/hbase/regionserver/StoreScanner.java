@@ -513,6 +513,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
       prevCell = cell;
 
       ScanQueryMatcher.MatchCode qcode = matcher.match(cell);
+      qcode = optimize(qcode, cell);
       switch(qcode) {
         case INCLUDE:
         case INCLUDE_AND_SEEK_NEXT_ROW:
@@ -861,6 +862,5 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
   public Cell getNextIndexedKey() {
     return this.heap.getNextIndexedKey();
   }
-  
 }
 

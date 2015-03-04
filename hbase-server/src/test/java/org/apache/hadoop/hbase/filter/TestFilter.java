@@ -47,7 +47,6 @@ import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
 import org.apache.hadoop.hbase.filter.FilterList.Operator;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
-import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.regionserver.RegionScanner;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -2095,15 +2094,9 @@ public class TestFilter {
       assertEquals(Bytes.toInt(CellUtil.cloneValue(results.get(0))), i%2);
       results.clear();
     }
-<<<<<<< HEAD
-    assertFalse(NextState.hasMoreValues(scanner.next(results)));
-    WAL wal = testRegion.getWAL();
-    testRegion.close();
-=======
     assertFalse(scanner.next(results));
     WAL wal = ((HRegion)testRegion).getWAL();
     ((HRegion)testRegion).close();
->>>>>>> 408b916... HBASE-13421 Reduce the number of object creations introduced by HBASE-11544 in scan RPC hot code paths
     wal.close();
   }      
 }
