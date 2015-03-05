@@ -230,6 +230,30 @@ public class HBaseAdmin implements Admin {
     this((ClusterConnection)connection);
   }
 
+  /**
+   * Constructor for externally managed HConnections.
+   * The connection to master will be created when required by admin functions.
+   *
+   * @param connection The HConnection instance to use
+   * @throws MasterNotRunningException, ZooKeeperConnectionException are not
+   *  thrown anymore but kept into the interface for backward api compatibility
+   * @deprecated Use {@link #HBaseAdmin(Connection conn)} instead.
+   */
+  @Deprecated
+  public HBaseAdmin(HConnection connection)
+      throws MasterNotRunningException, ZooKeeperConnectionException {
+    this.conf = connection.getConfiguration();
+    this.connection = (ClusterConnection) connection;
+
+    this.pause = this.conf.getLong(HConstants.HBASE_CLIENT_PAUSE,
+        HConstants.DEFAULT_HBASE_CLIENT_PAUSE);
+    this.numRetries = this.conf.getInt(HConstants.HBASE_CLIENT_RETRIES_NUMBER,
+        HConstants.DEFAULT_HBASE_CLIENT_RETRIES_NUMBER);
+    this.retryLongerMultiplier = this.conf.getInt(
+        "hbase.client.retries.longer.multiplier", 10);
+    this.rpcCallerFactory = RpcRetryingCallerFactory.instantiate(this.conf);
+  }
+
   HBaseAdmin(ClusterConnection connection) {
     this.conf = connection.getConfiguration();
     this.connection = connection;
