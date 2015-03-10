@@ -18,7 +18,6 @@ package org.apache.hadoop.hbase.filter;
 import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,6 +36,8 @@ import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -100,11 +101,11 @@ public class TestFuzzyRowAndColumnRangeFilter {
       for (int i2 = 0; i2 < 5; i2++) {
         byte[] rk = new byte[10];
 
-        ByteBuffer buf = ByteBuffer.wrap(rk);
+        ChannelBuffer buf = ChannelBuffers.wrappedBuffer(rk);
         buf.clear();
-        buf.putShort((short) 2);
-        buf.putInt(i1);
-        buf.putInt(i2);
+        buf.writeShort((short) 2);
+        buf.writeInt(i1);
+        buf.writeInt(i2);
 
         for (int c = 0; c < 5; c++) {
           byte[] cq = new byte[4];
@@ -132,12 +133,12 @@ public class TestFuzzyRowAndColumnRangeFilter {
   private void runTest(Table hTable, int cqStart, int expectedSize) throws IOException {
     // [0, 2, ?, ?, ?, ?, 0, 0, 0, 1]
     byte[] fuzzyKey = new byte[10];
-    ByteBuffer buf = ByteBuffer.wrap(fuzzyKey);
+    ChannelBuffer buf = ChannelBuffers.wrappedBuffer(fuzzyKey);
     buf.clear();
-    buf.putShort((short) 2);
+    buf.writeShort((short) 2);
     for (int i = 0; i < 4; i++)
-      buf.put((byte)63);
-    buf.putInt((short)1);
+      buf.writeByte((short)63);
+    buf.writeInt((short)1);
 
     byte[] mask = new byte[] {0 , 0, 1, 1, 1, 1, 0, 0, 0, 0};
 
