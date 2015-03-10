@@ -382,7 +382,7 @@ public class TestAsyncProcess {
   }
 
   @Rule
-  public Timeout timeout = new Timeout(10000); // 10 seconds max per method tested
+  public Timeout timeout = new Timeout(20000); // 20 seconds max per method tested
 
   @Test
   public void testSubmit() throws Exception {
