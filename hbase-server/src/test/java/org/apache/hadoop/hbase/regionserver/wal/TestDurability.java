@@ -216,7 +216,6 @@ public class TestDurability {
       WAL log, Durability durability)
     throws IOException {
       HTableDescriptor htd = new HTableDescriptor(TableName.valueOf(tableName));
-      htd.setDurability(durability);
       HColumnDescriptor hcd = new HColumnDescriptor(FAMILY);
       htd.addFamily(hcd);
       HRegionInfo info = new HRegionInfo(htd.getTableName(), null, null, false);
