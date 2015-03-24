@@ -424,9 +424,6 @@ public class ClientScanner extends AbstractClientScanner {
         // happens for the cases where we see exceptions. Since only openScanner
         // would have happened, values would be null
         if (values == null && callable.switchedToADifferentReplica()) {
-          if (this.lastResult != null) { //only skip if there was something read earlier
-            skipFirst = true;
-          }
           this.currentRegion = callable.getHRegionInfo();
           continue;
         }

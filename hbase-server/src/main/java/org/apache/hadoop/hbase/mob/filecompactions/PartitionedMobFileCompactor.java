@@ -62,6 +62,7 @@ import org.apache.hadoop.hbase.regionserver.BloomType;
 import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.ScanInfo;
 import org.apache.hadoop.hbase.regionserver.ScanType;
+import org.apache.hadoop.hbase.regionserver.ScannerContext;
 import org.apache.hadoop.hbase.regionserver.StoreFile;
 import org.apache.hadoop.hbase.regionserver.StoreFile.Writer;
 import org.apache.hadoop.hbase.regionserver.StoreFileInfo;
@@ -370,8 +371,10 @@ public class PartitionedMobFileCompactor extends MobFileCompactor {
       refFilePath = refFileWriter.getPath();
       List<Cell> cells = new ArrayList<Cell>();
       boolean hasMore = false;
+      ScannerContext scannerContext =
+              ScannerContext.newBuilder().setBatchLimit(compactionKVMax).build();
       do {
-        hasMore = scanner.next(cells, compactionKVMax);
+        hasMore = scanner.next(cells, scannerContext);
         for (Cell cell : cells) {
           // TODO remove this after the new code are introduced.
           KeyValue kv = KeyValueUtil.ensureKeyValue(cell);
@@ -475,8 +478,10 @@ public class PartitionedMobFileCompactor extends MobFileCompactor {
       filePath = writer.getPath();
       List<Cell> cells = new ArrayList<Cell>();
       boolean hasMore = false;
+      ScannerContext scannerContext =
+              ScannerContext.newBuilder().setBatchLimit(compactionKVMax).build();
       do {
-        hasMore = scanner.next(cells, compactionKVMax);
+        hasMore = scanner.next(cells, scannerContext);
         for (Cell cell : cells) {
           // TODO remove this after the new code are introduced.
           KeyValue kv = KeyValueUtil.ensureKeyValue(cell);

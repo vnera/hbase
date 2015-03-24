@@ -41,6 +41,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -291,14 +292,37 @@ class ScannerCallableWithReplicas implements RetryingCallable<Result[]> {
         continue; //this was already scheduled earlier
       }
       ScannerCallable s = currentScannerCallable.getScannerCallableForReplica(id);
-      if (this.lastResult != null) {
-        s.getScan().setStartRow(this.lastResult.getRow());
-      }
+      setStartRowForReplicaCallable(s);
       outstandingCallables.add(s);
       RetryingRPC retryingOnReplica = new RetryingRPC(s);
       cs.submit(retryingOnReplica, scannerTimeout, id);
     }
     return max - min + 1;
+  }
+
+  /**
+   * Set the start row for the replica callable based on the state of the last result received.
+   * @param callable The callable to set the start row on
+   */
+  private void setStartRowForReplicaCallable(ScannerCallable callable) {
+    if (this.lastResult == null || callable == null) return;
+
+    if (this.lastResult.isPartial()) {
+      // The last result was a partial result which means we have not received all of the cells
+      // for this row. Thus, use the last result's row as the start row. If a replica switch
+      // occurs, the scanner will ensure that any accumulated partial results are cleared,
+      // and the scan can resume from this row.
+      callable.getScan().setStartRow(this.lastResult.getRow());
+    } else {
+      // The last result was not a partial result which means it contained all of the cells for
+      // that row (we no longer need any information from it). Set the start row to the next
+      // closest row that could be seen.
+      if (callable.getScan().isReversed()) {
+        callable.getScan().setStartRow(createClosestRowBefore(this.lastResult.getRow()));
+      } else {
+        callable.getScan().setStartRow(Bytes.add(this.lastResult.getRow(), new byte[1]));
+      }
+    }
   }
 
   @VisibleForTesting

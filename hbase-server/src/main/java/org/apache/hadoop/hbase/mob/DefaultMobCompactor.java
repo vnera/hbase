@@ -39,6 +39,7 @@ import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
 import org.apache.hadoop.hbase.regionserver.MobCompactionStoreScanner;
 import org.apache.hadoop.hbase.regionserver.ScanType;
+import org.apache.hadoop.hbase.regionserver.ScannerContext;
 import org.apache.hadoop.hbase.regionserver.Store;
 import org.apache.hadoop.hbase.regionserver.StoreFile;
 import org.apache.hadoop.hbase.regionserver.StoreFile.Writer;
@@ -181,8 +182,10 @@ public class DefaultMobCompactor extends DefaultCompactor {
       }
       delFileWriter = mobStore.createDelFileWriterInTmp(new Date(fd.latestPutTs), fd.maxKeyCount,
           store.getFamily().getCompression(), store.getRegionInfo().getStartKey());
+      ScannerContext scannerContext =
+        ScannerContext.newBuilder().setBatchLimit(compactionKVMax).build();
       do {
-        hasMore = compactionScanner.next(cells, compactionKVMax);
+        hasMore = compactionScanner.next(cells, scannerContext);
         // output to writer:
         for (Cell c : cells) {
           // TODO remove the KeyValueUtil.ensureKeyValue before merging back to trunk.

@@ -47,7 +47,7 @@ import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
 import org.apache.hadoop.hbase.filter.FilterList.Operator;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
-import org.apache.hadoop.hbase.regionserver.InternalScanner.NextState;
+import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.regionserver.RegionScanner;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -503,7 +503,7 @@ public class TestFilter {
     InternalScanner scanner = this.region.getScanner(s);
     int scannerCounter = 0;
     while (true) {
-      boolean isMoreResults = NextState.hasMoreValues(scanner.next(new ArrayList<Cell>()));
+      boolean isMoreResults = scanner.next(new ArrayList<Cell>());
       scannerCounter++;
 
       if (scannerCounter >= pageSize) {
@@ -532,7 +532,7 @@ public class TestFilter {
     InternalScanner scanner = this.region.getScanner(s);
     while (true) {
       ArrayList<Cell> values = new ArrayList<Cell>();
-      boolean isMoreResults = NextState.hasMoreValues(scanner.next(values));
+      boolean isMoreResults = scanner.next(values);
       if (!isMoreResults
           || !Bytes.toString(values.get(0).getRow()).startsWith(prefix)) {
         Assert.assertTrue(
@@ -566,7 +566,7 @@ public class TestFilter {
     InternalScanner scanner = this.region.getScanner(s);
     int scannerCounter = 0;
     while (true) {
-      boolean isMoreResults = NextState.hasMoreValues(scanner.next(new ArrayList<Cell>()));
+      boolean isMoreResults = scanner.next(new ArrayList<Cell>());
       scannerCounter++;
 
       if (scannerCounter >= pageSize) {
@@ -644,7 +644,7 @@ public class TestFilter {
     InternalScanner scanner = this.region.getScanner(s);
     while (true) {
       ArrayList<Cell> values = new ArrayList<Cell>();
-      boolean isMoreResults = NextState.hasMoreValues(scanner.next(values));
+      boolean isMoreResults = scanner.next(values);
       if (!isMoreResults || !Bytes.toString(CellUtil.cloneRow(values.get(0))).startsWith(prefix)) {
         assertTrue("The WhileMatchFilter should now filter all remaining", filter.filterAllRemaining());
       }
@@ -674,7 +674,7 @@ public class TestFilter {
     InternalScanner scanner = this.region.getScanner(s);
     while (true) {
       ArrayList<Cell> values = new ArrayList<Cell>();
-      boolean isMoreResults = NextState.hasMoreValues(scanner.next(values));
+      boolean isMoreResults = scanner.next(values);
       assertTrue("The WhileMatchFilter should now filter all remaining", filter.filterAllRemaining());
       if (!isMoreResults) {
         break;
@@ -1477,7 +1477,7 @@ public class TestFilter {
     InternalScanner scanner = testRegion.getScanner(s1);
     List<Cell> results = new ArrayList<Cell>();
     int resultCount = 0;
-    while (NextState.hasMoreValues(scanner.next(results))) {
+    while (scanner.next(results)) {
       resultCount++;
       byte[] row =  CellUtil.cloneRow(results.get(0));
       LOG.debug("Found row: " + Bytes.toStringBinary(row));
@@ -1619,7 +1619,7 @@ public class TestFilter {
     List<Cell> results = new ArrayList<Cell>();
     int i = 0;
     for (boolean done = true; done; i++) {
-      done = NextState.hasMoreValues(scanner.next(results));
+      done = scanner.next(results);
       Arrays.sort(results.toArray(new KeyValue[results.size()]),
           KeyValue.COMPARATOR);
       LOG.info("counter=" + i + ", " + results);
@@ -1641,7 +1641,7 @@ public class TestFilter {
     List<Cell> results = new ArrayList<Cell>();
     int i = 0;
     for (boolean done = true; done; i++) {
-      done = NextState.hasMoreValues(scanner.next(results));
+      done = scanner.next(results);
       Arrays.sort(results.toArray(new KeyValue[results.size()]),
           KeyValue.COMPARATOR);
       LOG.info("counter=" + i + ", " + results);
@@ -1663,7 +1663,7 @@ public class TestFilter {
     int row = 0;
     int idx = 0;
     for (boolean done = true; done; row++) {
-      done = NextState.hasMoreValues(scanner.next(results));
+      done = scanner.next(results);
       Arrays.sort(results.toArray(new KeyValue[results.size()]),
           KeyValue.COMPARATOR);
       if(results.isEmpty()) break;
@@ -1694,7 +1694,7 @@ public class TestFilter {
     int row = 0;
     int idx = 0;
     for (boolean more = true; more; row++) {
-      more = NextState.hasMoreValues(scanner.next(results));
+      more = scanner.next(results);
       Arrays.sort(results.toArray(new KeyValue[results.size()]),
           KeyValue.COMPARATOR);
       if(results.isEmpty()) break;
@@ -2029,7 +2029,7 @@ public class TestFilter {
     List<Cell> results = new ArrayList<Cell>();
     int i = 5;
     for (boolean done = true; done; i++) {
-      done = NextState.hasMoreValues(scanner.next(results));
+      done = scanner.next(results);
       assertTrue(CellUtil.matchingRow(results.get(0), Bytes.toBytes("row" + i)));
       assertEquals(Bytes.toInt(CellUtil.cloneValue(results.get(0))), i%2);
       results.clear();
@@ -2052,7 +2052,7 @@ public class TestFilter {
       assertEquals(Bytes.toInt(CellUtil.cloneValue(results.get(0))), i%2);
       results.clear();
     }
-    assertFalse(NextState.hasMoreValues(scanner.next(results)));
+    assertFalse(scanner.next(results));
     // 3. let's begin to verify nested filter list
     // 3.1 add rowFilter, then add subFilterList
     FilterList filterList = new FilterList(FilterList.Operator.MUST_PASS_ONE);
@@ -2074,7 +2074,7 @@ public class TestFilter {
       assertEquals(Bytes.toInt(CellUtil.cloneValue(results.get(0))), i%2);
       results.clear();
     }
-    assertFalse(NextState.hasMoreValues(scanner.next(results)));
+    assertFalse(scanner.next(results));
     // 3.2 MAGIC here! add subFilterList first, then add rowFilter
     filterList = new FilterList(FilterList.Operator.MUST_PASS_ONE);
     filterList.addFilter(subFilterList);
@@ -2095,9 +2095,15 @@ public class TestFilter {
       assertEquals(Bytes.toInt(CellUtil.cloneValue(results.get(0))), i%2);
       results.clear();
     }
+<<<<<<< HEAD
     assertFalse(NextState.hasMoreValues(scanner.next(results)));
     WAL wal = testRegion.getWAL();
     testRegion.close();
+=======
+    assertFalse(scanner.next(results));
+    WAL wal = ((HRegion)testRegion).getWAL();
+    ((HRegion)testRegion).close();
+>>>>>>> 408b916... HBASE-13421 Reduce the number of object creations introduced by HBASE-11544 in scan RPC hot code paths
     wal.close();
   }      
 }
