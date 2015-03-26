@@ -5308,7 +5308,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
 
       long size = 0;
       for (Cell c : results) {
-        size += CellUtil.estimatedHeapSizeOf(c);
+        size += CellUtil.estimatedHeapSizeOfWithoutTags(c);
       }
 
       return size;
