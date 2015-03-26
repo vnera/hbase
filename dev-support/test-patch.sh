@@ -14,7 +14,7 @@
 
 #set -x
 
-### Setup some variables.  
+### Setup some variables.
 ### SVN_REVISION and BUILD_URL are set by Hudson if it is run by patch process
 ### Read variables from properties file
 bindir=$(dirname $0)
@@ -149,7 +149,7 @@ parseArgs() {
     ### Check if $PATCH_DIR exists. If it does not exist, create a new directory
     if [[ ! -e "$PATCH_DIR" ]] ; then
       mkdir "$PATCH_DIR"
-      if [[ $? == 0 ]] ; then 
+      if [[ $? == 0 ]] ; then
         echo "$PATCH_DIR has been created"
       else
         echo "Unable to create $PATCH_DIR"
@@ -182,7 +182,7 @@ checkout () {
       cleanupAndExit 1
     fi
     echo
-  else   
+  else
     cd $BASEDIR
     $SVN revert -R .
     rm -rf `$SVN status --no-ignore`
@@ -207,7 +207,7 @@ setup () {
     echo "$patchURL"
     $WGET -q -O $PATCH_DIR/patch $patchURL
     VERSION=${SVN_REVISION}_${defect}_PATCH-${patchNum}
-    JIRA_COMMENT="Here are the results of testing the latest attachment 
+    JIRA_COMMENT="Here are the results of testing the latest attachment
   $patchURL
   against trunk revision ${SVN_REVISION}."
 
@@ -236,7 +236,7 @@ setup () {
   echo ""
   echo "======================================================================"
   echo "======================================================================"
-  echo " Pre-build trunk to verify trunk stability and javac warnings" 
+  echo " Pre-build trunk to verify trunk stability and javac warnings"
   echo "======================================================================"
   echo "======================================================================"
   echo ""
@@ -329,7 +329,7 @@ applyPatch () {
   echo "======================================================================"
   echo ""
   echo ""
- 
+
   export PATCH
   $BASEDIR/dev-support/smart-apply-patch.sh $PATCH_DIR/patch
   if [[ $? != 0 ]] ; then
@@ -426,6 +426,29 @@ checkAntiPatterns () {
     JIRA_COMMENT="$JIRA_COMMENT
 
 		    {color:red}-1 Anti-pattern{color}.  The patch appears to have anti-pattern where BYTES_COMPARATOR was omitted:
+             $warnings."
+	  return 1
+  fi
+  return 0
+}
+
+###############################################################################
+### Check that there are no incorrect annotations
+checkInterfaceAudience () {
+  echo ""
+  echo ""
+  echo "======================================================================"
+  echo "======================================================================"
+  echo "    Checking against hadoop InterfaceAudience."
+  echo "======================================================================"
+  echo "======================================================================"
+  echo ""
+  echo ""
+  warnings=`$GREP 'import org.apache.hadoop.classification' $PATCH_DIR/patch`
+  if [[ $warnings != "" ]]; then
+    JIRA_COMMENT="$JIRA_COMMENT
+
+		    {color:red}-1 InterfaceAudience{color}.  The patch appears to contain InterfaceAudience from hadoop rather than hbase:
              $warnings."
 	  return 1
   fi
@@ -596,7 +619,7 @@ checkFindbugsWarnings () {
   echo "======================================================================"
   echo ""
   echo ""
-  echo "$MVN clean package findbugs:findbugs -D${PROJECT_NAME}PatchProcess" 
+  echo "$MVN clean package findbugs:findbugs -D${PROJECT_NAME}PatchProcess"
   export MAVEN_OPTS="${MAVEN_OPTS}"
   $MVN clean package findbugs:findbugs -D${PROJECT_NAME}PatchProcess -DskipTests < /dev/null
 
@@ -606,7 +629,7 @@ checkFindbugsWarnings () {
     {color:red}-1 findbugs{color}.  The patch appears to cause Findbugs (version ${findbugs_version}) to fail."
     return 1
   fi
-    
+
   findbugsWarnings=0
   for file in $(find $BASEDIR -name findbugsXml.xml)
   do
@@ -615,7 +638,7 @@ checkFindbugsWarnings () {
       module_suffix=${relative_file%/target/findbugsXml.xml} # strip trailing path
       module_suffix=`basename ${module_suffix}`
     fi
-    
+
     cp $file $PATCH_DIR/patchFindbugsWarnings${module_suffix}.xml
     $FINDBUGS_HOME/bin/setBugDatabaseInfo -timestamp "01/01/2000" \
       $PATCH_DIR/patchFindbugsWarnings${module_suffix}.xml \
@@ -691,7 +714,7 @@ runTests () {
 
   ### kill any process remaining from another test, maybe even another project
   jps | grep surefirebooter | cut -d ' ' -f 1 | xargs kill -9 2>/dev/null
-  
+
   failed_tests=""
   ### Kill any rogue build processes from the last attempt
   condemnedCount=`$PS auxwww | $GREP ${PROJECT_NAME}PatchProcess | $AWK '{print $2}' | $AWK 'BEGIN {total = 0} {total += 1} END {print total}'`
@@ -704,7 +727,7 @@ runTests () {
   if [[ $? != 0 ]] ; then
      ### Find and format names of failed tests
      failed_tests=`find . -name 'TEST*.xml' | xargs $GREP  -l -E "<failure|<error" | sed -e "s|.*target/surefire-reports/TEST-|                  |g" | sed -e "s|\.xml||g"`
- 
+
      JIRA_COMMENT="$JIRA_COMMENT
 
      {color:red}-1 core tests{color}.  The patch failed these unit tests:
@@ -782,7 +805,7 @@ checkInjectSystemFaults () {
   echo "======================================================================"
   echo ""
   echo ""
-  
+
   ### Kill any rogue build processes from the last attempt
   $PS auxwww | $GREP ${PROJECT_NAME}PatchProcess | $AWK '{print $2}' | /usr/bin/xargs -t -I {} /bin/kill -9 {} > /dev/null
 
@@ -824,7 +847,7 @@ $JIRA_COMMENT_FOOTER"
 
 
 
-$comment"  
+$comment"
 
   if [[ $JENKINS == "true" ]] ; then
     echo ""
@@ -905,9 +928,10 @@ checkJavadocWarnings
 (( RESULT = RESULT + $? ))
 checkJavacWarnings
 (( RESULT = RESULT + $? ))
-### Checkstyle not implemented yet
-#checkStyle
-#(( RESULT = RESULT + $? ))
+checkCheckstyleErrors
+(( RESULT = RESULT + $? ))
+checkInterfaceAudience
+(( RESULT = RESULT + $? ))
 checkFindbugsWarnings
 (( RESULT = RESULT + $? ))
 checkReleaseAuditWarnings
@@ -916,7 +940,7 @@ checkLineLengths
 (( RESULT = RESULT + $? ))
 checkSiteXml
 (( RESULT = RESULT + $?))
-### Do not call these when run by a developer 
+### Do not call these when run by a developer
 if [[ $JENKINS == "true" ]] ; then
   runTests
   (( RESULT = RESULT + $? ))
