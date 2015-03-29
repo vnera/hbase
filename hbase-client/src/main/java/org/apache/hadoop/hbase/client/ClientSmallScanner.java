@@ -185,6 +185,12 @@ public class ClientSmallScanner extends ClientScanner {
         try {
           controller.setPriority(getTableName());
           response = getStub().scan(controller, request);
+          if (response.hasMoreResultsInRegion()) {
+            setHasMoreResultsContext(true);
+            setServerHasMoreResults(response.getMoreResultsInRegion());
+          } else {
+            setHasMoreResultsContext(false);
+          }
           return ResponseConverter.getResults(controller.cellScanner(),
               response);
         } catch (ServiceException se) {
@@ -213,6 +219,7 @@ public class ClientSmallScanner extends ClientScanner {
         // Server returns a null values if scanning is to stop. Else,
         // returns an empty array if scanning is to go on and we've just
         // exhausted current region.
+        // TODO Use the server's response about more results
         values = this.caller.callWithRetries(smallScanCallable);
         this.currentRegion = smallScanCallable.getHRegionInfo();
         long currentTime = System.currentTimeMillis();
