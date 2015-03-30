@@ -1328,7 +1328,7 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
    */
   private void sanityCheckTableDescriptor(final HTableDescriptor htd) throws IOException {
     final String CONF_KEY = "hbase.table.sanity.checks";
-    if (!conf.getBoolean(CONF_KEY, true)) {
+    if (!conf.getBoolean(CONF_KEY, false)) {
       return;
     }
     String tableVal = htd.getConfigurationValue(CONF_KEY);

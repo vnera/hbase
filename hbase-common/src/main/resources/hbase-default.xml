@@ -1481,4 +1481,9 @@ possible configurations would overwhelm and obscure the important.
       The max number of threads used in MobFileCompactor.
     </description>
   </property>
+  <property>
+    <name>hbase.table.sanity.checks</name>
+    <value>false</value>
+    <description>false will bypass sanity checks on table creation</description>
+  </property>
 </configuration>
