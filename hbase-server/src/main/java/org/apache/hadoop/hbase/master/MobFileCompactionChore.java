@@ -60,6 +60,9 @@ public class MobFileCompactionChore extends ScheduledChore {
       TableDescriptors htds = master.getTableDescriptors();
       Map<String, HTableDescriptor> map = htds.getAll();
       for (HTableDescriptor htd : map.values()) {
+        if (!master.getConnection().isTableEnabled(htd.getTableName())) {
+          continue;
+        }
         boolean reported = false;
         try {
           for (HColumnDescriptor hcd : htd.getColumnFamilies()) {
