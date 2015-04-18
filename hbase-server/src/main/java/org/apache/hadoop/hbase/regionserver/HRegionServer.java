@@ -1697,13 +1697,16 @@ public class HRegionServer extends HasThread implements
     // In CDH5.4+, master and region server would be sharing the same info port.
     // The below changes is to ensure that info server still starts on master info port.
     // Please see release notes for more details.
+    String addr = this.conf.get("hbase.regionserver.info.bindAddress", "0.0.0.0");
+
     if(this instanceof HMaster) {
       port = conf.getInt(HConstants.MASTER_INFO_PORT,
           HConstants.DEFAULT_MASTER_INFOPORT);
+      addr = this.conf.get("hbase.master.info.bindAddress", "0.0.0.0");
     }
     // -1 is for disabling info server
     if (port < 0) return port;
-    String addr = this.conf.get("hbase.regionserver.info.bindAddress", "0.0.0.0");
+
     if (!Addressing.isLocalAddress(InetAddress.getByName(addr))) {
       String msg =
           "Failed to start http info server. Address " + addr

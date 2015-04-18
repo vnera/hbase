@@ -794,20 +794,23 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       throw new IllegalArgumentException(e);
     }
     // Server to handle client requests.
-    String hostname = getHostname(rs.conf);
-    int port = rs.conf.getInt(HConstants.REGIONSERVER_PORT,
-      HConstants.DEFAULT_REGIONSERVER_PORT);
-    // In CDH5.4+, master and region server would be sharing the same port.
-    // The below changes is to ensure that info server still starts on master port.
-    // Please see release notes for more details.
+    InetSocketAddress initialIsa;
+    InetSocketAddress bindAddress;
     if(this instanceof MasterRpcServices) {
-      port = rs.conf.getInt(HConstants.MASTER_PORT,
-          HConstants.DEFAULT_MASTER_PORT);
+      String hostname = getHostname(rs.conf, true);
+      int port = rs.conf.getInt(HConstants.MASTER_PORT, HConstants.DEFAULT_MASTER_PORT);
+      // Creation of a HSA will force a resolve.
+      initialIsa = new InetSocketAddress(hostname, port);
+      bindAddress = new InetSocketAddress(rs.conf.get("hbase.master.ipc.address", hostname), port);
+    } else {
+      String hostname = getHostname(rs.conf, false);
+      int port = rs.conf.getInt(HConstants.REGIONSERVER_PORT,
+        HConstants.DEFAULT_REGIONSERVER_PORT);
+      // Creation of a HSA will force a resolve.
+      initialIsa = new InetSocketAddress(hostname, port);
+      bindAddress = new InetSocketAddress(
+        rs.conf.get("hbase.regionserver.ipc.address", hostname), port);
     }
-    // Creation of a HSA will force a resolve.
-    InetSocketAddress initialIsa = new InetSocketAddress(hostname, port);
-    InetSocketAddress bindAddress = new InetSocketAddress(
-      rs.conf.get("hbase.regionserver.ipc.address", hostname), port);
     if (initialIsa.getAddress() == null) {
       throw new IllegalArgumentException("Failed resolve of " + initialIsa);
     }
@@ -833,10 +836,12 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     rs.setName(name);
   }
 
-  public static String getHostname(Configuration conf) throws UnknownHostException {
+  public static String getHostname(Configuration conf, boolean isMaster)
+      throws UnknownHostException {
+    String masterOrRS = isMaster ? "master" : "regionserver";
     return Strings.domainNamePointerToHostName(DNS.getDefaultHost(
-            conf.get("hbase.regionserver.dns.interface", "default"),
-            conf.get("hbase.regionserver.dns.nameserver", "default")));
+        conf.get("hbase." + masterOrRS + ".dns.interface", "default"),
+        conf.get("hbase." + masterOrRS + ".dns.nameserver", "default")));
   }
 
   RegionScanner getScanner(long scannerId) {
