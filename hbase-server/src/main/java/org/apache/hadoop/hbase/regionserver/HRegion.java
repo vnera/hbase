@@ -2869,6 +2869,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
           } else {
             prepareDelete((Delete) mutation);
           }
+          checkRow(mutation.getRow(), "doMiniBatchMutation");
         } catch (NoSuchColumnFamilyException nscf) {
           LOG.warn("No such column family in batch mutation", nscf);
           batchOp.retCodeDetails[lastIndexExclusive] = new OperationStatus(
@@ -2879,6 +2880,12 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
           LOG.warn("Batch Mutation did not pass sanity check", fsce);
           batchOp.retCodeDetails[lastIndexExclusive] = new OperationStatus(
               OperationStatusCode.SANITY_CHECK_FAILURE, fsce.getMessage());
+          lastIndexExclusive++;
+          continue;
+        } catch (WrongRegionException we) {
+          LOG.warn("Batch mutation had a row that does not belong to this region", we);
+          batchOp.retCodeDetails[lastIndexExclusive] = new OperationStatus(
+              OperationStatusCode.SANITY_CHECK_FAILURE, we.getMessage());
           lastIndexExclusive++;
           continue;
         }
@@ -4773,7 +4780,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
    * started (the calling thread has already acquired the region-close-guard lock).
    */
   protected RowLock getRowLockInternal(byte[] row, boolean waitForLock) throws IOException {
-    checkRow(row, "row lock");
     HashedBytes rowKey = new HashedBytes(row);
     RowLockContext rowLockContext = new RowLockContext(rowKey);
 
