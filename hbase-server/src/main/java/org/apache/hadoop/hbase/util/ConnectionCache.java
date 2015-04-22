@@ -203,6 +203,7 @@ public class ConnectionCache {
       if (EnvironmentEdgeManager.currentTime() > timeoutTime) {
         connections.remove(userName);
         closed = true;
+        return true;
       }
       return false;
     }
