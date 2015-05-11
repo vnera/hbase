@@ -58,6 +58,7 @@ import org.apache.hadoop.hbase.mob.MobStoreEngine;
 import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionContext;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.ChecksumType;
 import org.apache.hadoop.hbase.util.HFileArchiveUtil;
 import org.apache.hadoop.hbase.util.IdLock;
 
@@ -247,7 +248,7 @@ public class HMobStore extends HStore {
     final CacheConfig writerCacheConf = mobCacheConfig;
     HFileContext hFileContext = new HFileContextBuilder().withCompression(compression)
         .withIncludesMvcc(false).withIncludesTags(true)
-        .withChecksumType(HFile.DEFAULT_CHECKSUM_TYPE)
+        .withChecksumType(ChecksumType.getDefaultChecksumType())
         .withBytesPerCheckSum(HFile.DEFAULT_BYTES_PER_CHECKSUM)
         .withBlockSize(getFamily().getBlocksize())
         .withHBaseCheckSum(true).withDataBlockEncoding(getFamily().getDataBlockEncoding()).build();

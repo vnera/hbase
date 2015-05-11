@@ -65,6 +65,7 @@ import org.apache.hadoop.hbase.regionserver.BloomType;
 import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.StoreFile;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.ChecksumType;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.ReflectionUtils;
 import org.apache.hadoop.hbase.util.Threads;
@@ -554,7 +555,8 @@ public class MobUtils {
     HColumnDescriptor family, MobFileName mobFileName, Path basePath, long maxKeyCount,
     Compression.Algorithm compression, CacheConfig cacheConfig) throws IOException {
     HFileContext hFileContext = new HFileContextBuilder().withCompression(compression)
-      .withIncludesMvcc(false).withIncludesTags(true).withChecksumType(HFile.DEFAULT_CHECKSUM_TYPE)
+      .withIncludesMvcc(false).withIncludesTags(true).withChecksumType(
+            ChecksumType.getDefaultChecksumType())
       .withBytesPerCheckSum(HFile.DEFAULT_BYTES_PER_CHECKSUM).withBlockSize(family.getBlocksize())
       .withHBaseCheckSum(true).withDataBlockEncoding(family.getDataBlockEncoding()).build();
 
