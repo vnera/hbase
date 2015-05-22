@@ -1890,10 +1890,12 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
   /**
    * Should the memstore be flushed now
    */
-  boolean shouldFlush() {
+  boolean shouldFlush(final StringBuffer whyFlush) {
+    whyFlush.setLength(0);
     // This is a rough measure.
     if (this.maxFlushedSeqId > 0
           && (this.maxFlushedSeqId + this.flushPerChanges < this.sequenceId.get())) {
+      whyFlush.append("more than max edits, " + this.flushPerChanges + ", since last flush");
       return true;
     }
     if (flushCheckInterval <= 0) { //disabled
@@ -1909,6 +1911,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
     for (Store s : this.getStores().values()) {
       if (s.timeOfOldestEdit() < now - flushCheckInterval) {
         // we have an old enough edit in the memstore, flush
+        whyFlush.append(s.toString() + " has an old edit so flush to free WALs");
         return true;
       }
     }

@@ -919,9 +919,10 @@ public class TestDefaultMemStore extends TestCase {
       edge.setCurrentTimeMillis(1234);
       s.add(KeyValueTestUtil.create("r", "f", "q", 100, "v"));
       edge.setCurrentTimeMillis(1234 + 100);
-      assertTrue(region.shouldFlush() == false);
+      StringBuffer sb = new StringBuffer();
+      assertTrue(region.shouldFlush(sb) == false);
       edge.setCurrentTimeMillis(1234 + 10000);
-      assertTrue(region.shouldFlush() == expected);
+      assertTrue(region.shouldFlush(sb) == expected);
     } finally {
       EnvironmentEdgeManager.reset();
     }
