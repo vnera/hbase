@@ -949,6 +949,10 @@ MasterServices, Server {
     this.expiredMobFileCleanerChore = new ExpiredMobFileCleanerChore(this);
     Threads.setDaemonThreadRunning(expiredMobFileCleanerChore.getThread());
 
+    // Check and set the znode ACLs if needed in case we are overtaking a non-secure configuration
+    status.setStatus("Checking ZNode ACLs");
+    zooKeeper.checkAndSetZNodeAcls();
+
     if (!masterRecovery) {
       if (this.cpHost != null) {
         // don't let cp initialization errors kill the master
