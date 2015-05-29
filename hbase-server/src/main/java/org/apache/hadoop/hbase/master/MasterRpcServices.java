@@ -38,6 +38,7 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.UnknownRegionException;
 import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.errorhandling.ForeignException;
 import org.apache.hadoop.hbase.exceptions.MergeRegionException;
 import org.apache.hadoop.hbase.exceptions.UnknownProtocolException;
 import org.apache.hadoop.hbase.ipc.RpcServer.BlockingServiceAndInterface;
@@ -656,6 +657,8 @@ public class MasterRpcServices extends RSRpcServices
       long waitTime = SnapshotDescriptionUtils.DEFAULT_MAX_WAIT_TIME;
       return ExecProcedureResponse.newBuilder().setExpectedTimeout(
         waitTime).build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -889,6 +892,8 @@ public class MasterRpcServices extends RSRpcServices
       boolean done = mpm.isProcedureDone(desc);
       builder.setDone(done);
       return builder.build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -914,6 +919,8 @@ public class MasterRpcServices extends RSRpcServices
       boolean done = master.snapshotManager.isRestoreDone(snapshot);
       builder.setDone(done);
       return builder.build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -937,6 +944,8 @@ public class MasterRpcServices extends RSRpcServices
       boolean done = master.snapshotManager.isSnapshotDone(request.getSnapshot());
       builder.setDone(done);
       return builder.build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -1110,6 +1119,8 @@ public class MasterRpcServices extends RSRpcServices
       SnapshotDescription reqSnapshot = request.getSnapshot();
       master.snapshotManager.restoreSnapshot(reqSnapshot);
       return RestoreSnapshotResponse.newBuilder().build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -1169,6 +1180,8 @@ public class MasterRpcServices extends RSRpcServices
       long waitTime = SnapshotDescriptionUtils.getMaxMasterTimeout(master.getConfiguration(),
         snapshot.getType(), SnapshotDescriptionUtils.DEFAULT_MAX_WAIT_TIME);
       return SnapshotResponse.newBuilder().setExpectedTimeout(waitTime).build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
