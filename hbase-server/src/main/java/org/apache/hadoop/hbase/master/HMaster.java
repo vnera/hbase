@@ -76,6 +76,7 @@ import org.apache.hadoop.hbase.client.MetaScanner.MetaScannerVisitor;
 import org.apache.hadoop.hbase.client.MetaScanner.MetaScannerVisitorBase;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
+import org.apache.hadoop.hbase.errorhandling.ForeignException;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.exceptions.MergeRegionException;
 import org.apache.hadoop.hbase.exceptions.UnknownProtocolException;
@@ -1011,9 +1012,11 @@ MasterServices, Server {
     status.setStatus("Assigning hbase:meta region");
 
     RegionStates regionStates = assignmentManager.getRegionStates();
+
     regionStates.createRegionState(HRegionInfo.FIRST_META_REGIONINFO);
     boolean rit = this.assignmentManager
       .processRegionInTransitionAndBlockUntilAssigned(HRegionInfo.FIRST_META_REGIONINFO);
+
     boolean metaRegionLocation = this.catalogTracker.verifyMetaRegionLocation(timeout);
     ServerName currentMetaServer = this.catalogTracker.getMetaLocation();
     if (!metaRegionLocation) {
@@ -2858,6 +2861,8 @@ MasterServices, Server {
       this.conf);
     try {
       snapshotManager.takeSnapshot(snapshot);
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -2908,6 +2913,8 @@ MasterServices, Server {
       LOG.info(getClientIdAuditPrefix() + " delete " + request.getSnapshot());
       snapshotManager.deleteSnapshot(request.getSnapshot());
       return DeleteSnapshotResponse.newBuilder().build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -2930,6 +2937,8 @@ MasterServices, Server {
       boolean done = snapshotManager.isSnapshotDone(request.getSnapshot());
       builder.setDone(done);
       return builder.build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -2969,6 +2978,8 @@ MasterServices, Server {
       SnapshotDescription reqSnapshot = request.getSnapshot();
       snapshotManager.restoreSnapshot(reqSnapshot);
       return RestoreSnapshotResponse.newBuilder().build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -2993,6 +3004,8 @@ MasterServices, Server {
       boolean done = snapshotManager.isRestoreDone(snapshot);
       builder.setDone(done);
       return builder.build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -3018,6 +3031,8 @@ MasterServices, Server {
 
     try {
       mpm.execProcedure(desc);
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -3055,6 +3070,8 @@ MasterServices, Server {
       boolean done = mpm.isProcedureDone(desc);
       builder.setDone(done);
       return builder.build();
+    } catch (ForeignException e) {
+      throw new ServiceException(e.getCause());
     } catch (IOException e) {
       throw new ServiceException(e);
     }
