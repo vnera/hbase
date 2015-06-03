@@ -377,7 +377,7 @@ public class TableAuthManager {
 
   public boolean authorize(User user, String namespace, Permission.Action action) {
     // Global authorizations supercede namespace level
-    if (authorizeUser(user, action)) {
+    if (authorize(user, action)) {
       return true;
     }
     // Check namespace permissions
@@ -413,14 +413,6 @@ public class TableAuthManager {
     }
 
     return false;
-  }
-
-  /**
-   * Checks global authorization for a specific action for a user, based on the
-   * stored user permissions.
-   */
-  public boolean authorizeUser(User user, Permission.Action action) {
-    return authorize(globalCache.getUser(user.getShortName()), action);
   }
 
   /**
