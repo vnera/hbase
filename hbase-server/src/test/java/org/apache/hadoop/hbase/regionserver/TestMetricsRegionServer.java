@@ -84,6 +84,7 @@ public class TestMetricsRegionServer {
     HELPER.assertCounter("blockCacheMissCount", 417, serverSource);
     HELPER.assertCounter("blockCacheEvictionCount", 418, serverSource);
     HELPER.assertGauge("blockCacheCountHitPercent", 98, serverSource);
+    HELPER.assertGauge("blockCountHitPercent", 98, serverSource);
     HELPER.assertGauge("blockCacheExpressHitPercent", 97, serverSource);
     HELPER.assertCounter("updatesBlockedTime", 419, serverSource);
   }

@@ -186,6 +186,11 @@ public class MetricsRegionServerWrapperStub implements MetricsRegionServerWrappe
   }
 
   @Override
+  public int getBlockHitPercent() {
+    return 98;
+  }
+
+  @Override
   public int getBlockCacheHitCachingPercent() {
     return 97;
   }
