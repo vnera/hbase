@@ -203,6 +203,9 @@ public interface MetricsRegionServerSource extends BaseSource {
   String BLOCK_CACHE_EVICTION_COUNT = "blockCacheEvictionCount";
   String BLOCK_CACHE_EVICTION_COUNT_DESC =
       "Count of the number of blocks evicted from the block cache.";
+  String BLOCK_COUNT_HIT_PERCENT = "blockCountHitPercent";
+  String BLOCK_COUNT_HIT_PERCENT_DESC =
+      "Percent of block cache requests that are hits";
   String BLOCK_CACHE_HIT_PERCENT = "blockCacheCountHitPercent";
   String BLOCK_CACHE_HIT_PERCENT_DESC =
       "Percent of block cache requests that are hits";

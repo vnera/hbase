@@ -233,6 +233,8 @@ public class MetricsRegionServerSourceImpl
               rsWrap.getBlockCacheEvictedCount())
           .addGauge(Interns.info(BLOCK_CACHE_HIT_PERCENT, BLOCK_CACHE_HIT_PERCENT_DESC),
               rsWrap.getBlockCacheHitPercent())
+          .addGauge(Interns.info(BLOCK_COUNT_HIT_PERCENT, BLOCK_COUNT_HIT_PERCENT_DESC),
+              rsWrap.getBlockHitPercent())
           .addGauge(Interns.info(BLOCK_CACHE_EXPRESS_HIT_PERCENT,
               BLOCK_CACHE_EXPRESS_HIT_PERCENT_DESC), rsWrap.getBlockCacheHitCachingPercent())
           .addCounter(Interns.info(UPDATES_BLOCKED_TIME, UPDATES_BLOCKED_DESC),
