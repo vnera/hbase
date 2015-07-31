@@ -420,6 +420,9 @@ public class ClientScanner extends AbstractClientScanner {
         // happens for the cases where we see exceptions. Since only openScanner
         // would have happened, values would be null
         if (values == null && callable.switchedToADifferentReplica()) {
+          // Any accumulated partial results are no longer valid since the callable will
+          // openScanner with the correct startkey and we must pick up from there
+          clearPartialResults();
           this.currentRegion = callable.getHRegionInfo();
           continue;
         }
@@ -528,7 +531,7 @@ public class ClientScanner extends AbstractClientScanner {
       if (null != values && values.length > 0 && callable.hasMoreResultsContext()) {
         // Only adhere to more server results when we don't have any partialResults
         // as it keeps the outer loop logic the same.
-        serverHasMoreResults = callable.getServerHasMoreResults();
+        serverHasMoreResults = callable.getServerHasMoreResults() & partialResults.isEmpty();
       }
       // Values == null means server-side filter has determined we must STOP
       // !partialResults.isEmpty() means that we are still accumulating partial Results for a
