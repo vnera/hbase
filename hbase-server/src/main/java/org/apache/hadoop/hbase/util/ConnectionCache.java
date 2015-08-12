@@ -101,6 +101,13 @@ public class ConnectionCache {
   }
 
   /**
+   * @return Total count of currently cached connections.
+   */
+  public int getConnectionCount() {
+    return this.connections.size();
+  }
+
+  /**
    * Set the current thread local effective user
    */
   public void setEffectiveUser(String user) {

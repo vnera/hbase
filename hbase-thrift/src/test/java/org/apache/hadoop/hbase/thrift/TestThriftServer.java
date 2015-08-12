@@ -42,10 +42,12 @@ import org.apache.hadoop.hbase.filter.ParseFilter;
 import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.test.MetricsAssertHelper;
 import org.apache.hadoop.hbase.thrift.ThriftServerRunner.HBaseHandler;
+import org.apache.hadoop.hbase.thrift.generated.AlreadyExists;
 import org.apache.hadoop.hbase.thrift.generated.BatchMutation;
 import org.apache.hadoop.hbase.thrift.generated.ColumnDescriptor;
 import org.apache.hadoop.hbase.thrift.generated.Hbase;
 import org.apache.hadoop.hbase.thrift.generated.IOError;
+import org.apache.hadoop.hbase.thrift.generated.IllegalArgument;
 import org.apache.hadoop.hbase.thrift.generated.Mutation;
 import org.apache.hadoop.hbase.thrift.generated.TAppend;
 import org.apache.hadoop.hbase.thrift.generated.TCell;
@@ -93,8 +95,15 @@ public class TestThriftServer {
   private static ByteBuffer valueDname = asByteBuffer("valueD");
   private static ByteBuffer valueEname = asByteBuffer(100l);
 
+  private static int CONNECTION_IDLE_TIME = 1000;
+  private static int RUN_CLEANER_INTERVAL = 1000;
+
   @BeforeClass
   public static void beforeClass() throws Exception {
+    UTIL.getConfiguration().setInt(ThriftServerRunner.HBaseHandler.MAX_IDLETIME,
+        CONNECTION_IDLE_TIME);
+    UTIL.getConfiguration().setInt(ThriftServerRunner.HBaseHandler.CLEANUP_INTERVAL,
+        RUN_CLEANER_INTERVAL);
     UTIL.getConfiguration().setBoolean(ThriftServerRunner.COALESCE_INC_KEY, true);
     UTIL.startMiniCluster();
   }
@@ -102,6 +111,35 @@ public class TestThriftServer {
   @AfterClass
   public static void afterClass() throws Exception {
     UTIL.shutdownMiniCluster();
+  }
+
+  @Test(timeout=30000)
+  public void testConnectionCache()
+  throws IOException, IOError, IllegalArgument, AlreadyExists, InterruptedException {
+    ThriftServerRunner.HBaseHandler handler =
+        new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
+            UserProvider.instantiate(UTIL.getConfiguration()));
+    final ByteBuffer tn = asByteBuffer("tn");
+    handler.createTable(tn, getColumnDescriptors());
+    List<Mutation> mutations = new ArrayList<Mutation>(1);
+    mutations.add(new Mutation(false, columnAAname, valueEname, true));
+    final int count = 10;
+    for (int i = 0; i < count; i++) {
+      try {
+        if (i > 1) {
+          // Sleep until count of connections is zero... because idle one got cleaned up.
+          while (handler.connectionCache.getConnectionCount() > 0) {
+            Threads.sleep(CONNECTION_IDLE_TIME);
+          }
+        }
+        handler.mutateRow(tn, rowAname, mutations, null);
+        LOG.info("Mutate " + i);
+      } catch (IOError e) {
+        throw new RuntimeException(e);
+      } catch (IllegalArgument e) {
+        throw new RuntimeException(e);
+      }
+    }
   }
 
   /**
