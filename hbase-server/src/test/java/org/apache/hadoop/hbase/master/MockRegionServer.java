@@ -25,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Random;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -626,5 +625,10 @@ ClientProtos.ClientService.BlockingInterface, RegionServerServices {
   @Override
   public HeapMemoryManager getHeapMemoryManager() {
     return null;
+  }
+
+  @Override
+  public double getCompactionPressure() {
+    return 0;
   }
 }

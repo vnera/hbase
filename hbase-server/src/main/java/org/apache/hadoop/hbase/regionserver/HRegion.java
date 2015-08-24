@@ -145,6 +145,8 @@ import org.apache.hadoop.hbase.regionserver.MultiVersionConsistencyControl.Write
 import org.apache.hadoop.hbase.regionserver.ScannerContext.LimitScope;
 import org.apache.hadoop.hbase.regionserver.ScannerContext.NextState;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionContext;
+import org.apache.hadoop.hbase.regionserver.compactions.NoLimitCompactionThroughputController;
+import org.apache.hadoop.hbase.regionserver.compactions.CompactionThroughputController;
 import org.apache.hadoop.hbase.regionserver.wal.HLogKey;
 import org.apache.hadoop.hbase.regionserver.wal.MetricsWAL;
 import org.apache.hadoop.hbase.regionserver.wal.WALActionsListener;
@@ -1639,9 +1641,15 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
     for (Store s : getStores().values()) {
       CompactionContext compaction = s.requestCompaction();
       if (compaction != null) {
-        compact(compaction, s);
+        compact(compaction, s, NoLimitCompactionThroughputController.INSTANCE);
       }
     }
+  }
+
+  @Deprecated
+  @VisibleForTesting
+  void compactStore(byte[] family) throws IOException {
+    compactStore(family, NoLimitCompactionThroughputController.INSTANCE);
   }
 
   /**
@@ -1651,12 +1659,12 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
    * @throws IOException e
    */
   @VisibleForTesting
-  void compactStore(byte[] family)
+  void compactStore(byte[] family, CompactionThroughputController throughputController)
       throws IOException {
     Store s = getStore(family);
     CompactionContext compaction = s.requestCompaction();
     if (compaction != null) {
-      compact(compaction, s);
+      compact(compaction, s, throughputController);
     }
   }
 
@@ -1671,11 +1679,11 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
    * conflicts with a region split, and that cannot happen because the region
    * server does them sequentially and not in parallel.
    *
-   * @param cr Compaction details, obtained by requestCompaction()
+   * @param compaction Compaction details, obtained by requestCompaction()
    * @return whether the compaction completed
-   * @throws IOException e
    */
-  public boolean compact(CompactionContext compaction, Store store) throws IOException {
+  public boolean compact(CompactionContext compaction, Store store,
+      CompactionThroughputController throughputController) throws IOException {
     assert compaction != null && compaction.hasSelection();
     assert !compaction.getRequest().getFiles().isEmpty();
     if (this.closing.get() || this.closed.get()) {
@@ -1724,7 +1732,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
           // We no longer need to cancel the request on the way out of this
           // method because Store#compact will clean up unconditionally
           requestNeedsCancellation = false;
-          store.compact(compaction);
+          store.compact(compaction, throughputController);
         } catch (InterruptedIOException iioe) {
           String msg = "compaction interrupted";
           LOG.info(msg, iioe);
@@ -5192,7 +5200,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver { // 
         moreValues = nextInternal(tmpList, scannerContext);
         outResults.addAll(tmpList);
       }
-      
+
       // If the size limit was reached it means a partial Result is being returned. Returning a
       // partial Result means that we should not reset the filters; filters should only be reset in
       // between rows

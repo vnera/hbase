@@ -45,6 +45,7 @@ import org.apache.hadoop.hbase.regionserver.StoreFile;
 import org.apache.hadoop.hbase.regionserver.StoreFile.Writer;
 import org.apache.hadoop.hbase.regionserver.StoreFileScanner;
 import org.apache.hadoop.hbase.regionserver.compactions.DefaultCompactor;
+import org.apache.hadoop.hbase.regionserver.compactions.CompactionThroughputController;
 import org.apache.hadoop.hbase.util.Bytes;
 
 /**
@@ -143,7 +144,8 @@ public class DefaultMobCompactor extends DefaultCompactor {
    */
   @Override
   protected boolean performCompaction(FileDetails fd, InternalScanner scanner, CellSink writer,
-      long smallestReadPoint, boolean cleanSeqId, boolean major) throws IOException {
+      long smallestReadPoint, boolean cleanSeqId,
+      CompactionThroughputController throughputController, boolean major) throws IOException {
     if (!(scanner instanceof MobCompactionStoreScanner)) {
       throw new IllegalArgumentException(
           "The scanner should be an instance of MobCompactionStoreScanner");
