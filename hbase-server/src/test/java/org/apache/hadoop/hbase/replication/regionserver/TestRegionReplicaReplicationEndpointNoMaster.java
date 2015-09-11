@@ -253,7 +253,9 @@ public class TestRegionReplicaReplicationEndpointNoMaster {
 
     Assert.assertEquals(1000, entries.size());
     // replay the edits to the secondary using replay callable
-    replicator.replicate(new ReplicateContext().setEntries(Lists.newArrayList(entries)));
+    final String fakeWalGroupId = "fakeWALGroup";
+    replicator.replicate(new ReplicateContext().setEntries(Lists.newArrayList(entries))
+        .setWalGroupId(fakeWalGroupId));
 
     HRegion region = rs0.getFromOnlineRegions(hriSecondary.getEncodedName());
     HTU.verifyNumericRows(region, f, 0, 1000);
