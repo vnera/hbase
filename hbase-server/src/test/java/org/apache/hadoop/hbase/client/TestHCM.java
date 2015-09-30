@@ -46,6 +46,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.CategoryBasedTimeout;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
@@ -80,8 +81,10 @@ import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.junit.rules.TestRule;
 
 import com.google.common.collect.Lists;
 
@@ -90,6 +93,10 @@ import com.google.common.collect.Lists;
  */
 @Category(MediumTests.class)
 public class TestHCM {
+  @Rule public final TestRule timeout = CategoryBasedTimeout.builder()
+      .withTimeout(this.getClass())
+      .withLookingForStuckThread(true)
+      .build();
   private static final Log LOG = LogFactory.getLog(TestHCM.class);
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private static final TableName TABLE_NAME =
@@ -332,7 +339,7 @@ public class TestHCM {
     // We want to work on a separate connection.
     c2.set(HConstants.HBASE_CLIENT_INSTANCE_ID, String.valueOf(-1));
     c2.setInt(HConstants.HBASE_CLIENT_RETRIES_NUMBER, 100); // retry a lot
-    c2.setInt(HConstants.HBASE_CLIENT_PAUSE, 0); // don't wait between retries.
+    c2.setInt(HConstants.HBASE_CLIENT_PAUSE, 1); // don't wait between retries.
     c2.setInt(RpcClient.FAILED_SERVER_EXPIRY_KEY, 0); // Server do not really expire
     c2.setBoolean(RpcClient.SPECIFIC_WRITE_THREAD, allowsInterrupt);
 
