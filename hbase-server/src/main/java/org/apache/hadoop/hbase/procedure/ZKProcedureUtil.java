@@ -277,6 +277,10 @@ public abstract class ZKProcedureUtil
     ZKUtil.deleteChildrenRecursively(watcher, acquiredZnode);
     ZKUtil.deleteChildrenRecursively(watcher, reachedZnode);
     ZKUtil.deleteChildrenRecursively(watcher, abortZnode);
+
+    if (LOG.isTraceEnabled()) {
+      logZKTree(this.baseZNode);
+    }
   }
 
   public void clearZNodes(String procedureName) throws KeeperException {
@@ -291,5 +295,9 @@ public abstract class ZKProcedureUtil
     ZKUtil.deleteNodeRecursively(watcher, getAcquiredBarrierNode(procedureName));
     ZKUtil.deleteNodeRecursively(watcher, getReachedBarrierNode(procedureName));
     ZKUtil.deleteNodeRecursively(watcher, getAbortZNode(procedureName));
+
+    if (LOG.isTraceEnabled()) {
+      logZKTree(this.baseZNode);
+    }
   }
 }
