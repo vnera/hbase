@@ -137,6 +137,7 @@ public class FlushSnapshotSubprocedure extends Subprocedure {
     try {
       taskManager.waitForOutstandingTasks();
     } catch (InterruptedException e) {
+      LOG.error("got interrupted exception for " + getMemberName());
       throw new ForeignException(getMemberName(), e);
     }
   }
