@@ -879,8 +879,7 @@ public final class CellUtil {
         cell.getValueLength());
     }
 
-    builder
-      .append(keyStr);
+    builder.append(keyStr);
     if (tag != null && !tag.isEmpty()) {
       builder.append("/").append(tag);
     }
@@ -889,5 +888,20 @@ public final class CellUtil {
     }
 
     return builder.toString();
+  }
+
+  /**************** equals ****************************/
+
+  public static boolean equals(Cell a, Cell b) {
+    return matchingRow(a, b) && matchingFamily(a, b) && matchingQualifier(a, b)
+        && matchingTimestamp(a, b) && matchingType(a, b);
+  }
+
+  public static boolean matchingTimestamp(Cell a, Cell b) {
+    return CellComparator.compareTimestamps(a.getTimestamp(), b.getTimestamp()) == 0;
+  }
+
+  public static boolean matchingType(Cell a, Cell b) {
+    return a.getTypeByte() == b.getTypeByte();
   }
 }
