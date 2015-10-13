@@ -528,6 +528,7 @@
             <redirectTestOutputToFile>${test.output.tofile}</redirectTestOutputToFile>
             <systemPropertyVariables>
               <jacoco-agent.destfile>target/jacoco.exec</jacoco-agent.destfile>
+              <test.build.classes>${test.build.classes}</test.build.classes>
             </systemPropertyVariables>
             <includes>
               <include>${unittest.include}</include>
@@ -1169,6 +1170,8 @@
     </hbase-surefire.cygwin-argline>
     <hbase.skip-jacoco>true</hbase.skip-jacoco>
     <jacoco.version>0.6.2.201302030002</jacoco.version>
+    <!-- Location of test resources -->
+    <test.build.classes>${project.build.directory}/test-classes</test.build.classes>
   </properties>
   <!-- Sorted by groups of dependencies then groupId and artifactId -->
   <dependencyManagement>
