@@ -484,6 +484,14 @@ public class IntegrationTestBigLinkedList extends IntegrationTestBase {
         if (!admin.tableExists(tableName)) {
           HTableDescriptor htd = new HTableDescriptor(getTableName(getConf()));
           htd.addFamily(new HColumnDescriptor(FAMILY_NAME));
+          // if -DuseMob=true force all data through mob path.
+          if (conf.getBoolean("useMob", false)) {
+            for (HColumnDescriptor hcd : htd.getColumnFamilies() ) {
+              hcd.setMobEnabled(true);
+              hcd.setMobThreshold(4);
+            }
+          }
+
           int numberOfServers = admin.getClusterStatus().getServers().size();
           if (numberOfServers == 0) {
             throw new IllegalStateException("No live regionservers");
@@ -1446,6 +1454,19 @@ public class IntegrationTestBigLinkedList extends IntegrationTestBase {
     System.err.println(" loop       Program to Loop through Generator and Verify steps");
     System.err.println(" clean      Program to clean all left over detritus.");
     System.err.println(" search     Search for missing keys.");
+    System.err.println("");
+    System.err.println("General options:");
+    System.err.println(" -D"+ TABLE_NAME_KEY+ "=<tableName>");
+    System.err.println("    Run using the <tableName> as the tablename.  Defaults to "
+        + DEFAULT_TABLE_NAME);
+    System.err.println(" -D"+ HBaseTestingUtility.REGIONS_PER_SERVER_KEY+ "=<# regions>");
+    System.err.println("    Create table with presplit regions per server.  Defaults to "
+        + HBaseTestingUtility.DEFAULT_REGIONS_PER_SERVER);
+
+    System.err.println(" -DuseMob=<true|false>");
+    System.err.println("    Create table so that the mob read/write path is forced.  " +
+        "Defaults to false");
+
     System.err.flush();
   }
 
