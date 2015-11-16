@@ -100,10 +100,6 @@ public class TestThriftServer {
 
   @BeforeClass
   public static void beforeClass() throws Exception {
-    UTIL.getConfiguration().setInt(ThriftServerRunner.HBaseHandler.MAX_IDLETIME,
-        CONNECTION_IDLE_TIME);
-    UTIL.getConfiguration().setInt(ThriftServerRunner.HBaseHandler.CLEANUP_INTERVAL,
-        RUN_CLEANER_INTERVAL);
     UTIL.getConfiguration().setBoolean(ThriftServerRunner.COALESCE_INC_KEY, true);
     UTIL.startMiniCluster();
   }
@@ -116,9 +112,15 @@ public class TestThriftServer {
   @Test(timeout=30000)
   public void testConnectionCache()
   throws IOException, IOError, IllegalArgument, AlreadyExists, InterruptedException {
+    Configuration conf = new Configuration(UTIL.getConfiguration());
+    conf.setInt(ThriftServerRunner.HBaseHandler.MAX_IDLETIME,
+        CONNECTION_IDLE_TIME);
+    conf.setInt(ThriftServerRunner.HBaseHandler.CLEANUP_INTERVAL,
+        RUN_CLEANER_INTERVAL);
+
     ThriftServerRunner.HBaseHandler handler =
-        new ThriftServerRunner.HBaseHandler(UTIL.getConfiguration(),
-            UserProvider.instantiate(UTIL.getConfiguration()));
+        new ThriftServerRunner.HBaseHandler(conf,
+            UserProvider.instantiate(conf));
     final ByteBuffer tn = asByteBuffer("tn");
     handler.createTable(tn, getColumnDescriptors());
     List<Mutation> mutations = new ArrayList<Mutation>(1);
