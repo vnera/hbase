@@ -2109,7 +2109,7 @@ public class AccessController extends BaseMasterAndRegionObserver
                 perm.getQualifier(), Action.ADMIN);
             break;
           case Namespace :
-            requireGlobalPermission("grant", Action.ADMIN, perm.getNamespace());
+            requireNamespacePermission("grant", perm.getNamespace(), Action.ADMIN);
             break;
         }
 
@@ -2160,7 +2160,7 @@ public class AccessController extends BaseMasterAndRegionObserver
                               perm.getQualifier(), Action.ADMIN);
             break;
           case Namespace :
-            requireGlobalPermission("revoke", Action.ADMIN, perm.getNamespace());
+            requireNamespacePermission("revoke", perm.getNamespace(), Action.ADMIN);
             break;
         }
 
