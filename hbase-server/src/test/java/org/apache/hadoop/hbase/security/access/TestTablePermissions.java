@@ -23,6 +23,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutput;
@@ -44,6 +45,7 @@ import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
+import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.security.User;
@@ -126,9 +128,10 @@ public class TestTablePermissions {
    */
   @Test
   public void testMigration() throws DeserializationException {
-    Configuration conf = UTIL.getConfiguration();
+    Configuration conf = new Configuration(UTIL.getConfiguration());
+    conf.setBoolean(HConstants.ALLOW_LEGACY_OBJECT_SERIALIZATION_KEY, true);
     ListMultimap<String,TablePermission> permissions = createPermissions();
-    byte [] bytes = writePermissionsAsBytes(permissions, conf);
+    byte [] bytes = writeLegacyPermissions(permissions, conf);
     AccessControlLists.readPermissions(bytes, conf);
   }
 
@@ -137,11 +140,11 @@ public class TestTablePermissions {
    * and returns the resulting byte array.  Used to verify we can read stuff written
    * with Writable.
    */
-  public static byte[] writePermissionsAsBytes(ListMultimap<String,? extends Permission> perms,
+  public static byte[] writeLegacyPermissions(ListMultimap<String,? extends Permission> perms,
       Configuration conf) {
     try {
        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-       writePermissions(new DataOutputStream(bos), perms, conf);
+       writeLegacyPermissions(new DataOutputStream(bos), perms, conf);
        return bos.toByteArray();
     } catch (IOException ioe) {
       // shouldn't happen here
@@ -157,7 +160,7 @@ public class TestTablePermissions {
    * @param conf
    * @throws IOException
   */
-  public static void writePermissions(DataOutput out,
+  public static void writeLegacyPermissions(DataOutput out,
       ListMultimap<String,? extends Permission> perms, Configuration conf)
   throws IOException {
     Set<String> keys = perms.keySet();
