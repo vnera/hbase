@@ -1085,7 +1085,8 @@
     <commons-math.version>2.1</commons-math.version>
     <commons-net.version>3.1</commons-net.version>
     <disruptor.version>3.3.0</disruptor.version>
-    <collections.version>3.2.1</collections.version>
+    <!-- Do not use versions earlier than 3.2.2 due to a security vulnerability -->
+    <collections.version>3.2.2</collections.version>
     <httpclient.version>3.1</httpclient.version>
     <metrics-core.version>2.2.0</metrics-core.version>
     <guava.version>12.0.1</guava.version>
@@ -1157,7 +1158,7 @@
     <integrationtest.include>**/IntegrationTest*.java</integrationtest.include>
     <!-- default Xmx value is 1900m. Use -Dsurefire.Xmx=xxg to run tests with different JVM Xmx value -->
     <surefire.Xmx>1900m</surefire.Xmx>
-    <surefire.cygwinXmx>1900m</surefire.cygwinXmx>    
+    <surefire.cygwinXmx>1900m</surefire.cygwinXmx>
     <hbase-surefire.argLine>-enableassertions -XX:MaxDirectMemorySize=1G -Xmx${surefire.Xmx}
       -XX:MaxPermSize=256m -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true
       -Djava.awt.headless=true
