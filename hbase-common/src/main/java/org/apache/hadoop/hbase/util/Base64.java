@@ -35,10 +35,7 @@ import java.io.FilterInputStream;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.OutputStream;
-import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -513,93 +510,6 @@ public class Base64 {
       return destination;
     } // end switch
   } // end encode3to4
-
-  /**
-   * Serializes an object and returns the Base64-encoded version of that
-   * serialized object. If the object cannot be serialized or there is another
-   * error, the method will return <tt>null</tt>. The object is not
-   * GZip-compressed before being encoded.
-   *
-   * @param serializableObject The object to encode
-   * @return The Base64-encoded object
-   * @since 1.4
-   */
-  public static String encodeObject(Serializable serializableObject) {
-    return encodeObject(serializableObject, NO_OPTIONS);
-  } // end encodeObject
-
-  /**
-   * Serializes an object and returns the Base64-encoded version of that
-   * serialized object. If the object cannot be serialized or there is another
-   * error, the method will return <tt>null</tt>.
-   * <p>
-   * Valid options:
-   * <ul>
-   *   <li>GZIP: gzip-compresses object before encoding it.</li>
-   *   <li>DONT_BREAK_LINES: don't break lines at 76 characters. <i>Note:
-   *     Technically, this makes your encoding non-compliant.</i></li>
-   * </ul>
-   * <p>
-   * Example: <code>encodeObject( myObj, Base64.GZIP )</code> or
-   * <p>
-   * Example:
-   * <code>encodeObject( myObj, Base64.GZIP | Base64.DONT_BREAK_LINES )</code>
-   *
-   * @param serializableObject The object to encode
-   * @param options Specified options
-   * @see Base64#GZIP
-   * @see Base64#DONT_BREAK_LINES
-   * @return The Base64-encoded object
-   * @since 2.0
-   */
-  @SuppressWarnings({"ConstantConditions"})
-  public static String encodeObject(Serializable serializableObject,
-      int options) {
-
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    OutputStream b64os = null;
-    ObjectOutputStream oos = null;
-    try {
-      // ObjectOutputStream -> (GZIP) -> Base64 -> ByteArrayOutputStream
-      b64os = new Base64OutputStream(baos, ENCODE | options);
-
-      oos = ((options & GZIP) == GZIP) ?
-          new ObjectOutputStream(new GZIPOutputStream(b64os)) :
-            new ObjectOutputStream(b64os);
-
-      oos.writeObject(serializableObject);
-      return new String(baos.toByteArray(), PREFERRED_ENCODING);
-
-    } catch (UnsupportedEncodingException uue) {
-      return new String(baos.toByteArray());
-
-    } catch (IOException e) {
-      LOG.error("error encoding object", e);
-      return null;
-
-    } finally {
-      if (oos != null) {
-        try {
-          oos.close();
-        } catch (Exception e) {
-          LOG.error("error closing ObjectOutputStream", e);
-        }
-      }
-      if (b64os != null) {
-        try {
-          b64os.close();
-        } catch (Exception e) {
-          LOG.error("error closing Base64OutputStream", e);
-        }
-      }
-      try {
-        baos.close();
-      } catch (Exception e) {
-        LOG.error("error closing ByteArrayOutputStream", e);
-      }
-    } // end finally
-  } // end encode
-
   /**
    * Encodes a byte array into Base64 notation. Does not GZip-compress data.
    *
@@ -976,43 +886,6 @@ public class Base64 {
 
     return bytes;
   } // end decode
-
-  /**
-   * Attempts to decode Base64 data and deserialize a Java Object within.
-   * Returns <tt>null</tt> if there was an error.
-   *
-   * @param encodedObject The Base64 data to decode
-   * @return The decoded and deserialized object
-   * @since 1.5
-   */
-  public static Object decodeToObject(String encodedObject) {
-    // Decode and gunzip if necessary
-    byte[] objBytes = decode(encodedObject);
-
-    Object obj = null;
-    ObjectInputStream ois = null;
-    try {
-      ois = new ObjectInputStream(new ByteArrayInputStream(objBytes));
-      obj = ois.readObject();
-
-    } catch (IOException e) {
-      LOG.error("error decoding object", e);
-
-    } catch (ClassNotFoundException e) {
-      LOG.error("error decoding object", e);
-
-    } finally {
-      if (ois != null) {
-        try {
-          ois.close();
-        } catch (Exception e) {
-          LOG.error("error closing ObjectInputStream", e);
-        }
-      }
-    } // end finally
-
-    return obj;
-  } // end decodeObject
 
   /**
    * Convenience method for encoding data to a file.
