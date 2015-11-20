@@ -130,6 +130,7 @@ import org.apache.hadoop.hbase.regionserver.HRegion.RegionScannerImpl;
 import org.apache.hadoop.hbase.regionserver.HRegion.RowLock;
 import org.apache.hadoop.hbase.regionserver.TestStore.FaultyFileSystem;
 import org.apache.hadoop.hbase.regionserver.wal.HLogKey;
+import org.apache.hadoop.hbase.regionserver.wal.FSHLog;
 import org.apache.hadoop.hbase.regionserver.wal.MetricsWAL;
 import org.apache.hadoop.hbase.regionserver.wal.MetricsWALSource;
 import org.apache.hadoop.hbase.regionserver.wal.WALActionsListener;
@@ -151,6 +152,7 @@ import org.apache.hadoop.hbase.wal.WAL;
 import org.apache.hadoop.hbase.wal.WALFactory;
 import org.apache.hadoop.hbase.wal.WALKey;
 import org.apache.hadoop.hbase.wal.WALProvider;
+import org.apache.hadoop.hbase.wal.WALProvider.Writer;
 import org.apache.hadoop.hbase.wal.WALSplitter;
 import org.junit.After;
 import org.junit.Assert;
@@ -259,6 +261,8 @@ public class TestHRegion {
     HRegion.closeHRegion(region);
   }
 
+
+
   /*
    * This test is for verifying memstore snapshot size is correctly updated in case of rollback
    * See HBASE-10845
@@ -360,9 +364,19 @@ public class TestHRegion {
             Assert.fail("Didn't bubble up IOE!");
           } catch (DroppedSnapshotException dse) {
             // What we are expecting
+            region.closing.set(false); // this is needed for the rest of the test to work
+          } catch (Exception e) {
+            // What we are expecting
+            region.closing.set(false); // this is needed for the rest of the test to work
           }
           // Make it so all writes succeed from here on out
           ffs.fault.set(false);
+          // WAL is bad because of above faulty fs. Roll WAL.
+          try {
+            region.getWAL().rollWriter(true);
+          } catch (Exception e) {
+            LOG.info(e);
+          }
           // Check sizes.  Should still be the one entry.
           Assert.assertEquals(sizeOfOnePut, region.getMemstoreSize().get());
           // Now add two entries so that on this next flush that fails, we can see if we
@@ -378,6 +392,8 @@ public class TestHRegion {
           region.flushcache();
           // Make sure our memory accounting is right.
           Assert.assertEquals(sizeOfOnePut * 2, region.getMemstoreSize().get());
+        } catch (Exception e) {
+          LOG.info(e);
         } finally {
           HRegion.closeHRegion(region);
         }
@@ -425,12 +441,13 @@ public class TestHRegion {
           // Now try close on top of a failing flush.
           region.close();
           fail();
-        } catch (DroppedSnapshotException dse) {
+        } catch (IOException dse) {
           // Expected
           LOG.info("Expected DroppedSnapshotException");
         } finally {
           // Make it so all writes succeed from here on out so can close clean
           ffs.fault.set(false);
+          region.getWAL().rollWriter(true);
           HRegion.closeHRegion(region);
         }
         return null;
@@ -859,7 +876,7 @@ public class TestHRegion {
 
       // now verify that the flush markers are written
       wal.shutdown();
-      WAL.Reader reader = wals.createReader(fs, DefaultWALProvider.getCurrentFileName(wal),
+      WAL.Reader reader = WALFactory.createReader(fs, DefaultWALProvider.getCurrentFileName(wal),
         TEST_UTIL.getConfiguration());
       try {
         List<WAL.Entry> flushDescriptors = new ArrayList<WAL.Entry>();
@@ -975,8 +992,7 @@ public class TestHRegion {
     }
   }
 
-  @Test
-  @SuppressWarnings("unchecked")
+  @Test (timeout=60000)
   public void testFlushMarkersWALFail() throws Exception {
     // test the cases where the WAL append for flush markers fail.
     String method = name.getMethodName();
@@ -988,9 +1004,56 @@ public class TestHRegion {
 
     final Configuration walConf = new Configuration(TEST_UTIL.getConfiguration());
     FSUtils.setRootDir(walConf, logDir);
-    final WALFactory wals = new WALFactory(walConf, null, method);
-    WAL wal = spy(wals.getWAL(tableName.getName()));
 
+    // Make up a WAL that we can manipulate at append time.
+    class FailAppendFlushMarkerWAL extends FSHLog {
+      volatile FlushAction [] flushActions = null;
+
+      public FailAppendFlushMarkerWAL(FileSystem fs, Path root, String logDir, Configuration conf)
+      throws IOException {
+        super(fs, root, logDir, conf);
+      }
+
+      @Override
+      protected Writer createWriterInstance(Path path) throws IOException {
+        final Writer w = super.createWriterInstance(path);
+        return new Writer() {
+          @Override
+          public void close() throws IOException {
+            w.close();
+          }
+
+          @Override
+          public void sync() throws IOException {
+            w.sync();
+          }
+
+          @Override
+          public void append(Entry entry) throws IOException {
+            List<Cell> cells = entry.getEdit().getCells();
+            if (WALEdit.isMetaEditFamily(cells.get(0))) {
+               FlushDescriptor desc = WALEdit.getFlushDescriptor(cells.get(0));
+              if (desc != null) {
+                for (FlushAction flushAction: flushActions) {
+                  if (desc.getAction().equals(flushAction)) {
+                    throw new IOException("Failed to append flush marker! " + flushAction);
+                  }
+                }
+              }
+            }
+            w.append(entry);
+          }
+
+          @Override
+          public long getLength() throws IOException {
+            return w.getLength();
+          }
+        };
+      }
+    }
+    FailAppendFlushMarkerWAL wal =
+      new FailAppendFlushMarkerWAL(FileSystem.get(walConf), FSUtils.getRootDir(walConf),
+        getName(), walConf);
     this.region = initHRegion(tableName.getName(), HConstants.EMPTY_START_ROW,
       HConstants.EMPTY_END_ROW, method, CONF, false, Durability.USE_DEFAULT, wal, family);
     try {
@@ -1001,13 +1064,7 @@ public class TestHRegion {
       region.put(put);
 
       // 1. Test case where START_FLUSH throws exception
-      IsFlushWALMarker isFlushWALMarker = new IsFlushWALMarker(FlushAction.START_FLUSH);
-
-      // throw exceptions if the WalEdit is a start flush action
-      when(wal.append((HTableDescriptor)any(), (HRegionInfo)any(), (WALKey)any(),
-        (WALEdit)argThat(isFlushWALMarker), (AtomicLong)any(), Mockito.anyBoolean(),
-        (List<Cell>)any()))
-          .thenThrow(new IOException("Fail to append flush marker"));
+      wal.flushActions = new FlushAction [] {FlushAction.START_FLUSH};
 
       // start cache flush will throw exception
       try {
@@ -1019,9 +1076,13 @@ public class TestHRegion {
       } catch (IOException expected) {
         // expected
       }
+      // The WAL is hosed. It has failed an append and a sync. It has an exception stuck in it
+      // which it will keep returning until we roll the WAL to prevent any further appends going
+      // in or syncs succeeding on top of failed appends, a no-no.
+      wal.rollWriter(true);
 
       // 2. Test case where START_FLUSH succeeds but COMMIT_FLUSH will throw exception
-      isFlushWALMarker.set(FlushAction.COMMIT_FLUSH);
+      wal.flushActions = new FlushAction [] {FlushAction.COMMIT_FLUSH};
 
       try {
         region.flushcache();
@@ -1034,6 +1095,8 @@ public class TestHRegion {
       }
 
       region.close();
+      // Roll WAL to clean out any exceptions stuck in it. See note above where we roll WAL.
+      wal.rollWriter(true);
       this.region = initHRegion(tableName.getName(), HConstants.EMPTY_START_ROW,
         HConstants.EMPTY_END_ROW, method, CONF, false, Durability.USE_DEFAULT, wal, family);
       region.put(put);
@@ -1041,7 +1104,7 @@ public class TestHRegion {
       // 3. Test case where ABORT_FLUSH will throw exception.
       // Even if ABORT_FLUSH throws exception, we should not fail with IOE, but continue with
       // DroppedSnapshotException. Below COMMMIT_FLUSH will cause flush to abort
-      isFlushWALMarker.set(FlushAction.COMMIT_FLUSH, FlushAction.ABORT_FLUSH);
+      wal.flushActions = new FlushAction [] {FlushAction.COMMIT_FLUSH, FlushAction.ABORT_FLUSH};
 
       try {
         region.flushcache();
@@ -5627,7 +5690,6 @@ public class TestHRegion {
     putData(startRow, numRows, qualifier, families);
     int splitRow = startRow + numRows;
     putData(splitRow, numRows, qualifier, families);
-    int endRow = splitRow + numRows;
     region.flushcache();
 
     HRegion [] regions = null;
