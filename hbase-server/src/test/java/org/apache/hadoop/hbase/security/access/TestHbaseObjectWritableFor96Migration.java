@@ -39,6 +39,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
+import org.apache.hadoop.hbase.MediumTests;
 import org.apache.hadoop.hbase.client.Action;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.Delete;
@@ -80,9 +81,11 @@ import org.apache.hadoop.io.MapWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 import com.google.protobuf.Message;
 
+@Category(MediumTests.class)
 public class TestHbaseObjectWritableFor96Migration {
 
   @Test
