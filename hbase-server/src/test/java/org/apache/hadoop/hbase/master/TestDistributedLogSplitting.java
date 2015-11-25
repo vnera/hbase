@@ -112,7 +112,6 @@ import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -884,7 +883,7 @@ public class TestDistributedLogSplitting {
     zkw.close();
   }
 
-  @Ignore ("We don't support DLR anymore") @Test(timeout = 300000)
+  @Test(timeout = 300000)
   public void testDisallowWritesInRecovering() throws Exception {
     LOG.info("testDisallowWritesInRecovering");
     conf.setBoolean(HConstants.DISTRIBUTED_LOG_REPLAY_KEY, true);
