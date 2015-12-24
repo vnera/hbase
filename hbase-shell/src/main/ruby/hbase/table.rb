@@ -345,7 +345,8 @@ EOF
       unless filter.class == String
         get.setFilter(filter)
       else
-        get.setFilter(org.apache.hadoop.hbase.filter.ParseFilter.new.parseFilterString(filter))
+        get.setFilter(
+          org.apache.hadoop.hbase.filter.ParseFilter.new.parseFilterString(filter.to_java_bytes))
       end
 
       # Call hbase for the results
@@ -429,7 +430,8 @@ EOF
         unless filter.class == String
           scan.setFilter(filter)
         else
-          scan.setFilter(org.apache.hadoop.hbase.filter.ParseFilter.new.parseFilterString(filter))
+          scan.setFilter(
+            org.apache.hadoop.hbase.filter.ParseFilter.new.parseFilterString(filter.to_java_bytes))
         end
 
         scan.setTimeStamp(timestamp) if timestamp
