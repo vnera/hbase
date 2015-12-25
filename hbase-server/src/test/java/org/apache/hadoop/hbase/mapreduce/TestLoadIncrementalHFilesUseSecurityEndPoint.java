@@ -1,5 +1,4 @@
 /**
- * Copyright The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -17,42 +16,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.hadoop.hbase.mapreduce;
 
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.codec.KeyValueCodecWithTags;
 import org.apache.hadoop.hbase.LargeTests;
-import org.apache.hadoop.hbase.security.UserProvider;
-import org.apache.hadoop.hbase.security.access.AccessControlLists;
-import org.apache.hadoop.hbase.security.access.SecureTestUtil;
-
+import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.junit.BeforeClass;
 import org.junit.experimental.categories.Category;
 
-/**
- * Reruns TestLoadIncrementalHFiles using LoadIncrementalHFiles in secure mode.
- * This suite is unable to verify the security handoff/turnover
- * as miniCluster is running as system user thus has root privileges
- * and delegation tokens don't seem to work on miniDFS.
- *
- * Thus SecureBulkload can only be completely verified by running
- * integration tests against a secure cluster. This suite is still
- * invaluable as it verifies the other mechanisms that need to be
- * supported as part of a LoadIncrementalFiles call.
- */
 @Category(LargeTests.class)
-public class TestSecureLoadIncrementalHFiles extends  TestLoadIncrementalHFiles{
+public class TestLoadIncrementalHFilesUseSecurityEndPoint extends TestLoadIncrementalHFiles {
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    // set the always on security provider
-    UserProvider.setUserProviderForTesting(util.getConfiguration(),
-      HadoopSecurityEnabledUserProviderForTesting.class);
-    // setup configuration
-    SecureTestUtil.enableSecurity(util.getConfiguration());
-    util.getConfiguration().setInt(
-        LoadIncrementalHFiles.MAX_FILES_PER_REGION_PER_FAMILY,
-        MAX_FILES_PER_REGION_PER_FAMILY);
+    util.getConfiguration().setInt(LoadIncrementalHFiles.MAX_FILES_PER_REGION_PER_FAMILY,
+      MAX_FILES_PER_REGION_PER_FAMILY);
+    util.getConfiguration().set(CoprocessorHost.REGION_COPROCESSOR_CONF_KEY,
+      "org.apache.hadoop.hbase.security.access.SecureBulkLoadEndpoint");
     // change default behavior so that tag values are returned with normal rpcs
     util.getConfiguration().set(HConstants.RPC_CODEC_CONF_KEY,
         KeyValueCodecWithTags.class.getCanonicalName());
@@ -60,12 +42,6 @@ public class TestSecureLoadIncrementalHFiles extends  TestLoadIncrementalHFiles{
     util.getConfiguration().setInt("hfile.format.version", 3);
 
     util.startMiniCluster();
-
-    // Wait for the ACL table to become available
-    util.waitTableEnabled(AccessControlLists.ACL_TABLE_NAME.getName());
-
     setupNamespace();
   }
-
 }
-
