@@ -21,8 +21,6 @@ package org.apache.hadoop.hbase.regionserver;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
@@ -35,7 +33,6 @@ import org.apache.commons.collections.map.AbstractReferenceMap;
 import org.apache.commons.collections.map.ReferenceMap;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.commons.math.stat.descriptive.DescriptiveStatistics;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -157,16 +154,6 @@ public class RegionCoprocessorHost
     @Override
     public ConcurrentMap<String, Object> getSharedData() {
       return sharedData;
-    }
-
-    public void offerExecutionLatency(long latencyNanos) {
-      coprocessorTimeNanos.offer(latencyNanos);
-    }
-
-    public Collection<Long> getExecutionLatenciesNanos() {
-      final List<Long> latencies = Lists.newArrayListWithCapacity(coprocessorTimeNanos.size());
-      coprocessorTimeNanos.drainTo(latencies);
-      return latencies;
     }
 
     @Override
@@ -1624,24 +1611,6 @@ public class RegionCoprocessorHost
     });
   }
 
-  public Map<String, DescriptiveStatistics> getCoprocessorExecutionStatistics() {
-    Map<String, DescriptiveStatistics> results = new HashMap<String, DescriptiveStatistics>();
-    for (RegionEnvironment env : coprocessors) {
-      DescriptiveStatistics ds = new DescriptiveStatistics();
-      if (env.getInstance() instanceof RegionObserver) {
-        for (Long time : env.getExecutionLatenciesNanos()) {
-          ds.addValue(time);
-        }
-        // Ensures that web ui circumvents the display of NaN values when there are zero samples.
-        if (ds.getN() == 0) {
-          ds.addValue(0);
-        }
-        results.put(env.getInstance().getClass().getSimpleName(), ds);
-      }
-    }
-    return results;
-  }
-
   private static abstract class CoprocessorOperation
       extends ObserverContext<RegionCoprocessorEnvironment> {
     public abstract void call(Coprocessor observer,
@@ -1729,7 +1698,6 @@ public class RegionCoprocessorHost
     for (RegionEnvironment env: coprocessors) {
       Coprocessor observer = env.getInstance();
       if (ctx.hasCall(observer)) {
-        long startTime = System.nanoTime();
         ctx.prepare(env);
         Thread currentThread = Thread.currentThread();
         ClassLoader cl = currentThread.getContextClassLoader();
@@ -1741,7 +1709,6 @@ public class RegionCoprocessorHost
         } finally {
           currentThread.setContextClassLoader(cl);
         }
-        env.offerExecutionLatency(System.nanoTime() - startTime);
         bypass |= ctx.shouldBypass();
         if (earlyExit && ctx.shouldComplete()) {
           break;
