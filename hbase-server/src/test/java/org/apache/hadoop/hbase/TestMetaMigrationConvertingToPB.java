@@ -74,7 +74,7 @@ public class TestMetaMigrationConvertingToPB {
 
   /*
    * This test uses a tgz file named "TestMetaMigrationConvertingToPB.tgz" under
-   * hbase-server/src/test/data which contains file data from a 0.92 cluster.
+   * hbase-server/src/test/resources which contains file data from a 0.92 cluster.
    * The cluster has a table named "TestTable", which has 100 rows. 0.94 has same
    * hbase:meta structure, so it should be the same.
    *
@@ -111,7 +111,7 @@ public class TestMetaMigrationConvertingToPB {
 
     // windows fix: tgz file has hbase:meta directory renamed as -META- since the original
     // is an illegal name under windows. So we rename it back.
-    // See src/test/data//TestMetaMigrationConvertingToPB.README and
+    // See src/test/resources/TestMetaMigrationConvertingToPB.README and
     // https://issues.apache.org/jira/browse/HBASE-6821
     doFsCommand(shell, new String [] {"-mv", new Path(hbaseRootDir, "-META-").toString(),
       new Path(hbaseRootDir, ".META.").toString()});
@@ -141,11 +141,11 @@ public class TestMetaMigrationConvertingToPB {
   }
 
   private static File untar(final File testdir) throws IOException {
-    // Find the src data under src/test/data
+    // Find the src data under src/test/resources
     final String datafile = "TestMetaMigrationConvertToPB";
     String srcTarFile =
-      System.getProperty("project.build.testSourceDirectory", "src/test") +
-      File.separator + "data" + File.separator + datafile + ".tgz";
+      System.getProperty("test.build.classes", "target/test-classes") +
+      File.separator + datafile + ".tgz";
     File homedir = new File(testdir.toString());
     File tgtUntarDir = new File(homedir, datafile);
     if (tgtUntarDir.exists()) {

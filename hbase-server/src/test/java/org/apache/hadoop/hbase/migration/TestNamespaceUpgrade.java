@@ -160,11 +160,11 @@ public class TestNamespaceUpgrade {
   }
 
    static File untar(final File testdir) throws IOException {
-    // Find the src data under src/test/data
+    // Find the src data under src/test/resources
     final String datafile = "TestNamespaceUpgrade";
     File srcTarFile = new File(
-      System.getProperty("project.build.testSourceDirectory", "src/test") +
-      File.separator + "data" + File.separator + datafile + ".tgz");
+      System.getProperty("test.build.classes", "target/test-classes") +
+      File.separator + datafile + ".tgz");
     File homedir = new File(testdir.toString());
     File tgtUntarDir = new File(homedir, "hbase");
     if (tgtUntarDir.exists()) {
