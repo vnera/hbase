@@ -36,6 +36,7 @@ import org.apache.hadoop.hbase.regionserver.wal.HLog.Reader;
 import org.apache.hadoop.hbase.regionserver.wal.HLog.Writer;
 import org.apache.hadoop.hbase.util.CancelableProgressable;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
+import org.apache.hadoop.hbase.util.LeaseNotRecoveredException;
 
 public class HLogFactory {
     private static final Log LOG = LogFactory.getLog(HLogFactory.class);
@@ -44,12 +45,12 @@ public class HLogFactory {
         final Configuration conf) throws IOException {
       return new FSHLog(fs, root, logName, conf);
     }
-    
+
     public static HLog createHLog(final FileSystem fs, final Path root, final String logName,
         final String oldLogName, final Configuration conf) throws IOException {
       return new FSHLog(fs, root, logName, oldLogName, conf);
 }
-    
+
     public static HLog createHLog(final FileSystem fs, final Path root, final String logName,
         final Configuration conf, final List<WALActionsListener> listeners,
         final String prefix) throws IOException {
@@ -59,7 +60,7 @@ public class HLogFactory {
     public static HLog createMetaHLog(final FileSystem fs, final Path root, final String logName,
         final Configuration conf, final List<WALActionsListener> listeners,
         final String prefix) throws IOException {
-      return new FSHLog(fs, root, logName, HConstants.HREGION_OLDLOGDIR_NAME, 
+      return new FSHLog(fs, root, logName, HConstants.HREGION_OLDLOGDIR_NAME,
             conf, listeners, false, prefix, true);
     }
 
@@ -151,8 +152,10 @@ public class HLogFactory {
                   throw iioe;
                 }
               }
+              throw new LeaseNotRecoveredException(e);
+            } else {
+              throw e;
             }
-            throw e;
           }
         }
       } catch (IOException ie) {
