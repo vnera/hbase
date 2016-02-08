@@ -1786,6 +1786,7 @@ public class PerformanceEvaluation extends Configured implements Tool {
     System.err.println("                 running: 1 <= value <= 500");
     System.err.println("Examples:");
     System.err.println(" To run a single client doing the default 1M sequentialWrites:");
+    String className = this.getClass().getSimpleName();
     System.err.println(" $ bin/hbase " + className + " sequentialWrite 1");
     System.err.println(" To run 10 clients doing increments over ten rows:");
     System.err.println(" $ bin/hbase " + className + " --rows=10 --nomapred increment 10");
