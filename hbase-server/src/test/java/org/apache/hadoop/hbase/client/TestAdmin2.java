@@ -110,8 +110,11 @@ public class TestAdmin2 {
   @Test (timeout=300000)
   public void testCreateBadTables() throws IOException {
     String msg = null;
+    final HTableDescriptor metaDesc = new HTableDescriptor(TableName.META_TABLE_NAME);
+    metaDesc.addFamily(new HColumnDescriptor(HConstants.CATALOG_FAMILY));
+
     try {
-      this.admin.createTable(new HTableDescriptor(TableName.META_TABLE_NAME));
+      this.admin.createTable(metaDesc);
     } catch(TableExistsException e) {
       msg = e.toString();
     }

@@ -25,6 +25,7 @@ import java.util.Set;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -62,6 +63,13 @@ public class ModifyTableHandler extends TableEventHandler {
   @Override
   protected void prepareWithTableLock() throws IOException {
     super.prepareWithTableLock();
+
+    // check that we have at least 1 Cf
+    if (htd.getColumnFamilies().length == 0) {
+      throw new DoNotRetryIOException("Table " + htd.getTableName().toString() +
+          " should have at least one column family.");
+    }
+
     // Check operation is possible on the table in its current state
     // Also checks whether the table exists
     if (masterServices.getAssignmentManager().getTableStateManager()
