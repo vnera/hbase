@@ -31,6 +31,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.CoordinatedStateException;
+import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -92,6 +93,13 @@ public class CreateTableHandler extends EventHandler {
   public CreateTableHandler prepare()
       throws NotAllMetaRegionsOnlineException, TableExistsException, IOException {
     int timeout = conf.getInt("hbase.client.catalog.timeout", 10000);
+
+    // check that we have at least 1 CF
+    if (hTableDescriptor.getColumnFamilies().length == 0) {
+      throw new DoNotRetryIOException("Table " + hTableDescriptor.getTableName().toString() +
+          " should have at least one column family.");
+    }
+
     // Need hbase:meta availability to create a table
     try {
       if (server.getMetaTableLocator().waitMetaRegionLocation(
