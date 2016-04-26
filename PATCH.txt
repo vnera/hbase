@@ -1,0 +1,2 @@
+PATCH-1461
+CDH-38113 Premature WAL EOF handling in replication code, workaround and instrumentation.
