@@ -64,6 +64,7 @@ import org.apache.hadoop.hbase.MetaTableAccessor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.NamespaceNotFoundException;
 import org.apache.hadoop.hbase.PleaseHoldException;
+import org.apache.hadoop.hbase.ScheduledChore;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerLoad;
 import org.apache.hadoop.hbase.ServerName;
@@ -271,6 +272,7 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
   private BalancerChore balancerChore;
   private ClusterStatusChore clusterStatusChore;
   private ClusterStatusPublisher clusterStatusPublisherChore = null;
+  private PeriodicDoMetrics periodicDoMetricsChore = null;
 
   CatalogJanitor catalogJanitorChore;
   private LogCleaner logCleaner;
@@ -323,6 +325,19 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
         + request.getServerName() + ":" + regionServerInfoPort
         + request.getRequestURI();
       response.sendRedirect(redirectUrl);
+    }
+  }
+
+  private static class PeriodicDoMetrics extends ScheduledChore {
+    private final HMaster server;
+    public PeriodicDoMetrics(int doMetricsInterval, final HMaster server) {
+      super(server.getServerName() + "-DoMetricsChore", server, doMetricsInterval);
+      this.server = server;
+    }
+
+    @Override
+    protected void chore() {
+      server.doMetrics();
     }
   }
 
@@ -389,9 +404,14 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
         getChoreService().scheduleChore(clusterStatusPublisherChore);
       }
     }
+
     activeMasterManager = new ActiveMasterManager(zooKeeper, this.serverName, this);
     int infoPort = putUpJettyServer();
     startActiveMasterManager(infoPort);
+
+    // Do Metrics periodically
+    periodicDoMetricsChore = new PeriodicDoMetrics(msgInterval, this);
+    getChoreService().scheduleChore(periodicDoMetricsChore);
   }
 
   // return the actual infoPort, -1 means disable info server.
@@ -512,8 +532,7 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
    * Emit the HMaster metrics, such as region in transition metrics.
    * Surrounding in a try block just to be sure metrics doesn't abort HMaster.
    */
-  @Override
-  protected void doMetrics() {
+  private void doMetrics() {
     try {
       if (assignmentManager != null) {
         assignmentManager.updateRegionsInTransitionMetrics();
@@ -1084,6 +1103,9 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     }
     if (this.mobFileCompactThread != null) {
       this.mobFileCompactThread.close();
+    }
+    if (this.periodicDoMetricsChore != null) {
+      periodicDoMetricsChore.cancel();
     }
   }
 

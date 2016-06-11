@@ -601,9 +601,6 @@ public class HRegionServer extends HasThread implements
     return RSDumpServlet.class;
   }
 
-  protected void doMetrics() {
-  }
-
   @Override
   public boolean registerService(Service instance) {
     /*
@@ -899,7 +896,6 @@ public class HRegionServer extends HasThread implements
         if ((now - lastMsg) >= msgInterval) {
           tryRegionServerReport(lastMsg, now);
           lastMsg = System.currentTimeMillis();
-          doMetrics();
         }
         if (!isStopped() && !isAborted()) {
           this.sleeper.sleep();
