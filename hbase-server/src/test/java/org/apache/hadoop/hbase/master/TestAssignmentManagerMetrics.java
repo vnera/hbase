@@ -116,8 +116,8 @@ public class TestAssignmentManagerMetrics {
 
       htd.addFamily(hcd);
 
-      String spec = "hdfs:///foo.jar|com.foo.FooRegionObserver|1001|arg1=1,arg2=2";
-      htd.addCoprocessorWithSpec(spec);
+      // Add a coprocessor
+      htd.setValue("coprocessor$1", "hdfs:///foo.jar|com.foo.FooRegionObserver|1001|arg1=1,arg2=2");
 
       TEST_UTIL.getHBaseAdmin().modifyTable(TABLENAME, htd);
 

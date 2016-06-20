@@ -408,10 +408,6 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     activeMasterManager = new ActiveMasterManager(zooKeeper, this.serverName, this);
     int infoPort = putUpJettyServer();
     startActiveMasterManager(infoPort);
-
-    // Do Metrics periodically
-    periodicDoMetricsChore = new PeriodicDoMetrics(msgInterval, this);
-    getChoreService().scheduleChore(periodicDoMetricsChore);
   }
 
   // return the actual infoPort, -1 means disable info server.
@@ -753,6 +749,10 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     getChoreService().scheduleChore(balancerChore);
     this.catalogJanitorChore = new CatalogJanitor(this, this);
     getChoreService().scheduleChore(catalogJanitorChore);
+
+    // Do Metrics periodically
+    periodicDoMetricsChore = new PeriodicDoMetrics(msgInterval, this);
+    getChoreService().scheduleChore(periodicDoMetricsChore);
 
     status.setStatus("Starting namespace manager");
     initNamespace();
