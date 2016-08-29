@@ -110,7 +110,7 @@ class JavaHBaseContext(@transient jsc: JavaSparkContext,
 
     def fn = (it: Iterator[T], conn: Connection) =>
       asScalaIterator(
-        f.call((asJavaIterator(it), conn)).iterator()
+        f.call((asJavaIterator(it), conn))
       )
 
     JavaRDD.fromRDD(hbaseContext.mapPartitions(javaRdd.rdd,

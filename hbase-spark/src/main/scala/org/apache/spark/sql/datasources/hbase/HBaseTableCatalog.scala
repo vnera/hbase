@@ -22,9 +22,9 @@ import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.spark.SchemaConverters
 import org.apache.hadoop.hbase.spark.datasources._
 import org.apache.hadoop.hbase.spark.hbase._
+import org.apache.hadoop.hbase.spark.Logging
 import org.apache.hadoop.hbase.util.Bytes
-import org.apache.spark.Logging
-import org.apache.spark.sql.catalyst.util.DataTypeParser
+import org.apache.spark.sql.catalyst.parser.CatalystSqlParser
 import org.apache.spark.sql.types._
 import org.json4s.jackson.JsonMethods._
 
@@ -79,7 +79,7 @@ case class Field(
   }
 
   val dt = {
-    sType.map(DataTypeParser.parse(_)).getOrElse{
+    sType.map(CatalystSqlParser.parseDataType(_)).getOrElse{
       schema.map{ x=>
         SchemaConverters.toSqlType(x).dataType
       }.get

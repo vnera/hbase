@@ -39,7 +39,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.spark.HBaseRDDFunctions._
 import org.apache.hadoop.hbase.client._
 import scala.reflect.ClassTag
-import org.apache.spark.{Logging, SerializableWritable, SparkContext}
+import org.apache.spark.{SerializableWritable, SparkContext}
 import org.apache.hadoop.hbase.mapreduce.{TableMapReduceUtil,
 TableInputFormat, IdentityTableMapper}
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable

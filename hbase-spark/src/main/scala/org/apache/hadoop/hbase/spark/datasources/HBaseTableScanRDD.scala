@@ -22,11 +22,12 @@ import java.util.ArrayList
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.spark._
+import org.apache.hadoop.hbase.spark.Logging
 import org.apache.hadoop.hbase.spark.hbase._
 import org.apache.hadoop.hbase.spark.datasources.HBaseResources._
 import org.apache.hadoop.hbase.util.ShutdownHookManager
 import org.apache.spark.sql.datasources.hbase.Field
-import org.apache.spark.{SparkEnv, TaskContext, Logging, Partition}
+import org.apache.spark.{SparkEnv, TaskContext, Partition}
 import org.apache.spark.rdd.RDD
 
 import scala.collection.mutable
@@ -36,10 +37,13 @@ class HBaseTableScanRDD(relation: HBaseRelation,
                        val hbaseContext: HBaseContext,
                        @transient val filter: Option[SparkSQLPushDownFilter] = None,
                         val columns: Seq[Field] = Seq.empty
-     )extends RDD[Result](relation.sqlContext.sparkContext, Nil) with Logging  {
+     )extends RDD[Result](relation.sqlContext.sparkContext, Nil) {
   private def sparkConf = SparkEnv.get.conf
   @transient var ranges = Seq.empty[Range]
   @transient var points = Seq.empty[Array[Byte]]
+  // we can't mix the Logging trait in directly, because then we get name conflicts with the one
+  // from RDD.  But this lets us work around that.
+  val logger = new Object() with Logging
   def addPoint(p: Array[Byte]) {
     points :+= p
   }
@@ -73,13 +77,13 @@ class HBaseTableScanRDD(relation: HBaseRelation,
   override def getPartitions: Array[Partition] = {
     val regions = RegionResource(relation)
     var idx = 0
-    logDebug(s"There are ${regions.size} regions")
+    logger.logDebug(s"There are ${regions.size} regions")
     val ps = regions.flatMap { x =>
       val rs = Ranges.and(Range(x), ranges)
       val ps = Points.and(Range(x), points)
       if (rs.size > 0 || ps.size > 0) {
-        if(log.isDebugEnabled) {
-          rs.foreach(x => logDebug(x.toString))
+        if(logger.log.isDebugEnabled) {
+          rs.foreach(x => logger.logDebug(x.toString))
         }
         idx += 1
         Some(HBaseScanPartition(idx - 1, x, rs, ps, SerializedFilter.toSerializedTypedFilter(filter)))
