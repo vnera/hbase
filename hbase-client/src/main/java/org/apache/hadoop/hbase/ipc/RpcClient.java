@@ -23,6 +23,7 @@ import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.security.User;
 
 import java.io.Closeable;
+import java.io.IOException;
 
 /**
  * Interface for RpcClient implementations so ConnectionManager can handle it.
@@ -58,7 +59,8 @@ import java.io.Closeable;
    *
    * @return A blocking rpc channel that goes via this rpc client instance.
    */
-  public BlockingRpcChannel createBlockingRpcChannel(ServerName sn, User user, int rpcTimeout);
+  public BlockingRpcChannel createBlockingRpcChannel(ServerName sn, User user, int rpcTimeout)
+      throws IOException;
 
   /**
    * Interrupt the connections to the given server. This should be called if the server

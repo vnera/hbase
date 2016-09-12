@@ -43,6 +43,7 @@ import org.apache.hadoop.io.compress.CompressionCodec;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.net.UnknownHostException;
 
 /**
  * Provides the basics for a RpcClient implementation like configuration and Logging.
@@ -257,7 +258,7 @@ public abstract class AbstractRpcClient implements RpcClient {
    */
   @Override
   public BlockingRpcChannel createBlockingRpcChannel(final ServerName sn,
-      final User ticket, int defaultOperationTimeout) {
+      final User ticket, int defaultOperationTimeout) throws UnknownHostException {
     return new BlockingRpcChannelImplementation(this, sn, ticket, defaultOperationTimeout);
   }
 
@@ -276,8 +277,12 @@ public abstract class AbstractRpcClient implements RpcClient {
      *                                   by the caller.
      */
     protected BlockingRpcChannelImplementation(final AbstractRpcClient rpcClient,
-        final ServerName sn, final User ticket, int defaultOperationTimeout) {
+        final ServerName sn, final User ticket, int defaultOperationTimeout)
+        throws UnknownHostException {
       this.isa = new InetSocketAddress(sn.getHostname(), sn.getPort());
+      if (this.isa.isUnresolved()) {
+        throw new UnknownHostException(sn.getHostname());
+      }
       this.rpcClient = rpcClient;
       this.ticket = ticket;
       this.defaultOperationTimeout = defaultOperationTimeout;
