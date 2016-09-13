@@ -81,7 +81,7 @@ public class DefaultMobCompactor extends DefaultCompactor {
   protected Writer createTmpWriter(FileDetails fd, long smallestReadPoint) throws IOException {
     // make this writer with tags always because of possible new cells with tags.
     StoreFile.Writer writer = store.createWriterInTmp(fd.maxKeyCount, this.compactionCompression,
-        true, fd.maxMVCCReadpoint >= smallestReadPoint, true);
+        true, fd.maxMVCCReadpoint > 0, true);
     return writer;
   }
 
