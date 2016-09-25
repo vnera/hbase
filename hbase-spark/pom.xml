@@ -63,6 +63,14 @@
             <version>${scala.version}</version>
             <scope>provided</scope>
         </dependency>
+
+	<!-- CDH: we needed to add this explictly after moving to scala 2.11 -->
+	<dependency>
+	  <groupId>org.scala-lang.modules</groupId>
+	  <artifactId>scala-parser-combinators_${scala.binary.version}</artifactId>
+          <version>1.0.4</version>
+	</dependency>
+	
         <!-- we exclude jsr305 below and then expressly relist it as
              provided / optional to avoid dependency resolution possibly
              bringing it back into runtime scope.
@@ -70,7 +78,7 @@
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.binary.version}</artifactId>
-            <version>${spark.version}</version>
+            <version>${cdh.spark.version}</version>
             <scope>provided</scope>
             <exclusions>
                 <exclusion>
@@ -99,19 +107,19 @@
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-sql_${scala.binary.version}</artifactId>
-            <version>${spark.version}</version>
+            <version>${cdh.spark.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-streaming_${scala.binary.version}</artifactId>
-            <version>${spark.version}</version>
+            <version>${cdh.spark.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-streaming_${scala.binary.version}</artifactId>
-            <version>${spark.version}</version>
+            <version>${cdh.spark.version}</version>
             <type>test-jar</type>
             <classifier>tests</classifier>
             <scope>test</scope>
@@ -125,10 +133,10 @@
         <dependency>
             <groupId>org.scalatest</groupId>
             <artifactId>scalatest_${scala.binary.version}</artifactId>
-            <version>2.2.4</version>
+            <version>2.2.6</version> <!-- TODO cdh harmonize -->
             <scope>test</scope>
         </dependency>
-
+	
         <dependency>
             <groupId>org.scalamock</groupId>
             <artifactId>scalamock-scalatest-support_${scala.binary.version}</artifactId>

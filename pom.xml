@@ -1205,9 +1205,10 @@
         <extensions>true</extensions>
       </plugin>
       <plugin>
-        <groupId>org.scala-tools</groupId>
-        <artifactId>maven-scala-plugin</artifactId>
-        <version>2.15.2</version>
+	<!-- CLOUDERA-BUILD - use up-to-date scala-maven-plugin instead of maven-scala-plugin -->
+	<artifactId>scala-maven-plugin</artifactId>
+        <groupId>net.alchim31.maven</groupId> 
+        <version>3.2.2</version> 
       </plugin>
     </plugins>
   </build>
