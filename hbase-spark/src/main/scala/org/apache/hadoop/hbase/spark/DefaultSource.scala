@@ -160,10 +160,9 @@ case class HBaseRelation (
     if (numReg > 3) {
       val tName = TableName.valueOf(catalog.name)
       val cfs = catalog.getColumnFamilies
-
-      val connection = HBaseConnectionCache.getConnection(hbaseConf)
+      val connection = ConnectionFactory.createConnection(hbaseConf)
       // Initialize hBase table if necessary
-      val admin = connection.getAdmin
+      val admin = connection.getAdmin()
       try {
         if (!admin.isTableAvailable(tName)) {
           val tableDesc = new HTableDescriptor(tName)

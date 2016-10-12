@@ -46,7 +46,4 @@ object HBaseSparkConf{
   val MAX_VERSIONS = "hbase.spark.query.maxVersions"
   val ENCODER = "hbase.spark.query.encoder"
   val defaultEncoder = classOf[NaiveEncoder].getCanonicalName
-
-  // in milliseconds
-  val connectionCloseDelay = 10 * 60 * 1000
 }
