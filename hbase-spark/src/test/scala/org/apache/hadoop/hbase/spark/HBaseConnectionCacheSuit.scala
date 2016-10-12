@@ -62,7 +62,7 @@ class ConnectionMocker extends Connection {
   def abort(why: String, e: Throwable) = {}
 }
 
-class HBaseConnectionCacheSuite extends FunSuite with Logging {
+class HBaseConnectionCacheSuit extends FunSuite with Logging {
   /*
    * These tests must be performed sequentially as they operate with an
    * unique running thread and resource.
