@@ -33,12 +33,14 @@ import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.RegionServerTests;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 /**
  * Tests for the hostname specification by region server
  */
+@Ignore
 @Category({RegionServerTests.class, MediumTests.class})
 public class TestRegionServerHostname {
   private static final Log LOG = LogFactory.getLog(TestRegionServerHostname.class);
