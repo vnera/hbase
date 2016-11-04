@@ -376,9 +376,9 @@ BeforeAndAfterEach with BeforeAndAfterAll with Logging {
     val executionRules = DefaultSourceStaticUtils.lastFiveExecutionRules.poll()
 
     assert(results.length == 2)
-
+    // Spark 2 has a different expression tree than spark 1.x
     assert(executionRules.dynamicLogicExpression.toExpressionString.
-      equals("( KEY_FIELD <= 0 AND KEY_FIELD >= 1 )"))
+      equals("( ( KEY_FIELD isNotNull AND KEY_FIELD <= 0 ) AND KEY_FIELD >= 1 )"), executionRules.dynamicLogicExpression.toExpressionString)
 
     assert(executionRules.rowKeyFilter.points.size == 0)
     assert(executionRules.rowKeyFilter.ranges.size == 1)
@@ -653,8 +653,9 @@ BeforeAndAfterEach with BeforeAndAfterAll with Logging {
     assert(localResult(0).getInt(2) == 8)
 
     val executionRules = DefaultSourceStaticUtils.lastFiveExecutionRules.poll()
+    // Spark 2.0 has a different expression syntax here.
     assert(executionRules.dynamicLogicExpression.toExpressionString.
-      equals("( I_FIELD > 0 AND I_FIELD < 1 )"))
+      equals("( ( I_FIELD isNotNull AND I_FIELD > 0 ) AND I_FIELD < 1 )"), executionRules.dynamicLogicExpression.toExpressionString)
 
   }
 
