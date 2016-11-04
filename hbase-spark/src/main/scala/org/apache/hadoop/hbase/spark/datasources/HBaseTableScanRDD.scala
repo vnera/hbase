@@ -42,7 +42,7 @@ class HBaseTableScanRDD(relation: HBaseRelation,
   @transient var points = Seq.empty[Array[Byte]]
   // we can't mix the Logging trait in directly, because then we get name conflicts with the one
   // from RDD.  But this lets us work around that.
-  val logger = new Object() with Logging
+  @transient val logger = new Object() with Logging
   def addPoint(p: Array[Byte]) {
     points :+= p
   }
