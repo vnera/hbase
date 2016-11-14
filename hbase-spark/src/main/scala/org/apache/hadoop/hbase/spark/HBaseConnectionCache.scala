@@ -34,8 +34,6 @@ private[spark] object HBaseConnectionCache extends Logging {
   // A hashmap of Spark-HBase connections. Key is HBaseConnectionKey.
   val connectionMap = new mutable.HashMap[HBaseConnectionKey, SmartConnection]()
 
-  val cacheStat = HBaseConnectionCacheStat(0, 0, 0)
-
   // in milliseconds
   private final val DEFAULT_TIME_OUT: Long = HBaseSparkConf.connectionCloseDelay
   private var timeout = DEFAULT_TIME_OUT
@@ -59,13 +57,6 @@ private[spark] object HBaseConnectionCache extends Logging {
   })
   housekeepingThread.setDaemon(true)
   housekeepingThread.start()
-
-  def getStat: HBaseConnectionCacheStat = {
-    connectionMap.synchronized {
-      cacheStat.numActiveConnections = connectionMap.size
-      cacheStat.copy()
-    }
-  }
 
   def close(): Unit = {
     try {
@@ -109,9 +100,7 @@ private[spark] object HBaseConnectionCache extends Logging {
     connectionMap.synchronized {
       if (closed)
         return null
-      cacheStat.numTotalRequests += 1
-      val sc = connectionMap.getOrElseUpdate(key, {cacheStat.numActualConnectionsCreated += 1
-        new SmartConnection(conn)})
+      val sc = connectionMap.getOrElseUpdate(key, new SmartConnection(conn))
       sc.refCount += 1
       sc
     }
@@ -147,13 +136,13 @@ private[hbase] case class SmartConnection (
 }
 
 /**
- * Denotes a unique key to an HBase Connection instance.
- * Please refer to 'org.apache.hadoop.hbase.client.HConnectionKey'.
- *
- * In essence, this class captures the properties in Configuration
- * that may be used in the process of establishing a connection.
- *
- */
+  * Denotes a unique key to an HBase Connection instance.
+  * Please refer to 'org.apache.hadoop.hbase.client.HConnectionKey'.
+  *
+  * In essence, this class captures the properties in Configuration
+  * that may be used in the process of establishing a connection.
+  *
+  */
 class HBaseConnectionKey(c: Configuration) extends Logging {
   val conf: Configuration = c
   val CONNECTION_PROPERTIES: Array[String] = Array[String](
@@ -250,16 +239,5 @@ class HBaseConnectionKey(c: Configuration) extends Logging {
     "HBaseConnectionKey{" + "properties=" + properties + ", username='" + username + '\'' + '}'
   }
 }
-
-/**
- * To log the state of 'HBaseConnectionCache'
- *
- * @param numTotalRequests number of total connection requests to the cache
- * @param numActualConnectionsCreated number of actual HBase connections the cache ever created
- * @param numActiveConnections number of current alive HBase connections the cache is holding
- */
-case class HBaseConnectionCacheStat(var numTotalRequests: Long,
-                                    var numActualConnectionsCreated: Long,
-                                    var numActiveConnections: Long)
 
 
