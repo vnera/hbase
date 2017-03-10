@@ -28,7 +28,6 @@ import org.apache.hadoop.hbase.CompatibilitySingletonFactory;
 import org.apache.hadoop.hbase.exceptions.FailedSanityCheckException;
 import org.apache.hadoop.hbase.exceptions.OutOfOrderScannerNextException;
 import org.apache.hadoop.hbase.exceptions.RegionMovedException;
-import org.apache.hadoop.hbase.exceptions.ScannerResetException;
 
 @InterfaceAudience.Private
 public class MetricsHBaseServer {
@@ -103,8 +102,6 @@ public class MetricsHBaseServer {
         source.tooBusyException();
       } else if (throwable instanceof UnknownScannerException) {
         source.unknownScannerException();
-      } else if (throwable instanceof ScannerResetException) {
-        source.scannerResetException();
       } else if (throwable instanceof RegionMovedException) {
         source.movedRegionException();
       } else if (throwable instanceof NotServingRegionException) {
