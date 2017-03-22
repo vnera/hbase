@@ -22,6 +22,7 @@ package org.apache.hadoop.hbase.coprocessor;
 import com.google.common.collect.ImmutableList;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
@@ -97,16 +98,23 @@ public class BaseRegionObserver implements RegionObserver {
 
   @Override
   public InternalScanner preFlushScannerOpen(final ObserverContext<RegionCoprocessorEnvironment> c,
-      final Store store, final KeyValueScanner memstoreScanner, final InternalScanner s)
+      final Store store, final List<KeyValueScanner> scanners, final InternalScanner s)
       throws IOException {
     return s;
   }
 
   @Override
   public InternalScanner preFlushScannerOpen(final ObserverContext<RegionCoprocessorEnvironment> c,
-      final Store store, final KeyValueScanner memstoreScanner, final InternalScanner s,
+      final Store store, final List<KeyValueScanner> scanners, final InternalScanner s,
       final long readPoint) throws IOException {
-    return preFlushScannerOpen(c, store, memstoreScanner, s);
+    return preFlushScannerOpen(c, store, scanners, s);
+  }
+
+  @Override
+  public InternalScanner preFlushScannerOpen(final ObserverContext<RegionCoprocessorEnvironment> c,
+                                             final Store store, final KeyValueScanner scanner, final InternalScanner s,
+                                             final long readPoint) throws IOException {
+    return preFlushScannerOpen(c, store, Collections.singletonList(scanner), s);
   }
 
   @Override
