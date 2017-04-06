@@ -1236,9 +1236,6 @@
     <maven.min.version>3.0.4</maven.min.version>
     <java.min.version>${compileSource}</java.min.version>
     <!-- Dependencies -->
-    <!-- CLOUDERA-BUILD TODO: Make hadoop 3 as default in right way instead of hijacking
-    hadoop-two.version property. -->
-    <!-- <hadoop-two.version>2.7.1</hadoop-two.version> -->
     <hadoop-two.version>${cdh.hadoop.version}</hadoop-two.version>
     <hadoop-three.version>${cdh.hadoop.version}</hadoop-three.version>
     <!-- These must be defined here for downstream build tools that don't look at profiles.
