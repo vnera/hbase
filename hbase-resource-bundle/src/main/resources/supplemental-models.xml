@@ -1595,7 +1595,40 @@ under the License.
     </project>
   </supplement>
 
+  <!-- Additions from Hadoop 3.0.0-alpha3 -->
+  <supplement>
+    <project>
+      <groupId>com.fasterxml</groupId>
+      <artifactId>aalto-xml</artifactId>
+      <version>1.0.0</version>
+      <licenses>
+        <license>
+          <name>Apache License, Version 2.0</name>
+          <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+          <distribution>repo</distribution>
+        </license>
+      </licenses>
+    </project>
+  </supplement>
+  <supplement>
+    <project>
+      <groupId>org.codehaus.woodstox</groupId>
+      <artifactId>stax2-api</artifactId>
+      <version>3.1.4</version>
+      <licenses>
+        <license>
+          <name>BSD license</name>
+          <url>https://opensource.org/licenses/bsd-license.php</url>
+          <distribution>repo</distribution>
+          <comments>
+Copyright 2010 FasterXML.com
+</comments>
+        </license>
+      </licenses>
+    </project>
+  </supplement>
 
+  <!-- End of additions from Hadoop 3.0.0-alpha3 -->
 
   <supplement>
     <project>
