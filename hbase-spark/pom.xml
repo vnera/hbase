@@ -43,9 +43,6 @@
         <scala.binary.version>${cdh.scala.binary.version}</scala.binary.version>
         <surefire.skipSecondPart>true</surefire.skipSecondPart>
         <top.dir>${project.basedir}/..</top.dir>
-	<!-- use cdh avro version -->
-	<avro.version>${cdh.avro.version}</avro.version>
-        <avro.mapred.classifier></avro.mapred.classifier>
     </properties>
 
     <dependencies>
@@ -69,6 +66,7 @@
 	  <groupId>org.scala-lang.modules</groupId>
 	  <artifactId>scala-parser-combinators_${scala.binary.version}</artifactId>
           <version>1.0.4</version>
+	  <scope>provided</scope>
 	</dependency>
 	
         <!-- we exclude jsr305 below and then expressly relist it as
@@ -537,7 +535,6 @@
         <dependency>
           <groupId>org.apache.avro</groupId>
           <artifactId>avro</artifactId>
-          <version>${avro.version}</version>
         </dependency>
     </dependencies>
 
@@ -640,11 +637,11 @@
                     </execution>
                 </executions>
             </plugin>
-      <!-- purposefully have jsr 305 exclusion only warn in this module -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
         <executions>
+          <!-- purposefully have jsr 305 exclusion only warn in this module -->
           <execution>
             <id>banned-jsr305</id>
             <goals>
@@ -652,6 +649,16 @@
             </goals>
             <configuration>
               <fail>false</fail>
+            </configuration>
+          </execution>
+          <!-- scala is ok in the spark modules -->
+          <execution>
+            <id>banned-scala</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <skip>true</skip>
             </configuration>
           </execution>
         </executions>
