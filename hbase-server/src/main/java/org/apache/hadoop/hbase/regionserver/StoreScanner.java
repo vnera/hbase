@@ -168,7 +168,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
 
   /** An internal constructor. */
   protected StoreScanner(Store store, Scan scan, final ScanInfo scanInfo,
-      final NavigableSet<byte[]> columns, long readPt, boolean cacheBlocks) {
+      final NavigableSet<byte[]> columns, long readPt, boolean cacheBlocks, ScanType scanType) {
     this.readPt = readPt;
     this.store = store;
     this.cacheBlocks = cacheBlocks;
@@ -190,6 +190,11 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
     if (get) {
       this.readType = Scan.ReadType.PREAD;
       this.scanUsePread = true;
+    } else if(scanType != scanType.USER_SCAN) {
+      // For compaction scanners never use Pread as already we have stream based scanners on the
+      // store files to be compacted
+      this.readType = Scan.ReadType.STREAM;
+      this.scanUsePread = false;
     } else {
       if (scan.getReadType() == Scan.ReadType.DEFAULT) {
         this.readType = scanInfo.isUsePread() ? Scan.ReadType.PREAD : Scan.ReadType.DEFAULT;
@@ -228,7 +233,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
   public StoreScanner(Store store, ScanInfo scanInfo, Scan scan, final NavigableSet<byte[]> columns,
       long readPt)
   throws IOException {
-    this(store, scan, scanInfo, columns, readPt, scan.getCacheBlocks());
+    this(store, scan, scanInfo, columns, readPt, scan.getCacheBlocks(), ScanType.USER_SCAN);
     if (columns != null && scan.isRaw()) {
       throw new DoNotRetryIOException("Cannot specify any column for a raw scan");
     }
@@ -302,7 +307,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
       List<? extends KeyValueScanner> scanners, ScanType scanType, long smallestReadPoint,
       long earliestPutTs, byte[] dropDeletesFromRow, byte[] dropDeletesToRow) throws IOException {
     this(store, scan, scanInfo, null,
-        ((HStore) store).getHRegion().getReadPoint(IsolationLevel.READ_COMMITTED), false);
+        ((HStore) store).getHRegion().getReadPoint(IsolationLevel.READ_COMMITTED), false, scanType);
     if (scan.hasFilter() || (scan.getStartRow() != null && scan.getStartRow().length > 0)
         || (scan.getStopRow() != null && scan.getStopRow().length > 0)
         || !scan.getTimeRange().isAllTime()) {
@@ -351,7 +356,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
       final NavigableSet<byte[]> columns, final List<? extends KeyValueScanner> scanners, long earliestPutTs,
       long readPt) throws IOException {
     this(null, scan, scanInfo, columns, readPt,
-        scanType == ScanType.USER_SCAN ? scan.getCacheBlocks() : false);
+        scanType == ScanType.USER_SCAN ? scan.getCacheBlocks() : false, scanType);
     if (scanType == ScanType.USER_SCAN) {
       this.matcher = UserScanQueryMatcher.create(scan, scanInfo, columns, oldestUnexpiredTS, now,
         null);
@@ -385,6 +390,10 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
         scan.includeStartRow(), scan.getStopRow(), scan.includeStopRow(), this.readPt));
   }
 
+  @VisibleForTesting
+  boolean isScanUsePread() {
+    return this.scanUsePread;
+  }
   /**
    * Seek the specified scanners with the given key
    * @param scanners
