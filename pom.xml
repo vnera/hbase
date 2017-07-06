@@ -83,7 +83,7 @@
     <module>hbase-external-blockcache</module>
     <module>hbase-shaded</module>
     <module>hbase-spark</module>
-    <!-- <module>hbase-archetypes</module> -->
+    <module>hbase-archetypes</module>
     <module>hbase-metrics-api</module>
     <module>hbase-metrics</module>
   </modules>
@@ -1325,6 +1325,9 @@
     <maven.min.version>3.0.4</maven.min.version>
     <java.min.version>${compileSource}</java.min.version>
     <!-- Dependencies -->
+    <!-- CLOUDERA-BUILD TODO: Make hadoop 3 as default in right way instead of hijacking
+    hadoop-two.version property. -->
+    <!-- <hadoop-two.version>2.7.1</hadoop-two.version> -->
     <hadoop-two.version>${cdh.hadoop.version}</hadoop-two.version>
     <hadoop-three.version>${cdh.hadoop.version}</hadoop-three.version>
     <!-- These must be defined here for downstream build tools that don't look at profiles.
@@ -1334,7 +1337,7 @@
     <compat.module>hbase-hadoop2-compat</compat.module>
     <assembly.file>src/main/assembly/hadoop-two-compat.xml</assembly.file>
     <!-- end HBASE-15925 default hadoop compatibility values -->
-    <avro.version>1.7.7</avro.version>
+    <avro.version>${cdh.avro.version}</avro.version>
     <commons-cli.version>1.4</commons-cli.version>
     <commons-codec.version>1.9</commons-codec.version>
     <!-- pretty outdated -->
@@ -1369,9 +1372,9 @@
     <protobuf.plugin.version>0.5.0</protobuf.plugin.version>
     <thrift.path>thrift</thrift.path>
     <thrift.version>0.9.3</thrift.version>
-    <clover.version>4.0.3</clover.version>
     <zookeeper.version>${cdh.zookeeper.version}</zookeeper.version>
     <slf4j.version>${cdh.slf4j.version}</slf4j.version>
+    <clover.version>4.0.3</clover.version>
     <jamon-runtime.version>2.4.1</jamon-runtime.version>
     <jettison.version>1.3.8</jettison.version>
     <netty.version>4.1.9.Final</netty.version>
