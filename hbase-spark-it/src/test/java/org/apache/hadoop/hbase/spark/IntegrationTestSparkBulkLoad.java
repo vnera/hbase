@@ -324,7 +324,7 @@ public class IntegrationTestSparkBulkLoad extends IntegrationTestBase {
       PairFlatMapFunction<Tuple2<ImmutableBytesWritable, Result>, SparkLinkKey, SparkLinkChain> {
 
     @Override
-    public Iterable<Tuple2<SparkLinkKey, SparkLinkChain>> call(Tuple2<ImmutableBytesWritable, Result> v)
+    public Iterator<Tuple2<SparkLinkKey, SparkLinkChain>> call(Tuple2<ImmutableBytesWritable, Result> v)
         throws Exception {
       Result value = v._2();
       long longRk = Bytes.toLong(value.getRow());
@@ -339,7 +339,7 @@ public class IntegrationTestSparkBulkLoad extends IntegrationTestBase {
             new Tuple2<>(new SparkLinkKey(chainId, order), new SparkLinkChain(longRk, next));
         list.add(tuple2);
       }
-      return list;
+      return list.iterator();
     }
   }
 
