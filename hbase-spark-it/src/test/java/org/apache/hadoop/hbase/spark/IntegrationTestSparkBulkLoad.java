@@ -91,6 +91,7 @@ import java.util.Set;
  *   spark-submit --class org.apache.hadoop.hbase.spark.IntegrationTestSparkBulkLoad
  *                HBASE_HOME/lib/hbase-spark-it-XXX-tests.jar -m slowDeterministic -Dhbase.spark.bulkload.chainlength=300
  */
+@org.junit.Ignore("CDH-35577 Our hbase-spark story is incompat with upstream. Fix after rebase.")
 public class IntegrationTestSparkBulkLoad extends IntegrationTestBase {
 
   private static final Log LOG = LogFactory.getLog(IntegrationTestSparkBulkLoad.class);
