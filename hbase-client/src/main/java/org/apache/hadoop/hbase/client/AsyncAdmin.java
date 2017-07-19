@@ -17,6 +17,7 @@
  */
 package org.apache.hadoop.hbase.client;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Collection;
 import java.util.Map;
@@ -24,8 +25,10 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 
+import org.apache.hadoop.hbase.ClusterStatus;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.ProcedureInfo;
+import org.apache.hadoop.hbase.RegionLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.TableName;
@@ -45,11 +48,6 @@ import org.apache.hadoop.hbase.util.Pair;
  */
 @InterfaceAudience.Public
 public interface AsyncAdmin {
-
-  /**
-   * @return Async Connection used by this object.
-   */
-  AsyncConnectionImpl getConnection();
 
   /**
    * @param tableName Table to check.
@@ -105,7 +103,9 @@ public interface AsyncAdmin {
    * Creates a new table.
    * @param desc table descriptor for table
    */
-  CompletableFuture<Void> createTable(TableDescriptor desc);
+  default CompletableFuture<Void> createTable(TableDescriptor desc) {
+    return createTable(desc, Optional.empty());
+  }
 
   /**
    * Creates a new table with the specified number of regions. The start key specified will become
@@ -128,7 +128,7 @@ public interface AsyncAdmin {
    * @param desc table descriptor for table
    * @param splitKeys array of split keys for the initial regions of the table
    */
-  CompletableFuture<Void> createTable(TableDescriptor desc, byte[][] splitKeys);
+  CompletableFuture<Void> createTable(TableDescriptor desc, Optional<byte[][]> splitKeys);
 
   /**
    * Deletes a table.
@@ -188,6 +188,13 @@ public interface AsyncAdmin {
 
   /**
    * @param tableName name of table to check
+   * @return true if table is on-line. The return value will be wrapped by a
+   *         {@link CompletableFuture}.
+   */
+  CompletableFuture<Boolean> isTableEnabled(TableName tableName);
+
+  /**
+   * @param tableName name of table to check
    * @return true if table is off-line. The return value will be wrapped by a
    *         {@link CompletableFuture}.
    */
@@ -198,7 +205,9 @@ public interface AsyncAdmin {
    * @return true if all regions of the table are available. The return value will be wrapped by a
    *         {@link CompletableFuture}.
    */
-  CompletableFuture<Boolean> isTableAvailable(TableName tableName);
+  default CompletableFuture<Boolean> isTableAvailable(TableName tableName) {
+    return isTableAvailable(tableName, null);
+  }
 
   /**
    * Use this api to check if the table has been created with the specified number of splitkeys
@@ -275,13 +284,6 @@ public interface AsyncAdmin {
   CompletableFuture<List<NamespaceDescriptor>> listNamespaceDescriptors();
 
   /**
-   * @param tableName name of table to check
-   * @return true if table is on-line. The return value will be wrapped by a
-   *         {@link CompletableFuture}.
-   */
-  CompletableFuture<Boolean> isTableEnabled(TableName tableName);
-
-  /**
    * Turn the load balancer on or off.
    * @param on
    * @return Previous balancer value wrapped by a {@link CompletableFuture}.
@@ -330,7 +332,12 @@ public interface AsyncAdmin {
   /**
    * Get all the online regions on a region server.
    */
-  CompletableFuture<List<HRegionInfo>> getOnlineRegions(ServerName sn);
+  CompletableFuture<List<HRegionInfo>> getOnlineRegions(ServerName serverName);
+
+  /**
+   * Get the regions of a given table.
+   */
+  CompletableFuture<List<HRegionInfo>> getTableRegions(TableName tableName);
 
   /**
    * Flush a table.
@@ -422,15 +429,15 @@ public interface AsyncAdmin {
 
   /**
    * Compact all regions on the region server.
-   * @param sn the region server name
+   * @param serverName the region server name
    */
-  CompletableFuture<Void> compactRegionServer(ServerName sn);
+  CompletableFuture<Void> compactRegionServer(ServerName serverName);
 
   /**
    * Compact all regions on the region server.
-   * @param sn the region server name
+   * @param serverName the region server name
    */
-  CompletableFuture<Void> majorCompactRegionServer(ServerName sn);
+  CompletableFuture<Void> majorCompactRegionServer(ServerName serverName);
 
   /**
    * Merge two regions.
@@ -563,18 +570,18 @@ public interface AsyncAdmin {
 
   /**
    * Append the replicable table-cf config of the specified peer
-   * @param id a short that identifies the cluster
+   * @param peerId a short that identifies the cluster
    * @param tableCfs A map from tableName to column family names
    */
-  CompletableFuture<Void> appendReplicationPeerTableCFs(String id,
+  CompletableFuture<Void> appendReplicationPeerTableCFs(String peerId,
       Map<TableName, ? extends Collection<String>> tableCfs);
 
   /**
    * Remove some table-cfs from config of the specified peer
-   * @param id a short name that identifies the cluster
+   * @param peerId a short name that identifies the cluster
    * @param tableCfs A map from tableName to column family names
    */
-  CompletableFuture<Void> removeReplicationPeerTableCFs(String id,
+  CompletableFuture<Void> removeReplicationPeerTableCFs(String peerId,
       Map<TableName, ? extends Collection<String>> tableCfs);
 
   /**
@@ -613,7 +620,9 @@ public interface AsyncAdmin {
    * @param snapshotName name of the snapshot to be created
    * @param tableName name of the table for which snapshot is created
    */
-  CompletableFuture<Void> snapshot(String snapshotName, TableName tableName);
+  default CompletableFuture<Void> snapshot(String snapshotName, TableName tableName) {
+    return snapshot(snapshotName, tableName, SnapshotType.FLUSH);
+  }
 
   /**
    * Create typed snapshot of the table. Snapshots are considered unique based on <b>the name of the
@@ -627,8 +636,10 @@ public interface AsyncAdmin {
    * @param tableName name of the table to snapshot
    * @param type type of snapshot to take
    */
-  CompletableFuture<Void> snapshot(String snapshotName, TableName tableName,
-      SnapshotType type);
+  default CompletableFuture<Void> snapshot(String snapshotName, TableName tableName,
+      SnapshotType type) {
+    return snapshot(new SnapshotDescription(snapshotName, tableName, type));
+  }
 
   /**
    * Take a snapshot and wait for the server to complete that snapshot asynchronously. Only a single
@@ -695,14 +706,16 @@ public interface AsyncAdmin {
    * @return a list of snapshot descriptors for completed snapshots wrapped by a
    *         {@link CompletableFuture}
    */
-  CompletableFuture<List<SnapshotDescription>> listSnapshots();
+  default CompletableFuture<List<SnapshotDescription>> listSnapshots() {
+    return listSnapshots(Optional.empty());
+  }
 
   /**
    * List all the completed snapshots matching the given pattern.
    * @param pattern The compiled regular expression to match against
    * @return - returns a List of SnapshotDescription wrapped by a {@link CompletableFuture}
    */
-  CompletableFuture<List<SnapshotDescription>> listSnapshots(Pattern pattern);
+  CompletableFuture<List<SnapshotDescription>> listSnapshots(Optional<Pattern> pattern);
 
   /**
    * List all the completed snapshots matching the given table name regular expression and snapshot
@@ -725,7 +738,9 @@ public interface AsyncAdmin {
    * Delete existing snapshots whose names match the pattern passed.
    * @param pattern pattern for names of the snapshot to match
    */
-  CompletableFuture<Void> deleteSnapshots(Pattern pattern);
+  default CompletableFuture<Void> deleteSnapshots(Pattern pattern) {
+    return deleteTableSnapshots(null, pattern);
+  }
 
   /**
    * Delete all existing snapshots matching the given table name regular expression and snapshot
@@ -789,4 +804,91 @@ public interface AsyncAdmin {
    * @return procedure list wrapped by {@link CompletableFuture}
    */
   CompletableFuture<List<ProcedureInfo>> listProcedures();
+
+  /**
+   * @return cluster status wrapped by {@link CompletableFuture}
+   */
+  CompletableFuture<ClusterStatus> getClusterStatus();
+
+  /**
+   * @return current master server name wrapped by {@link CompletableFuture}
+   */
+  default CompletableFuture<ServerName> getMaster() {
+    return getClusterStatus().thenApply(ClusterStatus::getMaster);
+  }
+
+  /**
+   * @return current backup master list wrapped by {@link CompletableFuture}
+   */
+  default CompletableFuture<Collection<ServerName>> getBackupMasters() {
+    return getClusterStatus().thenApply(ClusterStatus::getBackupMasters);
+  }
+
+  /**
+   * @return current live region servers list wrapped by {@link CompletableFuture}
+   */
+  default CompletableFuture<Collection<ServerName>> getRegionServers() {
+    return getClusterStatus().thenApply(ClusterStatus::getServers);
+  }
+
+  /**
+   * Get a list of {@link RegionLoad} of all regions hosted on a region seerver.
+   * @param serverName
+   * @return a list of {@link RegionLoad} wrapped by {@link CompletableFuture}
+   */
+  default CompletableFuture<List<RegionLoad>> getRegionLoads(ServerName serverName) {
+    return getRegionLoads(serverName, Optional.empty());
+  }
+
+  /**
+   * Get a list of {@link RegionLoad} of all regions hosted on a region seerver for a table.
+   * @param serverName
+   * @param tableName
+   * @return a list of {@link RegionLoad} wrapped by {@link CompletableFuture}
+   */
+  CompletableFuture<List<RegionLoad>> getRegionLoads(ServerName serverName,
+      Optional<TableName> tableName);
+
+  /**
+   * Check whether master is in maintenance mode
+   * @return true if master is in maintenance mode, false otherwise. The return value will be
+   *         wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> isMasterInMaintenanceMode();
+
+  /**
+   * Get the current compaction state of a table. It could be in a major compaction, a minor
+   * compaction, both, or none.
+   * @param tableName table to examine
+   * @return the current compaction state wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<CompactionState> getCompactionState(TableName tableName);
+
+  /**
+   * Get the current compaction state of region. It could be in a major compaction, a minor
+   * compaction, both, or none.
+   * @param regionName region to examine
+   * @return the current compaction state wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<CompactionState> getCompactionStateForRegion(byte[] regionName);
+
+  /**
+   * Get the timestamp of the last major compaction for the passed table.
+   * <p>
+   * The timestamp of the oldest HFile resulting from a major compaction of that table, or not
+   * present if no such HFile could be found.
+   * @param tableName table to examine
+   * @return the last major compaction timestamp wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<Optional<Long>> getLastMajorCompactionTimestamp(TableName tableName);
+
+  /**
+   * Get the timestamp of the last major compaction for the passed region.
+   * <p>
+   * The timestamp of the oldest HFile resulting from a major compaction of that region, or not
+   * present if no such HFile could be found.
+   * @param regionName region to examine
+   * @return the last major compaction timestamp wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<Optional<Long>> getLastMajorCompactionTimestampForRegion(byte[] regionName);
 }

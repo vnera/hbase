@@ -278,7 +278,23 @@ class AsyncConnectionImpl implements AsyncConnection {
   }
 
   @Override
-  public AsyncAdmin getAdmin() {
-    return new AsyncHBaseAdmin(this);
+  public AsyncAdminBuilder<RawAsyncHBaseAdmin> getAdminBuilder() {
+    return new AsyncAdminBuilderBase<RawAsyncHBaseAdmin>(connConf) {
+      @Override
+      public RawAsyncHBaseAdmin build() {
+        return new RawAsyncHBaseAdmin(AsyncConnectionImpl.this, this);
+      }
+    };
+  }
+
+  @Override
+  public AsyncAdminBuilder<AsyncHBaseAdmin> getAdminBuilder(ExecutorService pool) {
+    return new AsyncAdminBuilderBase<AsyncHBaseAdmin>(connConf) {
+      @Override
+      public AsyncHBaseAdmin build() {
+        RawAsyncHBaseAdmin rawAdmin = new RawAsyncHBaseAdmin(AsyncConnectionImpl.this, this);
+        return new AsyncHBaseAdmin(rawAdmin, pool);
+      }
+    };
   }
 }

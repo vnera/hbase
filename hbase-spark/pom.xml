@@ -207,6 +207,10 @@
                   <groupId>com.google.code.findbugs</groupId>
                   <artifactId>jsr305</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>junit</groupId>
+                    <artifactId>junit</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
 
@@ -244,6 +248,10 @@
                 <exclusion>
                   <groupId>com.google.code.findbugs</groupId>
                   <artifactId>jsr305</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>junit</groupId>
+                    <artifactId>junit</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -549,7 +557,7 @@
             <plugin>
                 <groupId>net.alchim31.maven</groupId>
                 <artifactId>scala-maven-plugin</artifactId>
-                <version>3.2.0</version>
+                <version>${scala.maven.version}</version>
                 <configuration>
                     <charset>${project.build.sourceEncoding}</charset>
                     <scalaVersion>${scala.version}</scalaVersion>
@@ -579,7 +587,7 @@
             <plugin>
                 <groupId>org.scalatest</groupId>
                 <artifactId>scalatest-maven-plugin</artifactId>
-                <version>1.0</version>
+                <version>${scalatest.maven.version}</version>
                 <configuration>
                     <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
                     <junitxml>.</junitxml>

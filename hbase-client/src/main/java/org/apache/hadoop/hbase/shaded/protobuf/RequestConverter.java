@@ -19,10 +19,12 @@ package org.apache.hadoop.hbase.shaded.protobuf;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+
 
 import org.apache.hadoop.hbase.CellScannable;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
@@ -794,15 +796,23 @@ public final class RequestConverter {
 
   /**
    * Create a protocol buffer GetRegionLoadRequest for all regions/regions of a table.
-   *
+   * @param tableName the table for which regionLoad should be obtained from RS
+   * @return a protocol buffer GetRegionLoadRequest
+   * @deprecated use {@link #buildGetRegionLoadRequest(Optional)} instead.
+   */
+  @Deprecated
+  public static GetRegionLoadRequest buildGetRegionLoadRequest(final TableName tableName) {
+    return buildGetRegionLoadRequest(Optional.ofNullable(tableName));
+  }
+
+  /**
+   * Create a protocol buffer GetRegionLoadRequest for all regions/regions of a table.
    * @param tableName the table for which regionLoad should be obtained from RS
    * @return a protocol buffer GetRegionLoadRequest
    */
-  public static GetRegionLoadRequest buildGetRegionLoadRequest(final TableName tableName) {
+  public static GetRegionLoadRequest buildGetRegionLoadRequest(Optional<TableName> tableName) {
     GetRegionLoadRequest.Builder builder = GetRegionLoadRequest.newBuilder();
-    if (tableName != null) {
-      builder.setTableName(ProtobufUtil.toProtoTableName(tableName));
-    }
+    tableName.ifPresent(table -> builder.setTableName(ProtobufUtil.toProtoTableName(table)));
     return builder.build();
   }
 
@@ -1271,18 +1281,25 @@ public final class RequestConverter {
       final byte [][] splitKeys,
       final long nonceGroup,
       final long nonce) {
+    return buildCreateTableRequest(hTableDesc, Optional.ofNullable(splitKeys), nonceGroup, nonce);
+  }
+
+  /**
+   * Creates a protocol buffer CreateTableRequest
+   * @param hTableDesc
+   * @param splitKeys
+   * @return a CreateTableRequest
+   */
+  public static CreateTableRequest buildCreateTableRequest(TableDescriptor hTableDesc,
+      Optional<byte[][]> splitKeys, long nonceGroup, long nonce) {
     CreateTableRequest.Builder builder = CreateTableRequest.newBuilder();
     builder.setTableSchema(ProtobufUtil.convertToTableSchema(hTableDesc));
-    if (splitKeys != null) {
-      for (byte [] splitKey : splitKeys) {
-        builder.addSplitKeys(UnsafeByteOperations.unsafeWrap(splitKey));
-      }
-    }
+    splitKeys.ifPresent(keys -> Arrays.stream(keys).forEach(
+      key -> builder.addSplitKeys(UnsafeByteOperations.unsafeWrap(key))));
     builder.setNonceGroup(nonceGroup);
     builder.setNonce(nonce);
     return builder.build();
   }
-
 
   /**
    * Creates a protocol buffer ModifyTableRequest
