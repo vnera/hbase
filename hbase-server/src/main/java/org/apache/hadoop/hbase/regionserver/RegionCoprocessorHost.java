@@ -55,6 +55,7 @@ import org.apache.hadoop.hbase.client.Mutation;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorService;
 import org.apache.hadoop.hbase.coprocessor.EndpointObserver;
@@ -260,7 +261,7 @@ public class RegionCoprocessorHost
   }
 
   static List<TableCoprocessorAttribute> getTableCoprocessorAttrsFromSchema(Configuration conf,
-      HTableDescriptor htd) {
+      TableDescriptor htd) {
     List<TableCoprocessorAttribute> result = Lists.newArrayList();
     for (Map.Entry<Bytes, Bytes> e: htd.getValues().entrySet()) {
       String key = Bytes.toString(e.getKey().get()).trim();
@@ -324,7 +325,7 @@ public class RegionCoprocessorHost
    * @throws IOException
    */
   public static void testTableCoprocessorAttrs(final Configuration conf,
-      final HTableDescriptor htd) throws IOException {
+      final TableDescriptor htd) throws IOException {
     String pathPrefix = UUID.randomUUID().toString();
     for (TableCoprocessorAttribute attr: getTableCoprocessorAttrsFromSchema(conf, htd)) {
       if (attr.getPriority() < 0) {
@@ -362,15 +363,15 @@ public class RegionCoprocessorHost
     // scan the table attributes for coprocessor load specifications
     // initialize the coprocessors
     List<RegionEnvironment> configured = new ArrayList<>();
-    for (TableCoprocessorAttribute attr: getTableCoprocessorAttrsFromSchema(conf, 
-        region.getTableDesc())) {
+    for (TableCoprocessorAttribute attr: getTableCoprocessorAttrsFromSchema(conf,
+        region.getTableDescriptor())) {
       // Load encompasses classloading and coprocessor initialization
       try {
         RegionEnvironment env = load(attr.getPath(), attr.getClassName(), attr.getPriority(),
           attr.getConf());
         configured.add(env);
         LOG.info("Loaded coprocessor " + attr.getClassName() + " from HTD of " +
-            region.getTableDesc().getTableName().getNameAsString() + " successfully.");
+            region.getTableDescriptor().getTableName().getNameAsString() + " successfully.");
       } catch (Throwable t) {
         // Coprocessor failed to load, do we abort on error?
         if (conf.getBoolean(ABORT_ON_ERROR_KEY, DEFAULT_ABORT_ON_ERROR)) {
@@ -1225,12 +1226,13 @@ public class RegionCoprocessorHost
    * @param result the result returned by the append
    * @throws IOException if an error occurred on the coprocessor
    */
-  public void postAppend(final Append append, final Result result) throws IOException {
-    execOperation(coprocessors.isEmpty() ? null : new RegionOperation() {
+  public Result postAppend(final Append append, final Result result) throws IOException {
+    return execOperationWithResult(result,
+        coprocessors.isEmpty() ? null : new RegionOperationWithResult<Result>() {
       @Override
       public void call(RegionObserver oserver, ObserverContext<RegionCoprocessorEnvironment> ctx)
           throws IOException {
-        oserver.postAppend(ctx, append, result);
+        setResult(oserver.postAppend(ctx, append, result));
       }
     });
   }

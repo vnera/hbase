@@ -29,6 +29,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -71,8 +72,10 @@ import org.apache.hadoop.hbase.client.AsyncRpcRetryingCallerFactory.MasterReques
 import org.apache.hadoop.hbase.client.Scan.ReadType;
 import org.apache.hadoop.hbase.client.replication.ReplicationSerDeHelper;
 import org.apache.hadoop.hbase.client.replication.TableCFs;
+import org.apache.hadoop.hbase.client.security.SecurityCapability;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.ipc.HBaseRpcController;
+import org.apache.hadoop.hbase.procedure2.LockInfo;
 import org.apache.hadoop.hbase.quotas.QuotaFilter;
 import org.apache.hadoop.hbase.quotas.QuotaSettings;
 import org.apache.hadoop.hbase.quotas.QuotaTableUtil;
@@ -83,6 +86,8 @@ import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcCallback;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.AdminService;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.ClearCompactionQueuesRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.ClearCompactionQueuesResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.CloseRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.CloseRegionResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.CompactRegionRequest;
@@ -95,8 +100,14 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetRegionIn
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetRegionInfoResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetRegionLoadRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetRegionLoadResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.RollWALWriterRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.RollWALWriterResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.SplitRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.SplitRegionResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.StopServerRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.StopServerResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.UpdateConfigurationRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.UpdateConfigurationResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos.ProcedureDescription;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos.TableSchema;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos.RegionSpecifier.RegionSpecifierType;
@@ -116,6 +127,10 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.DeleteSnap
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.DeleteSnapshotResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.DisableTableRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.DisableTableResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.EnableCatalogJanitorRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.EnableCatalogJanitorResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.DrainRegionServersRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.DrainRegionServersResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.EnableTableRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.EnableTableResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.DeleteColumnRequest;
@@ -142,12 +157,24 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.DeleteTabl
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.DeleteTableResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsBalancerEnabledRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsBalancerEnabledResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsCatalogJanitorEnabledRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsCatalogJanitorEnabledResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsCleanerChoreEnabledRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsCleanerChoreEnabledResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsInMaintenanceModeRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsInMaintenanceModeResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsNormalizerEnabledRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsNormalizerEnabledResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsProcedureDoneRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsProcedureDoneResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsSnapshotDoneRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsSnapshotDoneResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsSplitOrMergeEnabledRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsSplitOrMergeEnabledResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListDrainingRegionServersRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListDrainingRegionServersResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListLocksRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListLocksResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListNamespaceDescriptorsRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListNamespaceDescriptorsResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListProceduresRequest;
@@ -164,16 +191,36 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ModifyName
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ModifyNamespaceResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.MoveRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.MoveRegionResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.NormalizeRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.NormalizeResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.OfflineRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.OfflineRegionResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.RemoveDrainFromRegionServersRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.RemoveDrainFromRegionServersResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.RestoreSnapshotRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.RestoreSnapshotResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.RunCatalogScanRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.RunCatalogScanResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.RunCleanerChoreRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.RunCleanerChoreResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SecurityCapabilitiesRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SecurityCapabilitiesResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetBalancerRunningRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetBalancerRunningResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetCleanerChoreRunningRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetCleanerChoreRunningResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetNormalizerRunningRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetNormalizerRunningResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetQuotaRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetQuotaResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetSplitOrMergeEnabledRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetSplitOrMergeEnabledResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ShutdownRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ShutdownResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SnapshotRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SnapshotResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.StopMasterRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.StopMasterResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.TruncateTableRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.TruncateTableResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.UnassignRegionRequest;
@@ -674,39 +721,6 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
   }
 
   @Override
-  public CompletableFuture<Boolean> setBalancerOn(final boolean on) {
-    return this
-        .<Boolean> newMasterCaller()
-        .action(
-          (controller, stub) -> this
-              .<SetBalancerRunningRequest, SetBalancerRunningResponse, Boolean> call(controller,
-                stub, RequestConverter.buildSetBalancerRunningRequest(on, true),
-                (s, c, req, done) -> s.setBalancerRunning(c, req, done),
-                (resp) -> resp.getPrevBalanceValue())).call();
-  }
-
-  @Override
-  public CompletableFuture<Boolean> balance(boolean forcible) {
-    return this
-        .<Boolean> newMasterCaller()
-        .action(
-          (controller, stub) -> this.<BalanceRequest, BalanceResponse, Boolean> call(controller,
-            stub, RequestConverter.buildBalanceRequest(forcible),
-            (s, c, req, done) -> s.balance(c, req, done), (resp) -> resp.getBalancerRan())).call();
-  }
-
-  @Override
-  public CompletableFuture<Boolean> isBalancerOn() {
-    return this
-        .<Boolean> newMasterCaller()
-        .action(
-          (controller, stub) -> this.<IsBalancerEnabledRequest, IsBalancerEnabledResponse, Boolean> call(
-            controller, stub, RequestConverter.buildIsBalancerEnabledRequest(),
-            (s, c, req, done) -> s.isBalancerEnabled(c, req, done), (resp) -> resp.getEnabled()))
-        .call();
-  }
-
-  @Override
   public CompletableFuture<Boolean> closeRegion(byte[] regionName, Optional<ServerName> serverName) {
     CompletableFuture<Boolean> future = new CompletableFuture<>();
     getRegionLocation(regionName).whenComplete((location, err) -> {
@@ -1032,6 +1046,51 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
     checkAndGetTableName(encodeRegionNameA, tableNameRef, future);
     checkAndGetTableName(encodeRegionNameB, tableNameRef, future);
     return future;
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setMergeOn(boolean on) {
+    return setSplitOrMergeOn(on, MasterSwitchType.MERGE);
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isMergeOn() {
+    return isSplitOrMergeOn(MasterSwitchType.MERGE);
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setSplitOn(boolean on) {
+    return setSplitOrMergeOn(on, MasterSwitchType.SPLIT);
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isSplitOn() {
+    return isSplitOrMergeOn(MasterSwitchType.SPLIT);
+  }
+
+  private CompletableFuture<Boolean> setSplitOrMergeOn(boolean on, MasterSwitchType switchType) {
+    SetSplitOrMergeEnabledRequest request =
+        RequestConverter.buildSetSplitOrMergeEnabledRequest(on, false, switchType);
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<SetSplitOrMergeEnabledRequest, SetSplitOrMergeEnabledResponse, Boolean> call(
+                controller, stub, request, (s, c, req, done) -> s.setSplitOrMergeEnabled(c, req,
+                  done), (resp) -> resp.getPrevValueList().get(0))).call();
+  }
+
+  private CompletableFuture<Boolean> isSplitOrMergeOn(MasterSwitchType switchType) {
+    IsSplitOrMergeEnabledRequest request =
+        RequestConverter.buildIsSplitOrMergeEnabledRequest(switchType);
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<IsSplitOrMergeEnabledRequest, IsSplitOrMergeEnabledResponse, Boolean> call(
+                controller, stub, request,
+                (s, c, req, done) -> s.isSplitOrMergeEnabled(c, req, done),
+                (resp) -> resp.getEnabled())).call();
   }
 
   @Override
@@ -1930,6 +1989,55 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
                     .collect(Collectors.toList()))).call();
   }
 
+  @Override
+  public CompletableFuture<List<LockInfo>> listProcedureLocks() {
+    return this
+        .<List<LockInfo>> newMasterCaller()
+        .action(
+          (controller, stub) -> this.<ListLocksRequest, ListLocksResponse, List<LockInfo>> call(
+            controller, stub, ListLocksRequest.newBuilder().build(),
+            (s, c, req, done) -> s.listLocks(c, req, done), resp -> resp.getLockList().stream()
+                .map(ProtobufUtil::toLockInfo).collect(Collectors.toList()))).call();
+  }
+
+  @Override
+  public CompletableFuture<Void> drainRegionServers(List<ServerName> servers) {
+    return this
+        .<Void> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<DrainRegionServersRequest, DrainRegionServersResponse, Void> call(controller, stub,
+                RequestConverter.buildDrainRegionServersRequest(servers),
+                (s, c, req, done) -> s.drainRegionServers(c, req, done), resp -> null)).call();
+  }
+
+  @Override
+  public CompletableFuture<List<ServerName>> listDrainingRegionServers() {
+    return this
+        .<List<ServerName>> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<ListDrainingRegionServersRequest, ListDrainingRegionServersResponse, List<ServerName>> call(
+                controller,
+                stub,
+                ListDrainingRegionServersRequest.newBuilder().build(),
+                (s, c, req, done) -> s.listDrainingRegionServers(c, req, done),
+                resp -> resp.getServerNameList().stream().map(ProtobufUtil::toServerName)
+                    .collect(Collectors.toList()))).call();
+  }
+
+  @Override
+  public CompletableFuture<Void> removeDrainFromRegionServers(List<ServerName> servers) {
+    return this
+        .<Void> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<RemoveDrainFromRegionServersRequest, RemoveDrainFromRegionServersResponse, Void> call(
+                controller, stub, RequestConverter
+                    .buildRemoveDrainFromRegionServersRequest(servers), (s, c, req, done) -> s
+                    .removeDrainFromRegionServers(c, req, done), resp -> null)).call();
+  }
+
   /**
    * Get the region location for the passed region name. The region name may be a full region name
    * or encoded region name. If the region does not found, then it'll throw an
@@ -2315,6 +2423,111 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
   }
 
   @Override
+  public CompletableFuture<Void> shutdown() {
+    return this
+        .<Void> newMasterCaller()
+        .action(
+          (controller, stub) -> this.<ShutdownRequest, ShutdownResponse, Void> call(controller,
+            stub, ShutdownRequest.newBuilder().build(),
+            (s, c, req, done) -> s.shutdown(c, req, done), resp -> null)).call();
+  }
+
+  @Override
+  public CompletableFuture<Void> stopMaster() {
+    return this
+        .<Void> newMasterCaller()
+        .action(
+          (controller, stub) -> this.<StopMasterRequest, StopMasterResponse, Void> call(controller,
+            stub, StopMasterRequest.newBuilder().build(),
+            (s, c, req, done) -> s.stopMaster(c, req, done), resp -> null)).call();
+  }
+
+  @Override
+  public CompletableFuture<Void> stopRegionServer(ServerName serverName) {
+    StopServerRequest request =
+        RequestConverter.buildStopServerRequest("Called by admin client "
+            + this.connection.toString());
+    return this
+        .<Void> newAdminCaller()
+        .action(
+          (controller, stub) -> this.<StopServerRequest, StopServerResponse, Void> adminCall(
+            controller, stub, request, (s, c, req, done) -> s.stopServer(controller, req, done),
+            resp -> null)).serverName(serverName).call();
+  }
+
+  @Override
+  public CompletableFuture<Void> updateConfiguration(ServerName serverName) {
+    return this
+        .<Void> newAdminCaller()
+        .action(
+          (controller, stub) -> this
+              .<UpdateConfigurationRequest, UpdateConfigurationResponse, Void> adminCall(
+                controller, stub, UpdateConfigurationRequest.getDefaultInstance(),
+                (s, c, req, done) -> s.updateConfiguration(controller, req, done), resp -> null))
+        .serverName(serverName).call();
+  }
+
+  @Override
+  public CompletableFuture<Void> updateConfiguration() {
+    CompletableFuture<Void> future = new CompletableFuture<Void>();
+    getClusterStatus().whenComplete(
+      (status, err) -> {
+        if (err != null) {
+          future.completeExceptionally(err);
+        } else {
+          List<CompletableFuture<Void>> futures = new ArrayList<>();
+          status.getServers().forEach((server) -> futures.add(updateConfiguration(server)));
+          futures.add(updateConfiguration(status.getMaster()));
+          status.getBackupMasters().forEach(master -> futures.add(updateConfiguration(master)));
+          CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[futures.size()]))
+              .whenComplete((result, err2) -> {
+                if (err2 != null) {
+                  future.completeExceptionally(err2);
+                } else {
+                  future.complete(result);
+                }
+              });
+        }
+      });
+    return future;
+  }
+
+  @Override
+  public CompletableFuture<Void> rollWALWriter(ServerName serverName) {
+    return this
+        .<Void> newAdminCaller()
+        .action(
+          (controller, stub) -> this.<RollWALWriterRequest, RollWALWriterResponse, Void> adminCall(
+            controller, stub, RequestConverter.buildRollWALWriterRequest(),
+            (s, c, req, done) -> s.rollWALWriter(controller, req, done), resp -> null))
+        .serverName(serverName).call();
+  }
+
+  @Override
+  public CompletableFuture<Void> clearCompactionQueues(ServerName serverName, Set<String> queues) {
+    return this
+        .<Void> newAdminCaller()
+        .action(
+          (controller, stub) -> this
+              .<ClearCompactionQueuesRequest, ClearCompactionQueuesResponse, Void> adminCall(
+                controller, stub, RequestConverter.buildClearCompactionQueuesRequest(queues), (s,
+                    c, req, done) -> s.clearCompactionQueues(controller, req, done), resp -> null))
+        .serverName(serverName).call();
+  }
+
+  @Override
+  public CompletableFuture<List<SecurityCapability>> getSecurityCapabilities() {
+    return this
+        .<List<SecurityCapability>> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<SecurityCapabilitiesRequest, SecurityCapabilitiesResponse, List<SecurityCapability>> call(
+                controller, stub, SecurityCapabilitiesRequest.newBuilder().build(), (s, c, req,
+                    done) -> s.getSecurityCapabilities(c, req, done), (resp) -> ProtobufUtil
+                    .toSecurityCapabilityList(resp.getCapabilitiesList()))).call();
+  }
+
+  @Override
   public CompletableFuture<List<RegionLoad>> getRegionLoads(ServerName serverName,
       Optional<TableName> tableName) {
     return this
@@ -2485,5 +2698,144 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
                 });
           });
     return future;
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setBalancerOn(final boolean on) {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<SetBalancerRunningRequest, SetBalancerRunningResponse, Boolean> call(controller,
+                stub, RequestConverter.buildSetBalancerRunningRequest(on, true),
+                (s, c, req, done) -> s.setBalancerRunning(c, req, done),
+                (resp) -> resp.getPrevBalanceValue())).call();
+  }
+
+  @Override
+  public CompletableFuture<Boolean> balance(boolean forcible) {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this.<BalanceRequest, BalanceResponse, Boolean> call(controller,
+            stub, RequestConverter.buildBalanceRequest(forcible),
+            (s, c, req, done) -> s.balance(c, req, done), (resp) -> resp.getBalancerRan())).call();
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isBalancerOn() {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this.<IsBalancerEnabledRequest, IsBalancerEnabledResponse, Boolean> call(
+            controller, stub, RequestConverter.buildIsBalancerEnabledRequest(),
+            (s, c, req, done) -> s.isBalancerEnabled(c, req, done), (resp) -> resp.getEnabled()))
+        .call();
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setNormalizerOn(boolean on) {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<SetNormalizerRunningRequest, SetNormalizerRunningResponse, Boolean> call(
+                controller, stub, RequestConverter.buildSetNormalizerRunningRequest(on), (s, c,
+                    req, done) -> s.setNormalizerRunning(c, req, done), (resp) -> resp
+                    .getPrevNormalizerValue())).call();
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isNormalizerOn() {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<IsNormalizerEnabledRequest, IsNormalizerEnabledResponse, Boolean> call(controller,
+                stub, RequestConverter.buildIsNormalizerEnabledRequest(),
+                (s, c, req, done) -> s.isNormalizerEnabled(c, req, done),
+                (resp) -> resp.getEnabled())).call();
+  }
+
+  @Override
+  public CompletableFuture<Boolean> normalize() {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this.<NormalizeRequest, NormalizeResponse, Boolean> call(
+            controller, stub, RequestConverter.buildNormalizeRequest(),
+            (s, c, req, done) -> s.normalize(c, req, done), (resp) -> resp.getNormalizerRan()))
+        .call();
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setCleanerChoreOn(boolean enabled) {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<SetCleanerChoreRunningRequest, SetCleanerChoreRunningResponse, Boolean> call(
+                controller, stub, RequestConverter.buildSetCleanerChoreRunningRequest(enabled), (s,
+                    c, req, done) -> s.setCleanerChoreRunning(c, req, done), (resp) -> resp
+                    .getPrevValue())).call();
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isCleanerChoreOn() {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<IsCleanerChoreEnabledRequest, IsCleanerChoreEnabledResponse, Boolean> call(
+                controller, stub, RequestConverter.buildIsCleanerChoreEnabledRequest(), (s, c, req,
+                    done) -> s.isCleanerChoreEnabled(c, req, done), (resp) -> resp.getValue()))
+        .call();
+  }
+
+  @Override
+  public CompletableFuture<Boolean> runCleanerChore() {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<RunCleanerChoreRequest, RunCleanerChoreResponse, Boolean> call(controller, stub,
+                RequestConverter.buildRunCleanerChoreRequest(),
+                (s, c, req, done) -> s.runCleanerChore(c, req, done),
+                (resp) -> resp.getCleanerChoreRan())).call();
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setCatalogJanitorOn(boolean enabled) {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<EnableCatalogJanitorRequest, EnableCatalogJanitorResponse, Boolean> call(
+                controller, stub, RequestConverter.buildEnableCatalogJanitorRequest(enabled), (s,
+                    c, req, done) -> s.enableCatalogJanitor(c, req, done), (resp) -> resp
+                    .getPrevValue())).call();
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isCatalogJanitorOn() {
+    return this
+        .<Boolean> newMasterCaller()
+        .action(
+          (controller, stub) -> this
+              .<IsCatalogJanitorEnabledRequest, IsCatalogJanitorEnabledResponse, Boolean> call(
+                controller, stub, RequestConverter.buildIsCatalogJanitorEnabledRequest(), (s, c,
+                    req, done) -> s.isCatalogJanitorEnabled(c, req, done), (resp) -> resp
+                    .getValue())).call();
+  }
+
+  @Override
+  public CompletableFuture<Integer> runCatalogJanitor() {
+    return this
+        .<Integer> newMasterCaller()
+        .action(
+          (controller, stub) -> this.<RunCatalogScanRequest, RunCatalogScanResponse, Integer> call(
+            controller, stub, RequestConverter.buildCatalogScanRequest(),
+            (s, c, req, done) -> s.runCatalogScan(c, req, done), (resp) -> resp.getScanResult()))
+        .call();
   }
 }

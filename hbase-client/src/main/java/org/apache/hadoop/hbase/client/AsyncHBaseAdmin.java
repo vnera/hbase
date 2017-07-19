@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.regex.Pattern;
@@ -36,6 +37,8 @@ import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.client.replication.TableCFs;
+import org.apache.hadoop.hbase.client.security.SecurityCapability;
+import org.apache.hadoop.hbase.procedure2.LockInfo;
 import org.apache.hadoop.hbase.quotas.QuotaFilter;
 import org.apache.hadoop.hbase.quotas.QuotaSettings;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
@@ -202,21 +205,6 @@ public class AsyncHBaseAdmin implements AsyncAdmin {
   }
 
   @Override
-  public CompletableFuture<Boolean> setBalancerOn(boolean on) {
-    return wrap(rawAdmin.setBalancerOn(on));
-  }
-
-  @Override
-  public CompletableFuture<Boolean> balance(boolean forcible) {
-    return wrap(rawAdmin.balance(forcible));
-  }
-
-  @Override
-  public CompletableFuture<Boolean> isBalancerOn() {
-    return wrap(rawAdmin.isBalancerOn());
-  }
-
-  @Override
   public CompletableFuture<Boolean> closeRegion(byte[] regionName, Optional<ServerName> serverName) {
     return wrap(rawAdmin.closeRegion(regionName, serverName));
   }
@@ -270,6 +258,26 @@ public class AsyncHBaseAdmin implements AsyncAdmin {
   @Override
   public CompletableFuture<Void> majorCompactRegionServer(ServerName serverName) {
     return wrap(rawAdmin.majorCompactRegionServer(serverName));
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setMergeOn(boolean on) {
+    return wrap(rawAdmin.setMergeOn(on));
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isMergeOn() {
+    return wrap(rawAdmin.isMergeOn());
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setSplitOn(boolean on) {
+    return wrap(rawAdmin.setSplitOn(on));
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isSplitOn() {
+    return wrap(rawAdmin.isSplitOn());
   }
 
   @Override
@@ -454,8 +462,68 @@ public class AsyncHBaseAdmin implements AsyncAdmin {
   }
 
   @Override
+  public CompletableFuture<List<LockInfo>> listProcedureLocks() {
+    return wrap(rawAdmin.listProcedureLocks());
+  }
+
+  @Override
+  public CompletableFuture<Void> drainRegionServers(List<ServerName> servers) {
+    return wrap(rawAdmin.drainRegionServers(servers));
+  }
+
+  @Override
+  public CompletableFuture<List<ServerName>> listDrainingRegionServers() {
+    return wrap(rawAdmin.listDrainingRegionServers());
+  }
+
+  @Override
+  public CompletableFuture<Void> removeDrainFromRegionServers(List<ServerName> servers) {
+    return wrap(rawAdmin.removeDrainFromRegionServers(servers));
+  }
+
+  @Override
   public CompletableFuture<ClusterStatus> getClusterStatus() {
     return wrap(rawAdmin.getClusterStatus());
+  }
+
+  @Override
+  public CompletableFuture<Void> shutdown() {
+    return wrap(rawAdmin.shutdown());
+  }
+
+  @Override
+  public CompletableFuture<Void> stopMaster() {
+    return wrap(rawAdmin.stopMaster());
+  }
+
+  @Override
+  public CompletableFuture<Void> stopRegionServer(ServerName serverName) {
+    return wrap(rawAdmin.stopRegionServer(serverName));
+  }
+
+  @Override
+  public CompletableFuture<Void> updateConfiguration(ServerName serverName) {
+    return wrap(rawAdmin.updateConfiguration(serverName));
+  }
+
+  @Override
+  public CompletableFuture<Void> updateConfiguration() {
+    return wrap(rawAdmin.updateConfiguration());
+  }
+
+  @Override
+  public CompletableFuture<Void> rollWALWriter(ServerName serverName) {
+    return wrap(rawAdmin.rollWALWriter(serverName));
+  }
+
+  @Override
+  public CompletableFuture<Void> clearCompactionQueues(ServerName serverName, Set<String> queues) {
+    return wrap(rawAdmin.clearCompactionQueues(serverName, queues));
+  }
+
+  @Override
+  public CompletableFuture<List<SecurityCapability>> getSecurityCapabilities() {
+    return wrap(rawAdmin.getSecurityCapabilities());
   }
 
   @Override
@@ -488,5 +556,65 @@ public class AsyncHBaseAdmin implements AsyncAdmin {
   public CompletableFuture<Optional<Long>> getLastMajorCompactionTimestampForRegion(
       byte[] regionName) {
     return wrap(rawAdmin.getLastMajorCompactionTimestampForRegion(regionName));
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setBalancerOn(boolean on) {
+    return wrap(rawAdmin.setBalancerOn(on));
+  }
+
+  @Override
+  public CompletableFuture<Boolean> balance(boolean forcible) {
+    return wrap(rawAdmin.balance(forcible));
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isBalancerOn() {
+    return wrap(rawAdmin.isBalancerOn());
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setNormalizerOn(boolean on) {
+    return wrap(rawAdmin.setNormalizerOn(on));
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isNormalizerOn() {
+    return wrap(rawAdmin.isNormalizerOn());
+  }
+
+  @Override
+  public CompletableFuture<Boolean> normalize() {
+    return wrap(rawAdmin.normalize());
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setCleanerChoreOn(boolean enabled) {
+    return wrap(rawAdmin.setCleanerChoreOn(enabled));
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isCleanerChoreOn() {
+    return wrap(rawAdmin.isCleanerChoreOn());
+  }
+
+  @Override
+  public CompletableFuture<Boolean> runCleanerChore() {
+    return wrap(rawAdmin.runCleanerChore());
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setCatalogJanitorOn(boolean enabled) {
+    return wrap(rawAdmin.setCatalogJanitorOn(enabled));
+  }
+
+  @Override
+  public CompletableFuture<Boolean> isCatalogJanitorOn() {
+    return wrap(rawAdmin.isCatalogJanitorOn());
+  }
+
+  @Override
+  public CompletableFuture<Integer> runCatalogJanitor() {
+    return wrap(rawAdmin.runCatalogJanitor());
   }
 }

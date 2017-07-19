@@ -17,11 +17,11 @@
  */
 package org.apache.hadoop.hbase.client;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 
@@ -33,9 +33,11 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
+import org.apache.hadoop.hbase.procedure2.LockInfo;
 import org.apache.hadoop.hbase.quotas.QuotaFilter;
 import org.apache.hadoop.hbase.quotas.QuotaSettings;
 import org.apache.hadoop.hbase.client.replication.TableCFs;
+import org.apache.hadoop.hbase.client.security.SecurityCapability;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.replication.ReplicationPeerDescription;
 import org.apache.hadoop.hbase.util.Pair;
@@ -284,40 +286,6 @@ public interface AsyncAdmin {
   CompletableFuture<List<NamespaceDescriptor>> listNamespaceDescriptors();
 
   /**
-   * Turn the load balancer on or off.
-   * @param on
-   * @return Previous balancer value wrapped by a {@link CompletableFuture}.
-   */
-  CompletableFuture<Boolean> setBalancerOn(boolean on);
-
-  /**
-   * Invoke the balancer. Will run the balancer and if regions to move, it will go ahead and do the
-   * reassignments. Can NOT run for various reasons. Check logs.
-   * @return True if balancer ran, false otherwise. The return value will be wrapped by a
-   *         {@link CompletableFuture}.
-   */
-  default CompletableFuture<Boolean> balance() {
-    return balance(false);
-  }
-
-  /**
-   * Invoke the balancer. Will run the balancer and if regions to move, it will go ahead and do the
-   * reassignments. If there is region in transition, force parameter of true would still run
-   * balancer. Can *not* run for other reasons. Check logs.
-   * @param forcible whether we should force balance even if there is region in transition.
-   * @return True if balancer ran, false otherwise. The return value will be wrapped by a
-   *         {@link CompletableFuture}.
-   */
-  CompletableFuture<Boolean> balance(boolean forcible);
-
-  /**
-   * Query the current state of the balancer.
-   * @return true if the balance switch is on, false otherwise The return value will be wrapped by a
-   *         {@link CompletableFuture}.
-   */
-  CompletableFuture<Boolean> isBalancerOn();
-
-  /**
    * Close a region. For expert-admins Runs close on the regionserver. The master will not be
    * informed of the close.
    * @param regionName region name to close
@@ -438,6 +406,34 @@ public interface AsyncAdmin {
    * @param serverName the region server name
    */
   CompletableFuture<Void> majorCompactRegionServer(ServerName serverName);
+
+  /**
+   * Turn the Merge switch on or off.
+   * @param on
+   * @return Previous switch value wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> setMergeOn(boolean on);
+
+  /**
+   * Query the current state of the Merge switch.
+   * @return true if the switch is on, false otherwise. The return value will be wrapped by a
+   *         {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> isMergeOn();
+
+  /**
+   * Turn the Split switch on or off.
+   * @param on
+   * @return Previous switch value wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> setSplitOn(boolean on);
+
+  /**
+   * Query the current state of the Split switch.
+   * @return true if the switch is on, false otherwise. The return value will be wrapped by a
+   *         {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> isSplitOn();
 
   /**
    * Merge two regions.
@@ -806,6 +802,30 @@ public interface AsyncAdmin {
   CompletableFuture<List<ProcedureInfo>> listProcedures();
 
   /**
+   * List procedure locks.
+   * @return lock list wrapped by {@link CompletableFuture}
+   */
+  CompletableFuture<List<LockInfo>> listProcedureLocks();
+
+  /**
+   * Mark a region server as draining to prevent additional regions from getting assigned to it.
+   * @param servers
+   */
+  CompletableFuture<Void> drainRegionServers(List<ServerName> servers);
+
+  /**
+   * List region servers marked as draining to not get additional regions assigned to them.
+   * @return List of draining region servers wrapped by {@link CompletableFuture}
+   */
+  CompletableFuture<List<ServerName>> listDrainingRegionServers();
+
+  /**
+   * Remove drain from a region server to allow additional regions assignments.
+   * @param servers List of region servers to remove drain from.
+   */
+  CompletableFuture<Void> removeDrainFromRegionServers(List<ServerName> servers);
+
+  /**
    * @return cluster status wrapped by {@link CompletableFuture}
    */
   CompletableFuture<ClusterStatus> getClusterStatus();
@@ -839,6 +859,52 @@ public interface AsyncAdmin {
   default CompletableFuture<List<RegionLoad>> getRegionLoads(ServerName serverName) {
     return getRegionLoads(serverName, Optional.empty());
   }
+
+  /**
+   * Shuts down the HBase cluster.
+   */
+  CompletableFuture<Void> shutdown();
+
+  /**
+   * Shuts down the current HBase master only.
+   */
+  CompletableFuture<Void> stopMaster();
+
+  /**
+   * Stop the designated regionserver.
+   * @param serverName
+   */
+  CompletableFuture<Void> stopRegionServer(ServerName serverName);
+
+  /**
+   * Update the configuration and trigger an online config change on the regionserver.
+   * @param serverName : The server whose config needs to be updated.
+   */
+  CompletableFuture<Void> updateConfiguration(ServerName serverName);
+
+  /**
+   * Update the configuration and trigger an online config change on all the masters and
+   * regionservers.
+   */
+  CompletableFuture<Void> updateConfiguration();
+
+  /**
+   * Roll the log writer. I.e. for filesystem based write ahead logs, start writing to a new file.
+   * <p>
+   * When the returned CompletableFuture is done, it only means the rollWALWriter request was sent
+   * to the region server and may need some time to finish the rollWALWriter operation. As a side
+   * effect of this call, the named region server may schedule store flushes at the request of the
+   * wal.
+   * @param serverName The servername of the region server.
+   */
+  CompletableFuture<Void> rollWALWriter(ServerName serverName);
+
+  /**
+   * Clear compacting queues on a region server.
+   * @param serverName
+   * @param queues the set of queue name
+   */
+  CompletableFuture<Void> clearCompactionQueues(ServerName serverName, Set<String> queues);
 
   /**
    * Get a list of {@link RegionLoad} of all regions hosted on a region seerver for a table.
@@ -891,4 +957,107 @@ public interface AsyncAdmin {
    * @return the last major compaction timestamp wrapped by a {@link CompletableFuture}
    */
   CompletableFuture<Optional<Long>> getLastMajorCompactionTimestampForRegion(byte[] regionName);
+
+  /**
+   * @return the list of supported security capabilities. The return value will be wrapped by a
+   *         {@link CompletableFuture}.
+   */
+  CompletableFuture<List<SecurityCapability>> getSecurityCapabilities();
+
+  /**
+   * Turn the load balancer on or off.
+   * @param on
+   * @return Previous balancer value wrapped by a {@link CompletableFuture}.
+   */
+  CompletableFuture<Boolean> setBalancerOn(boolean on);
+
+  /**
+   * Invoke the balancer. Will run the balancer and if regions to move, it will go ahead and do the
+   * reassignments. Can NOT run for various reasons. Check logs.
+   * @return True if balancer ran, false otherwise. The return value will be wrapped by a
+   *         {@link CompletableFuture}.
+   */
+  default CompletableFuture<Boolean> balance() {
+    return balance(false);
+  }
+
+  /**
+   * Invoke the balancer. Will run the balancer and if regions to move, it will go ahead and do the
+   * reassignments. If there is region in transition, force parameter of true would still run
+   * balancer. Can *not* run for other reasons. Check logs.
+   * @param forcible whether we should force balance even if there is region in transition.
+   * @return True if balancer ran, false otherwise. The return value will be wrapped by a
+   *         {@link CompletableFuture}.
+   */
+  CompletableFuture<Boolean> balance(boolean forcible);
+
+  /**
+   * Query the current state of the balancer.
+   * @return true if the balance switch is on, false otherwise. The return value will be wrapped by a
+   *         {@link CompletableFuture}.
+   */
+  CompletableFuture<Boolean> isBalancerOn();
+
+  /**
+   * Set region normalizer on/off.
+   * @param on whether normalizer should be on or off
+   * @return Previous normalizer value wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> setNormalizerOn(boolean on);
+
+  /**
+   * Query the current state of the region normalizer
+   * @return true if region normalizer is on, false otherwise. The return value will be wrapped by a
+   *         {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> isNormalizerOn();
+
+  /**
+   * Invoke region normalizer. Can NOT run for various reasons. Check logs.
+   * @return true if region normalizer ran, false otherwise. The return value will be wrapped by a
+   *         {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> normalize();
+
+  /**
+   * Turn the cleaner chore on/off.
+   * @param on
+   * @return Previous cleaner state wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> setCleanerChoreOn(boolean on);
+
+  /**
+   * Query the current state of the cleaner chore.
+   * @return true if cleaner chore is on, false otherwise. The return value will be wrapped by
+   *         a {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> isCleanerChoreOn();
+
+  /**
+   * Ask for cleaner chore to run.
+   * @return true if cleaner chore ran, false otherwise. The return value will be wrapped by a
+   *         {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> runCleanerChore();
+
+  /**
+   * Turn the catalog janitor on/off.
+   * @param on
+   * @return the previous state wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> setCatalogJanitorOn(boolean on);
+
+  /**
+   * Query on the catalog janitor state.
+   * @return true if the catalog janitor is on, false otherwise. The return value will be
+   *         wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<Boolean> isCatalogJanitorOn();
+
+  /**
+   * Ask for a scan of the catalog table.
+   * @return the number of entries cleaned. The return value will be wrapped by a
+   *         {@link CompletableFuture}
+   */
+  CompletableFuture<Integer> runCatalogJanitor();
 }
