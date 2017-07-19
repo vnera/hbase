@@ -86,6 +86,7 @@
     <module>hbase-archetypes</module>
     <module>hbase-metrics-api</module>
     <module>hbase-metrics</module>
+    <module>hbase-spark-it</module>
   </modules>
   <!--Add apache snapshots in case we want to use unreleased versions of plugins:
       e.g. surefire 2.18-SNAPSHOT-->
@@ -1257,7 +1258,6 @@
             <configuration>
               <target name="rename file">
                 <move file="${project.reporting.outputDirectory}/book.pdf" tofile="${project.reporting.outputDirectory}/apache_hbase_reference_guide.pdf" />
-                <move file="${project.reporting.outputDirectory}/book.pdfmarks" tofile="${project.reporting.outputDirectory}/apache_hbase_reference_guide.pdfmarks" />
               </target>
             </configuration>
             <goals>
@@ -1391,8 +1391,8 @@
     <curator.version>2.12.0</curator.version>
     <!-- Plugin Dependencies -->
     <apache.rat.version>0.12</apache.rat.version>
-    <asciidoctor.plugin.version>1.5.2.1</asciidoctor.plugin.version>
-    <asciidoctorj.pdf.version>1.5.0-alpha.6</asciidoctorj.pdf.version>
+    <asciidoctor.plugin.version>1.5.5</asciidoctor.plugin.version>
+    <asciidoctorj.pdf.version>1.5.0-alpha.15</asciidoctorj.pdf.version>
     <build.helper.maven.version>3.0.0</build.helper.maven.version>
     <buildnumber.maven.version>1.4</buildnumber.maven.version>
     <checkstyle.version>6.18</checkstyle.version>

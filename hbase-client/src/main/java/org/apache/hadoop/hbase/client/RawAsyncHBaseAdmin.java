@@ -34,10 +34,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.protobuf.Message;
+import com.google.protobuf.RpcChannel;
 
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
@@ -69,6 +72,8 @@ import org.apache.hadoop.hbase.UnknownRegionException;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.client.AsyncRpcRetryingCallerFactory.AdminRequestCallerBuilder;
 import org.apache.hadoop.hbase.client.AsyncRpcRetryingCallerFactory.MasterRequestCallerBuilder;
+import org.apache.hadoop.hbase.client.AsyncRpcRetryingCallerFactory.ServerRequestCallerBuilder;
+import org.apache.hadoop.hbase.client.RawAsyncTable.CoprocessorCallable;
 import org.apache.hadoop.hbase.client.Scan.ReadType;
 import org.apache.hadoop.hbase.client.replication.ReplicationSerDeHelper;
 import org.apache.hadoop.hbase.client.replication.TableCFs;
@@ -219,6 +224,8 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ShutdownRe
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ShutdownResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SnapshotRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SnapshotResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SplitTableRegionRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SplitTableRegionResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.StopMasterRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.StopMasterResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.TruncateTableRequest;
@@ -239,7 +246,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.Remov
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.RemoveReplicationPeerResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.UpdateReplicationPeerConfigRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.UpdateReplicationPeerConfigResponse;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.*;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos;
 import org.apache.hadoop.hbase.snapshot.ClientSnapshotDescriptionUtils;
 import org.apache.hadoop.hbase.snapshot.RestoreSnapshotException;
 import org.apache.hadoop.hbase.snapshot.SnapshotCreationException;
@@ -1164,7 +1171,7 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
                       if (hri == null || hri.isSplitParent()
                           || hri.getReplicaId() != HRegionInfo.DEFAULT_REPLICA_ID)
                         continue;
-                      splitFutures.add(split(h.getServerName(), hri, Optional.empty()));
+                      splitFutures.add(split(hri, Optional.empty()));
                     }
                   }
                 }
@@ -1232,7 +1239,7 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
               .toStringBinary(regionName)));
           return;
         }
-        split(serverName, regionInfo, splitPoint).whenComplete((ret, err2) -> {
+        split(regionInfo, splitPoint).whenComplete((ret, err2) -> {
           if (err2 != null) {
             future.completeExceptionally(err2);
           } else {
@@ -1243,21 +1250,36 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
     return future;
   }
 
-  private CompletableFuture<Void> split(final ServerName sn, final HRegionInfo hri,
+  private CompletableFuture<Void> split(final HRegionInfo hri,
       Optional<byte[]> splitPoint) {
     if (hri.getStartKey() != null && splitPoint.isPresent()
         && Bytes.compareTo(hri.getStartKey(), splitPoint.get()) == 0) {
       return failedFuture(new IllegalArgumentException(
           "should not give a splitkey which equals to startkey!"));
     }
-    return this
-        .<Void> newAdminCaller()
-        .action(
-          (controller, stub) -> this.<SplitRegionRequest, SplitRegionResponse, Void> adminCall(
-            controller, stub,
-            ProtobufUtil.buildSplitRegionRequest(hri.getRegionName(), splitPoint),
-            (s, c, req, done) -> s.splitRegion(controller, req, done), resp -> null))
-        .serverName(sn).call();
+
+    CompletableFuture<Void> future = new CompletableFuture<>();
+    TableName tableName = hri.getTable();
+    SplitTableRegionRequest request = null;
+    try {
+      request = RequestConverter
+          .buildSplitTableRegionRequest(hri, splitPoint.isPresent() ? splitPoint.get() : null,
+              ng.getNonceGroup(), ng.newNonce());
+    } catch (DeserializationException e) {
+      future.completeExceptionally(e);
+      return future;
+    }
+
+    this.<SplitTableRegionRequest, SplitTableRegionResponse>procedureCall(request,
+        (s, c, req, done) -> s.splitRegion(c, req, done), (resp) -> resp.getProcId(),
+        new SplitTableRegionProcedureBiConsumer(this, tableName)).whenComplete((ret, err2) -> {
+      if (err2 != null) {
+        future.completeExceptionally(err2);
+      } else {
+        future.complete(ret);
+      }
+    });
+    return future;
   }
 
   @Override
@@ -2353,6 +2375,17 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
     }
   }
 
+  private class SplitTableRegionProcedureBiConsumer extends  TableProcedureBiConsumer {
+
+    SplitTableRegionProcedureBiConsumer(AsyncAdmin admin, TableName tableName) {
+      super(admin, tableName);
+    }
+
+    String getOperationType() {
+      return "SPLIT_REGION";
+    }
+  }
+
   private CompletableFuture<Void> waitProcedureResult(CompletableFuture<Long> procFuture) {
     CompletableFuture<Void> future = new CompletableFuture<>();
     procFuture.whenComplete((procId, error) -> {
@@ -2837,5 +2870,50 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
             controller, stub, RequestConverter.buildCatalogScanRequest(),
             (s, c, req, done) -> s.runCatalogScan(c, req, done), (resp) -> resp.getScanResult()))
         .call();
+  }
+
+  @Override
+  public <S, R> CompletableFuture<R> coprocessorService(Function<RpcChannel, S> stubMaker,
+      CoprocessorCallable<S, R> callable) {
+    MasterCoprocessorRpcChannelImpl channel =
+        new MasterCoprocessorRpcChannelImpl(this.<Message> newMasterCaller());
+    S stub = stubMaker.apply(channel);
+    CompletableFuture<R> future = new CompletableFuture<>();
+    ClientCoprocessorRpcController controller = new ClientCoprocessorRpcController();
+    callable.call(stub, controller, resp -> {
+      if (controller.failed()) {
+        future.completeExceptionally(controller.getFailed());
+      } else {
+        future.complete(resp);
+      }
+    });
+    return future;
+  }
+
+  @Override
+  public <S, R> CompletableFuture<R> coprocessorService(Function<RpcChannel, S> stubMaker,
+      CoprocessorCallable<S, R> callable, ServerName serverName) {
+    RegionServerCoprocessorRpcChannelImpl channel =
+        new RegionServerCoprocessorRpcChannelImpl(this.<Message> newServerCaller().serverName(
+          serverName));
+    S stub = stubMaker.apply(channel);
+    CompletableFuture<R> future = new CompletableFuture<>();
+    ClientCoprocessorRpcController controller = new ClientCoprocessorRpcController();
+    callable.call(stub, controller, resp -> {
+      if (controller.failed()) {
+        future.completeExceptionally(controller.getFailed());
+      } else {
+        future.complete(resp);
+      }
+    });
+    return future;
+  }
+
+  private <T> ServerRequestCallerBuilder<T> newServerCaller() {
+    return this.connection.callerFactory.<T> serverRequest()
+        .rpcTimeout(rpcTimeoutNs, TimeUnit.NANOSECONDS)
+        .operationTimeout(operationTimeoutNs, TimeUnit.NANOSECONDS)
+        .pause(pauseNs, TimeUnit.NANOSECONDS).maxAttempts(maxAttempts)
+        .startLogErrorsCnt(startLogErrorsCnt);
   }
 }
