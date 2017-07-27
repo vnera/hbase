@@ -68,10 +68,10 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.mockito.Mockito;
 
-import com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 
 /**
  * Test the master-related aspects of a snapshot
@@ -284,7 +284,7 @@ public class TestSnapshotFromMaster {
     // snapshot, the call after snapshot will be a no-op and checks will fail
     UTIL.deleteTable(TABLE_NAME);
     TableDescriptor td = TableDescriptorBuilder.newBuilder(TABLE_NAME)
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(TEST_FAM).build())
+            .addColumnFamily(ColumnFamilyDescriptorBuilder.of(TEST_FAM))
             .setCompactionEnabled(false)
             .build();
     UTIL.getAdmin().createTable(td);

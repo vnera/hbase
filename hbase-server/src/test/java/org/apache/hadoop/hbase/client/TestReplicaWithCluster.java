@@ -305,7 +305,7 @@ public class TestReplicaWithCluster {
     TableDescriptor td = TableDescriptorBuilder.newBuilder(TableName.valueOf("testChangeTable"))
             .setRegionReplication(NB_SERVERS)
             .addCoprocessor(SlowMeCopro.class.getName())
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(f).build())
+            .addColumnFamily(ColumnFamilyDescriptorBuilder.of(f))
             .build();
     HTU.getAdmin().createTable(td);
     Table table = HTU.getConnection().getTable(td.getTableName());
@@ -321,7 +321,7 @@ public class TestReplicaWithCluster {
     // Add a CF, it should work.
     TableDescriptor bHdt = HTU.getAdmin().listTableDescriptor(td.getTableName());
     td = TableDescriptorBuilder.newBuilder(td)
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(row).build())
+            .addColumnFamily(ColumnFamilyDescriptorBuilder.of(row))
             .build();
     HTU.getAdmin().disableTable(td.getTableName());
     HTU.getAdmin().modifyTable(td);
@@ -475,7 +475,7 @@ public class TestReplicaWithCluster {
         new SecureBulkLoadClient(HTU.getConfiguration(), table).prepareBulkLoad(conn);
     ClientServiceCallable<Void> callable = new ClientServiceCallable<Void>(conn,
         hdt.getTableName(), TestHRegionServerBulkLoad.rowkey(0),
-        new RpcControllerFactory(HTU.getConfiguration()).newController()) {
+        new RpcControllerFactory(HTU.getConfiguration()).newController(), HConstants.PRIORITY_UNSET) {
       @Override
       protected Void rpcCall() throws Exception {
         LOG.debug("Going to connect to server " + getLocation() + " for row "

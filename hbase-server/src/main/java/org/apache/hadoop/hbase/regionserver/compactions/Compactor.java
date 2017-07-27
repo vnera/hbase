@@ -58,7 +58,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.util.StringUtils.TraditionalBinaryPrefix;
 
-import com.google.common.io.Closeables;
+import org.apache.hadoop.hbase.shaded.com.google.common.io.Closeables;
 
 /**
  * A compactor is a compaction algorithm associated a given policy. Base class also contains
@@ -300,7 +300,8 @@ public abstract class Compactor<T extends CellSink> {
         return new ArrayList<>();
       }
       boolean cleanSeqId = false;
-      if (fd.minSeqIdToKeep > 0) {
+      if (fd.minSeqIdToKeep > 0 && !store.getColumnFamilyDescriptor().isNewVersionBehavior()) {
+        // For mvcc-sensitive family, we never set mvcc to 0.
         smallestReadPoint = Math.min(fd.minSeqIdToKeep, smallestReadPoint);
         cleanSeqId = true;
       }

@@ -18,9 +18,9 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
+import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.hadoop.hbase.shaded.com.google.common.cache.Cache;
+import org.apache.hadoop.hbase.shaded.com.google.common.cache.CacheBuilder;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -84,7 +84,6 @@ import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.VersionInfoUtil;
 import org.apache.hadoop.hbase.conf.ConfigurationObserver;
 import org.apache.hadoop.hbase.exceptions.FailedSanityCheckException;
-import org.apache.hadoop.hbase.exceptions.MergeRegionException;
 import org.apache.hadoop.hbase.exceptions.OutOfOrderScannerNextException;
 import org.apache.hadoop.hbase.exceptions.ScannerResetException;
 import org.apache.hadoop.hbase.filter.ByteArrayComparable;
@@ -150,8 +149,6 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetServerIn
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetServerInfoResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetStoreFileRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetStoreFileResponse;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.MergeRegionsRequest;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.MergeRegionsResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.OpenRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.OpenRegionRequest.RegionOpenInfo;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.OpenRegionResponse;
@@ -226,7 +223,7 @@ import org.apache.hadoop.hbase.wal.WALSplitter;
 import org.apache.hadoop.hbase.zookeeper.ZKSplitLog;
 import org.apache.zookeeper.KeeperException;
 
-import com.google.common.annotations.VisibleForTesting;
+import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 
 /**
  * Implements the regionserver RPC services.
@@ -261,7 +258,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
   /**
    * Default value of {@link RSRpcServices#BATCH_ROWS_THRESHOLD_NAME}
    */
-  static final int BATCH_ROWS_THRESHOLD_DEFAULT = 1000;
+  static final int BATCH_ROWS_THRESHOLD_DEFAULT = 5000;
 
   // Request counter. (Includes requests that are not serviced by regions.)
   final LongAdder requestCount = new LongAdder();
@@ -1349,7 +1346,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     RegionScannerHolder rsh =
         new RegionScannerHolder(scannerName, s, r, closeCallback, shippedCallback, needCursor);
     RegionScannerHolder existing = scanners.putIfAbsent(scannerName, rsh);
-    assert existing == null : "scannerId must be unique within regionserver's whole lifecycle!";
+    assert existing == null : "scannerId must be unique within regionserver's whole lifecycle! " +
+      scannerName;
     return rsh;
   }
 
@@ -3488,46 +3486,5 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
        }
      }
      return builder.build();
-  }
-
-  /**
-   * Merge regions on the region server.
-   *
-   * @param controller the RPC controller
-   * @param request the request
-   * @return merge regions response
-   * @throws ServiceException
-   */
-  @Override
-  @QosPriority(priority = HConstants.ADMIN_QOS)
-  // UNUSED AS OF AMv2 PURGE!
-  public MergeRegionsResponse mergeRegions(final RpcController controller,
-      final MergeRegionsRequest request) throws ServiceException {
-    try {
-      checkOpen();
-      requestCount.increment();
-      Region regionA = getRegion(request.getRegionA());
-      Region regionB = getRegion(request.getRegionB());
-      boolean forcible = request.getForcible();
-      long masterSystemTime = request.hasMasterSystemTime() ? request.getMasterSystemTime() : -1;
-      regionA.startRegionOperation(Operation.MERGE_REGION);
-      regionB.startRegionOperation(Operation.MERGE_REGION);
-      if (regionA.getRegionInfo().getReplicaId() != HRegionInfo.DEFAULT_REPLICA_ID ||
-          regionB.getRegionInfo().getReplicaId() != HRegionInfo.DEFAULT_REPLICA_ID) {
-        throw new ServiceException(new MergeRegionException("Can't merge non-default replicas"));
-      }
-      LOG.info("Receiving merging request for  " + regionA + ", " + regionB
-          + ",forcible=" + forcible);
-      regionA.flush(true);
-      regionB.flush(true);
-      regionServer.compactSplitThread.requestRegionsMerge(regionA, regionB, forcible,
-          masterSystemTime, RpcServer.getRequestUser());
-      return MergeRegionsResponse.newBuilder().build();
-    } catch (DroppedSnapshotException ex) {
-      regionServer.abort("Replay of WAL required. Forcing server shutdown", ex);
-      throw new ServiceException(ex);
-    } catch (IOException ie) {
-      throw new ServiceException(ie);
-    }
   }
 }

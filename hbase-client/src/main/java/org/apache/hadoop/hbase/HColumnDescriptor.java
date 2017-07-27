@@ -97,6 +97,8 @@ public class HColumnDescriptor implements ColumnFamilyDescriptor, Comparable<HCo
   public static final boolean DEFAULT_EVICT_BLOCKS_ON_CLOSE = ColumnFamilyDescriptorBuilder.DEFAULT_EVICT_BLOCKS_ON_CLOSE;
   public static final boolean DEFAULT_COMPRESS_TAGS = ColumnFamilyDescriptorBuilder.DEFAULT_COMPRESS_TAGS;
   public static final boolean DEFAULT_PREFETCH_BLOCKS_ON_OPEN = ColumnFamilyDescriptorBuilder.DEFAULT_PREFETCH_BLOCKS_ON_OPEN;
+  public static final String NEW_VERSION_BEHAVIOR = ColumnFamilyDescriptorBuilder.NEW_VERSION_BEHAVIOR;
+  public static final boolean DEFAULT_NEW_VERSION_BEHAVIOR = ColumnFamilyDescriptorBuilder.DEFAULT_NEW_VERSION_BEHAVIOR;
   protected final ModifyableColumnFamilyDescriptor delegatee;
   /**
    * Construct a column descriptor specifying only the family name
@@ -104,6 +106,7 @@ public class HColumnDescriptor implements ColumnFamilyDescriptor, Comparable<HCo
    *
    * @param familyName Column family name. Must be 'printable' -- digit or
    * letter -- and may not contain a <code>:</code>
+   * @deprecated use {@link ColumnFamilyDescriptorBuilder#of(String)}
    */
   public HColumnDescriptor(final String familyName) {
     this(Bytes.toBytes(familyName));
@@ -115,6 +118,7 @@ public class HColumnDescriptor implements ColumnFamilyDescriptor, Comparable<HCo
    *
    * @param familyName Column family name. Must be 'printable' -- digit or
    * letter -- and may not contain a <code>:</code>
+   * @deprecated use {@link ColumnFamilyDescriptorBuilder#of(byte[])}
    */
   public HColumnDescriptor(final byte [] familyName) {
     this(new ModifyableColumnFamilyDescriptor(familyName));
@@ -125,6 +129,7 @@ public class HColumnDescriptor implements ColumnFamilyDescriptor, Comparable<HCo
    * Makes a deep copy of the supplied descriptor.
    * Can make a modifiable descriptor from an UnmodifyableHColumnDescriptor.
    * @param desc The descriptor.
+   * @deprecated use {@link ColumnFamilyDescriptorBuilder#copy(ColumnFamilyDescriptor)}
    */
   public HColumnDescriptor(HColumnDescriptor desc) {
     this(desc, true);
@@ -407,6 +412,21 @@ public class HColumnDescriptor implements ColumnFamilyDescriptor, Comparable<HCo
     getDelegateeForModification().setKeepDeletedCells(value);
     return this;
   }
+
+  /**
+   * By default, HBase only consider timestamp in versions. So a previous Delete with higher ts
+   * will mask a later Put with lower ts. Set this to true to enable new semantics of versions.
+   * We will also consider mvcc in versions. See HBASE-15968 for details.
+   */
+  public boolean isNewVersionBehavior() {
+    return delegatee.isNewVersionBehavior();
+  }
+
+  public HColumnDescriptor setNewVersionBehavior(boolean newVersionBehavior) {
+    getDelegateeForModification().setNewVersionBehavior(newVersionBehavior);
+    return this;
+  }
+
 
   @Override
   public int getTimeToLive() {

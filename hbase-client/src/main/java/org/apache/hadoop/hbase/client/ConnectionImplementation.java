@@ -122,7 +122,7 @@ import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.zookeeper.KeeperException;
 
-import com.google.common.annotations.VisibleForTesting;
+import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
 
@@ -1339,13 +1339,6 @@ class ConnectionImplementation implements ClusterConnection, Closeable {
           RpcController controller, MasterProtos.MergeTableRegionsRequest request)
           throws ServiceException {
         return stub.mergeTableRegions(controller, request);
-      }
-
-      @Override
-      public MasterProtos.DispatchMergingRegionsResponse dispatchMergingRegions(
-          RpcController controller, MasterProtos.DispatchMergingRegionsRequest request)
-          throws ServiceException {
-        return stub.dispatchMergingRegions(controller, request);
       }
 
       @Override

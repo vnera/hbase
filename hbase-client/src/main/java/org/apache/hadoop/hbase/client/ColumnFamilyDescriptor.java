@@ -32,6 +32,8 @@ import org.apache.hadoop.hbase.util.Bytes;
  * number of versions, compression settings, etc.
  *
  * It is used as input when creating a table or adding a column.
+ *
+ * To construct a new instance, use the {@link ColumnFamilyDescriptorBuilder} methods
  */
 @InterfaceAudience.Public
 public interface ColumnFamilyDescriptor {
@@ -213,4 +215,11 @@ public interface ColumnFamilyDescriptor {
    * @return Column family descriptor with only the customized attributes.
    */
   String toStringCustomizedValues();
+
+  /**
+   * By default, HBase only consider timestamp in versions. So a previous Delete with higher ts
+   * will mask a later Put with lower ts. Set this to true to enable new semantics of versions.
+   * We will also consider mvcc in versions. See HBASE-15968 for details.
+   */
+  boolean isNewVersionBehavior();
 }

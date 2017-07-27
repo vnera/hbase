@@ -44,7 +44,7 @@ import org.apache.hadoop.hbase.util.ClassSize;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.RawComparator;
 
-import com.google.common.annotations.VisibleForTesting;
+import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 
 /**
  * An HBase Key/Value. This is the fundamental HBase Type.
@@ -2608,8 +2608,8 @@ public class KeyValue implements ExtendedCell {
      */
     return ClassSize.align(sum) +
         (offset == 0
-          ? ClassSize.sizeOf(bytes, length) // count both length and object overhead
-          : length);                        // only count the number of bytes
+          ? ClassSize.sizeOfByteArray(length)  // count both length and object overhead
+          : length);                           // only count the number of bytes
   }
 
   /**

@@ -31,8 +31,8 @@ import org.apache.hadoop.hbase.regionserver.ScanInfo;
 public class MinorCompactionScanQueryMatcher extends CompactionScanQueryMatcher {
 
   public MinorCompactionScanQueryMatcher(ScanInfo scanInfo, DeleteTracker deletes,
-      long readPointToUse, long oldestUnexpiredTS, long now) {
-    super(scanInfo, deletes, readPointToUse, oldestUnexpiredTS, now);
+      ColumnTracker columns, long readPointToUse, long oldestUnexpiredTS, long now) {
+    super(scanInfo, deletes, columns, readPointToUse, oldestUnexpiredTS, now);
   }
 
   @Override

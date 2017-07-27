@@ -77,7 +77,7 @@ import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.mockito.Mockito;
 
-import com.google.common.collect.Multimap;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.Multimap;
 
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException;
@@ -354,7 +354,7 @@ public class TestLoadIncrementalHFilesSplitRecovery {
             HConstants.DEFAULT_HBASE_CLIENT_RETRIES_NUMBER) - 1) {
           ClientServiceCallable<byte[]> newServerCallable = new ClientServiceCallable<byte[]>(
               conn, tableName, first, new RpcControllerFactory(
-                  util.getConfiguration()).newController()) {
+                  util.getConfiguration()).newController(), HConstants.PRIORITY_UNSET) {
             @Override
             public byte[] rpcCall() throws Exception {
               throw new IOException("Error calling something on RegionServer");

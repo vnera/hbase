@@ -17,13 +17,13 @@
  */
 package org.apache.hadoop.hbase.util;
 
-import com.google.common.base.Joiner;
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Multimap;
-import com.google.common.collect.Ordering;
-import com.google.common.collect.TreeMultimap;
+import org.apache.hadoop.hbase.shaded.com.google.common.base.Joiner;
+import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableList;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.Multimap;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.Ordering;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.TreeMultimap;
 import com.google.protobuf.ServiceException;
 
 import java.io.Closeable;
@@ -2484,6 +2484,16 @@ public class HBaseFsck extends Configured implements Closeable {
           return;
         }
       }
+
+      // For Replica region, we need to do a similar check. If replica is not split successfully,
+      // error is going to be reported against primary daughter region.
+      if (hbi.getReplicaId() != HRegionInfo.DEFAULT_REPLICA_ID) {
+        LOG.info("Region " + descriptiveName + " is a split parent in META, in HDFS, "
+            + "and not deployed on any region server. This may be transient.");
+        hbi.setSkipChecks(true);
+        return;
+      }
+
       errors.reportError(ERROR_CODE.LINGERING_SPLIT_PARENT, "Region "
           + descriptiveName + " is a split parent in META, in HDFS, "
           + "and not deployed on any region server. This could be transient, "

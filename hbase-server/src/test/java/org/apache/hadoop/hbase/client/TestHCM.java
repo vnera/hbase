@@ -86,7 +86,7 @@ import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.junit.rules.TestRule;
 
-import com.google.common.collect.Lists;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 
 /**
  * This class is for testing HBaseConnectionManager features
@@ -668,7 +668,7 @@ public class TestHCM {
     TEST_UTIL.createTable(tableName, FAM_NAM);
     ClientServiceCallable<Object> regionServerCallable = new ClientServiceCallable<Object>(
         TEST_UTIL.getConnection(), tableName, ROW,
-        new RpcControllerFactory(TEST_UTIL.getConfiguration()).newController()) {
+        new RpcControllerFactory(TEST_UTIL.getConfiguration()).newController(), HConstants.PRIORITY_UNSET) {
       @Override
       protected Object rpcCall() throws Exception {
         return null;
