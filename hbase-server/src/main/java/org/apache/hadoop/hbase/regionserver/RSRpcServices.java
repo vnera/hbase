@@ -157,8 +157,6 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.ReplicateWA
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.ReplicateWALEntryResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.RollWALWriterRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.RollWALWriterResponse;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.SplitRegionRequest;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.SplitRegionResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.StopServerRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.StopServerResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.UpdateConfigurationRequest;
@@ -1031,10 +1029,10 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     if (regionServer.metricsRegionServer != null) {
       long after = EnvironmentEdgeManager.currentTime();
       if (batchContainsPuts) {
-        regionServer.metricsRegionServer.updatePut(after - before);
+        regionServer.metricsRegionServer.updatePutBatch(after - before);
       }
       if (batchContainsDelete) {
-        regionServer.metricsRegionServer.updateDelete(after - before);
+        regionServer.metricsRegionServer.updateDeleteBatch(after - before);
       }
     }
   }
@@ -1106,10 +1104,10 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       if (regionServer.metricsRegionServer != null) {
         long after = EnvironmentEdgeManager.currentTime();
           if (batchContainsPuts) {
-          regionServer.metricsRegionServer.updatePut(after - before);
+          regionServer.metricsRegionServer.updatePutBatch(after - before);
         }
         if (batchContainsDelete) {
-          regionServer.metricsRegionServer.updateDelete(after - before);
+          regionServer.metricsRegionServer.updateDeleteBatch(after - before);
         }
       }
     }
@@ -2211,43 +2209,6 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     }
   }
 
-  /**
-   * Split a region on the region server.
-   *
-   * @param controller the RPC controller
-   * @param request the request
-   * @throws ServiceException
-   */
-  @Override
-  @QosPriority(priority=HConstants.ADMIN_QOS)
-  public SplitRegionResponse splitRegion(final RpcController controller,
-      final SplitRegionRequest request) throws ServiceException {
-    try {
-      checkOpen();
-      requestCount.increment();
-      Region region = getRegion(request.getRegion());
-      region.startRegionOperation(Operation.SPLIT_REGION);
-      if (region.getRegionInfo().getReplicaId() != HRegionInfo.DEFAULT_REPLICA_ID) {
-        throw new IOException("Can't split replicas directly. "
-            + "Replicas are auto-split when their primary is split.");
-      }
-      LOG.info("Splitting " + region.getRegionInfo().getRegionNameAsString());
-      region.flush(true);
-      byte[] splitPoint = null;
-      if (request.hasSplitPoint()) {
-        splitPoint = request.getSplitPoint().toByteArray();
-      }
-      ((HRegion)region).forceSplit(splitPoint);
-      regionServer.compactSplitThread.requestSplit(region, ((HRegion)region).checkSplit(),
-        RpcServer.getRequestUser());
-      return SplitRegionResponse.newBuilder().build();
-    } catch (DroppedSnapshotException ex) {
-      regionServer.abort("Replay of WAL required. Forcing server shutdown", ex);
-      throw new ServiceException(ex);
-    } catch (IOException ie) {
-      throw new ServiceException(ie);
-    }
-  }
 
   /**
    * Stop the region server.
@@ -2720,6 +2681,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     OperationQuota quota = null;
     RpcCallContext context = RpcServer.getCurrentCall();
     ActivePolicyEnforcement spaceQuotaEnforcement = null;
+    MutationType type = null;
+    long before = EnvironmentEdgeManager.currentTime();
     // Clear scanner so we are not holding on to reference across call.
     if (controller != null) {
       controller.setCellScanner(null);
@@ -2737,7 +2700,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       long nonceGroup = request.hasNonceGroup() ? request.getNonceGroup() : HConstants.NO_NONCE;
       Result r = null;
       Boolean processed = null;
-      MutationType type = mutation.getMutateType();
+      type = mutation.getMutateType();
 
       quota = getRpcQuotaManager().checkQuota(region, OperationQuota.OperationType.MUTATE);
       spaceQuotaEnforcement = getSpaceQuotaManager().getActiveEnforcements();
@@ -2833,6 +2796,29 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     } finally {
       if (quota != null) {
         quota.close();
+      }
+      // Update metrics
+      if (regionServer.metricsRegionServer != null && type != null) {
+        long after = EnvironmentEdgeManager.currentTime();
+        switch (type) {
+        case DELETE:
+          if (request.hasCondition()) {
+            regionServer.metricsRegionServer.updateCheckAndDelete(after - before);
+          } else {
+            regionServer.metricsRegionServer.updateDelete(after - before);
+          }
+          break;
+        case PUT:
+          if (request.hasCondition()) {
+            regionServer.metricsRegionServer.updateCheckAndPut(after - before);
+          } else {
+            regionServer.metricsRegionServer.updatePut(after - before);
+          }
+          break;
+        default:
+          break;
+
+        }
       }
     }
   }

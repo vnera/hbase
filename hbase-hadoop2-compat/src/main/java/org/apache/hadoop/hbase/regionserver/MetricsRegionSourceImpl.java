@@ -83,7 +83,7 @@ public class MetricsRegionSourceImpl implements MetricsRegionSource {
 
     String suffix = "Count";
 
-    regionPutKey = regionNamePrefix + MetricsRegionServerSource.MUTATE_KEY + suffix;
+    regionPutKey = regionNamePrefix + MetricsRegionServerSource.PUT_KEY + suffix;
     regionPut = registry.getCounter(regionPutKey, 0L);
 
     regionDeleteKey = regionNamePrefix + MetricsRegionServerSource.DELETE_KEY + suffix;
@@ -270,9 +270,26 @@ public class MetricsRegionSourceImpl implements MetricsRegionSource {
               regionNamePrefix + MetricsRegionServerSource.WRITE_REQUEST_COUNT,
               MetricsRegionServerSource.WRITE_REQUEST_COUNT_DESC),
           this.regionWrapper.getWriteRequestCount());
-      mrb.addCounter(Interns.info(regionNamePrefix + MetricsRegionSource.REPLICA_ID,
+      mrb.addCounter(Interns.info(
+              regionNamePrefix + MetricsRegionSource.REPLICA_ID,
               MetricsRegionSource.REPLICA_ID_DESC),
           this.regionWrapper.getReplicaId());
+      mrb.addCounter(Interns.info(
+              regionNamePrefix + MetricsRegionSource.COMPACTIONS_QUEUED_COUNT,
+              MetricsRegionSource.COMPACTIONS_QUEUED_DESC),
+          this.regionWrapper.getNumCompactionsQueued());
+      mrb.addCounter(Interns.info(
+              regionNamePrefix + MetricsRegionSource.FLUSHES_QUEUED_COUNT,
+              MetricsRegionSource.FLUSHES_QUEUED_DESC),
+          this.regionWrapper.getNumFlushesQueued());
+      mrb.addCounter(Interns.info(
+              regionNamePrefix + MetricsRegionSource.MAX_COMPACTION_QUEUE_SIZE,
+              MetricsRegionSource.MAX_COMPACTION_QUEUE_DESC),
+          this.regionWrapper.getMaxCompactionQueueSize());
+      mrb.addCounter(Interns.info(
+              regionNamePrefix + MetricsRegionSource.MAX_FLUSH_QUEUE_SIZE,
+              MetricsRegionSource.MAX_FLUSH_QUEUE_DESC),
+          this.regionWrapper.getMaxFlushQueueSize());
     }
   }
 
