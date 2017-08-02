@@ -1295,8 +1295,8 @@
         <extensions>true</extensions>
       </plugin>
       <plugin>
-	<!-- CLOUDERA-BUILD - use up-to-date scala-maven-plugin instead of maven-scala-plugin -->
-	<artifactId>scala-maven-plugin</artifactId>
+        <!-- CLOUDERA-BUILD - use up-to-date scala-maven-plugin instead of maven-scala-plugin -->
+        <artifactId>scala-maven-plugin</artifactId>
         <groupId>net.alchim31.maven</groupId> 
         <version>3.2.2</version> 
       </plugin>
@@ -2396,12 +2396,6 @@
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-auth</artifactId>
             <version>${hadoop-two.version}</version>
-            <exclusions>
-              <exclusion>
-                <groupId>com.google.guava</groupId>
-                <artifactId>guava</artifactId>
-              </exclusion>
-            </exclusions>
           </dependency>
           <dependency>
             <groupId>org.apache.hadoop</groupId>
