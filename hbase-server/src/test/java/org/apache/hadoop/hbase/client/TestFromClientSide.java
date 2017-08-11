@@ -88,6 +88,8 @@ import org.apache.hadoop.hbase.filter.QualifierFilter;
 import org.apache.hadoop.hbase.filter.RegexStringComparator;
 import org.apache.hadoop.hbase.filter.RowFilter;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
+import org.apache.hadoop.hbase.filter.SubstringComparator;
+import org.apache.hadoop.hbase.filter.ValueFilter;
 import org.apache.hadoop.hbase.filter.WhileMatchFilter;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
 import org.apache.hadoop.hbase.io.hfile.BlockCache;
@@ -4066,8 +4068,8 @@ public class TestFromClientSide {
       Put p = new Put(ROW);
       p.addColumn(BAD_FAM, QUALIFIER, VAL);
       table.put(p);
-    } catch (RetriesExhaustedWithDetailsException e) {
-      caughtNSCFE = e.getCause(0) instanceof NoSuchColumnFamilyException;
+    } catch (Exception e) {
+      caughtNSCFE = e instanceof NoSuchColumnFamilyException;
     }
     assertTrue("Should throw NoSuchColumnFamilyException", caughtNSCFE);
 
@@ -4108,7 +4110,6 @@ public class TestFromClientSide {
     final int NB_BATCH_ROWS = 10;
     Table table = TEST_UTIL.createTable(TableName.valueOf(name.getMethodName()),
         new byte[][] { CONTENTS_FAMILY, SMALL_FAMILY });
-    table.setWriteBufferSize(10);
     ArrayList<Put> rowsUpdate = new ArrayList<Put>();
     for (int i = 0; i < NB_BATCH_ROWS * 10; i++) {
       byte[] row = Bytes.toBytes("row" + i);
@@ -6424,4 +6425,197 @@ public class TestFromClientSide {
     }
   }
 
+  @Test
+  public void testDeleteSpecifiedVersionOfSpecifiedColumn() throws Exception {
+    Admin admin = TEST_UTIL.getAdmin();
+    final TableName tableName = TableName.valueOf(name.getMethodName());
+
+    byte[][] VALUES = makeN(VALUE, 5);
+    long[] ts = { 1000, 2000, 3000, 4000, 5000 };
+
+    Table ht = TEST_UTIL.createTable(tableName, FAMILY, 5);
+
+    Put put = new Put(ROW);
+    // Put version 1000,2000,3000,4000 of column FAMILY:QUALIFIER
+    for (int t = 0; t < 4; t++) {
+      put.addColumn(FAMILY, QUALIFIER, ts[t], VALUES[t]);
+    }
+    ht.put(put);
+
+    Delete delete = new Delete(ROW);
+    // Delete version 3000 of column FAMILY:QUALIFIER
+    delete.addColumn(FAMILY, QUALIFIER, ts[2]);
+    ht.delete(delete);
+
+    Get get = new Get(ROW);
+    get.addColumn(FAMILY, QUALIFIER);
+    get.setMaxVersions(Integer.MAX_VALUE);
+    Result result = ht.get(get);
+    // verify version 1000,2000,4000 remains for column FAMILY:QUALIFIER
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[0], ts[1], ts[3] }, new byte[][] {
+        VALUES[0], VALUES[1], VALUES[3] }, 0, 2);
+
+    delete = new Delete(ROW);
+    // Delete a version 5000 of column FAMILY:QUALIFIER which didn't exist
+    delete.addColumn(FAMILY, QUALIFIER, ts[4]);
+    ht.delete(delete);
+
+    get = new Get(ROW);
+    get.addColumn(FAMILY, QUALIFIER);
+    get.setMaxVersions(Integer.MAX_VALUE);
+    result = ht.get(get);
+    // verify version 1000,2000,4000 remains for column FAMILY:QUALIFIER
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[0], ts[1], ts[3] }, new byte[][] {
+        VALUES[0], VALUES[1], VALUES[3] }, 0, 2);
+
+    ht.close();
+    admin.close();
+  }
+
+  @Test
+  public void testDeleteLatestVersionOfSpecifiedColumn() throws Exception {
+    Admin admin = TEST_UTIL.getAdmin();
+    final TableName tableName = TableName.valueOf(name.getMethodName());
+
+    byte[][] VALUES = makeN(VALUE, 5);
+    long[] ts = { 1000, 2000, 3000, 4000, 5000 };
+
+    Table ht = TEST_UTIL.createTable(tableName, FAMILY, 5);
+
+    Put put = new Put(ROW);
+    // Put version 1000,2000,3000,4000 of column FAMILY:QUALIFIER
+    for (int t = 0; t < 4; t++) {
+      put.addColumn(FAMILY, QUALIFIER, ts[t], VALUES[t]);
+    }
+    ht.put(put);
+
+    Delete delete = new Delete(ROW);
+    // Delete latest version of column FAMILY:QUALIFIER
+    delete.addColumn(FAMILY, QUALIFIER);
+    ht.delete(delete);
+
+    Get get = new Get(ROW);
+    get.addColumn(FAMILY, QUALIFIER);
+    get.setMaxVersions(Integer.MAX_VALUE);
+    Result result = ht.get(get);
+    // verify version 1000,2000,3000 remains for column FAMILY:QUALIFIER
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[0], ts[1], ts[2] }, new byte[][] {
+        VALUES[0], VALUES[1], VALUES[2] }, 0, 2);
+
+    delete = new Delete(ROW);
+    // Delete two latest version of column FAMILY:QUALIFIER
+    delete.addColumn(FAMILY, QUALIFIER);
+    delete.addColumn(FAMILY, QUALIFIER);
+    ht.delete(delete);
+
+    get = new Get(ROW);
+    get.addColumn(FAMILY, QUALIFIER);
+    get.setMaxVersions(Integer.MAX_VALUE);
+    result = ht.get(get);
+    // verify version 1000 remains for column FAMILY:QUALIFIER
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[0] }, new byte[][] { VALUES[0] },
+      0, 0);
+
+    put = new Put(ROW);
+    // Put a version 5000 of column FAMILY:QUALIFIER
+    put.addColumn(FAMILY, QUALIFIER, ts[4], VALUES[4]);
+    ht.put(put);
+
+    get = new Get(ROW);
+    get.addColumn(FAMILY, QUALIFIER);
+    get.setMaxVersions(Integer.MAX_VALUE);
+    result = ht.get(get);
+    // verify version 1000,5000 remains for column FAMILY:QUALIFIER
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[0], ts[4] }, new byte[][] {
+        VALUES[0], VALUES[4] }, 0, 1);
+
+    ht.close();
+    admin.close();
+  }
+
+  /**
+   * Test for HBASE-17125
+   */
+  @Test
+  public void testReadWithFilter() throws Exception {
+    Admin admin = TEST_UTIL.getAdmin();
+    final TableName tableName = TableName.valueOf(name.getMethodName());
+    Table table = TEST_UTIL.createTable(tableName, FAMILY, 3);
+
+    byte[] VALUEA = Bytes.toBytes("value-a");
+    byte[] VALUEB = Bytes.toBytes("value-b");
+    long[] ts = { 1000, 2000, 3000, 4000 };
+
+    Put put = new Put(ROW);
+    // Put version 1000,2000,3000,4000 of column FAMILY:QUALIFIER
+    for (int t = 0; t <= 3; t++) {
+      if (t <= 1) {
+        put.addColumn(FAMILY, QUALIFIER, ts[t], VALUEA);
+      } else {
+        put.addColumn(FAMILY, QUALIFIER, ts[t], VALUEB);
+      }
+    }
+    table.put(put);
+
+    Scan scan =
+        new Scan().setFilter(new ValueFilter(CompareOp.EQUAL, new SubstringComparator("value-a")))
+            .setMaxVersions(3);
+    ResultScanner scanner = table.getScanner(scan);
+    Result result = scanner.next();
+    // ts[0] has gone from user view. Only read ts[2] which value is less or equal to 3
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[1] }, new byte[][] { VALUEA }, 0,
+      0);
+
+    Get get =
+        new Get(ROW)
+            .setFilter(new ValueFilter(CompareOp.EQUAL, new SubstringComparator("value-a")))
+            .setMaxVersions(3);
+    result = table.get(get);
+    // ts[0] has gone from user view. Only read ts[2] which value is less or equal to 3
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[1] }, new byte[][] { VALUEA }, 0,
+      0);
+
+    // Test with max versions 1, it should still read ts[1]
+    scan =
+        new Scan().setFilter(new ValueFilter(CompareOp.EQUAL, new SubstringComparator("value-a")))
+            .setMaxVersions(1);
+    scanner = table.getScanner(scan);
+    result = scanner.next();
+    // ts[0] has gone from user view. Only read ts[2] which value is less or equal to 3
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[1] }, new byte[][] { VALUEA }, 0,
+      0);
+
+    // Test with max versions 1, it should still read ts[1]
+    get =
+        new Get(ROW)
+            .setFilter(new ValueFilter(CompareOp.EQUAL, new SubstringComparator("value-a")))
+            .setMaxVersions(1);
+    result = table.get(get);
+    // ts[0] has gone from user view. Only read ts[2] which value is less or equal to 3
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[1] }, new byte[][] { VALUEA }, 0,
+      0);
+
+    // Test with max versions 5, it should still read ts[1]
+    scan =
+        new Scan().setFilter(new ValueFilter(CompareOp.EQUAL, new SubstringComparator("value-a")))
+            .setMaxVersions(5);
+    scanner = table.getScanner(scan);
+    result = scanner.next();
+    // ts[0] has gone from user view. Only read ts[2] which value is less or equal to 3
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[1] }, new byte[][] { VALUEA }, 0,
+      0);
+
+    // Test with max versions 5, it should still read ts[1]
+    get =
+        new Get(ROW)
+            .setFilter(new ValueFilter(CompareOp.EQUAL, new SubstringComparator("value-a")))
+            .setMaxVersions(5);
+    result = table.get(get);
+    // ts[0] has gone from user view. Only read ts[2] which value is less or equal to 3
+    assertNResult(result, ROW, FAMILY, QUALIFIER, new long[] { ts[1] }, new byte[][] { VALUEA }, 0,
+      0);
+
+    table.close();
+    admin.close();
+  }
 }

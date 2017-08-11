@@ -18,10 +18,6 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-import org.apache.hadoop.hbase.shaded.com.google.common.cache.Cache;
-import org.apache.hadoop.hbase.shaded.com.google.common.cache.CacheBuilder;
-
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -119,6 +115,9 @@ import org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler;
 import org.apache.hadoop.hbase.regionserver.wal.WALEdit;
 import org.apache.hadoop.hbase.security.Superusers;
 import org.apache.hadoop.hbase.security.User;
+import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.hadoop.hbase.shaded.com.google.common.cache.Cache;
+import org.apache.hadoop.hbase.shaded.com.google.common.cache.CacheBuilder;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.ByteString;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.Message;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
@@ -221,8 +220,6 @@ import org.apache.hadoop.hbase.wal.WALSplitter;
 import org.apache.hadoop.hbase.zookeeper.ZKSplitLog;
 import org.apache.zookeeper.KeeperException;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-
 /**
  * Implements the regionserver RPC services.
  */
@@ -259,7 +256,12 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
   static final int BATCH_ROWS_THRESHOLD_DEFAULT = 5000;
 
   // Request counter. (Includes requests that are not serviced by regions.)
+  // Count only once for requests with multiple actions like multi/caching-scan/replayBatch
   final LongAdder requestCount = new LongAdder();
+
+  // Request counter. (Excludes requests that are not serviced by regions.)
+  // Count rows for requests with multiple actions like multi/caching-scan/replayBatch
+  final LongAdder requestRowActionCount = new LongAdder();
 
   // Request counter for rpc get
   final LongAdder rpcGetRequestCount = new LongAdder();
@@ -1094,7 +1096,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           it.remove();
         }
       }
-      requestCount.add(mutations.size());
+      requestCount.increment();
+      requestRowActionCount.add(mutations.size());
       if (!region.getRegionInfo().isMetaTable()) {
         regionServer.cacheFlusher.reclaimMemStoreMemory();
       }
@@ -2396,6 +2399,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     try {
       checkOpen();
       requestCount.increment();
+      requestRowActionCount.increment();
       rpcGetRequestCount.increment();
       Region region = getRegion(request.getRegion());
 
@@ -2552,11 +2556,12 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     RegionScannersCloseCallBack closeCallBack = null;
     RpcCallContext context = RpcServer.getCurrentCall();
     this.rpcMultiRequestCount.increment();
+    this.requestCount.increment();
     Map<RegionSpecifier, ClientProtos.RegionLoadStats> regionStats = new HashMap<>(request
       .getRegionActionCount());
     ActivePolicyEnforcement spaceQuotaEnforcement = getSpaceQuotaManager().getActiveEnforcements();
     for (RegionAction regionAction : request.getRegionActionList()) {
-      this.requestCount.add(regionAction.getActionCount());
+      this.requestRowActionCount.add(regionAction.getActionCount());
       OperationQuota quota;
       Region region;
       regionActionResultBuilder.clear();
@@ -2690,6 +2695,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     try {
       checkOpen();
       requestCount.increment();
+      requestRowActionCount.increment();
       rpcMutateRequestCount.increment();
       Region region = getRegion(request.getRegion());
       MutateResponse.Builder builder = MutateResponse.newBuilder();
@@ -3108,9 +3114,9 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
               // Heartbeat messages occur when the time limit has been reached.
               builder.setHeartbeatMessage(timeLimitReached);
               if (timeLimitReached && rsh.needCursor) {
-                Cell readingCell = scannerContext.getPeekedCellInHeartbeat();
-                if (readingCell != null ) {
-                  builder.setCursor(ProtobufUtil.toCursor(readingCell));
+                Cell cursorCell = scannerContext.getLastPeekedCell();
+                if (cursorCell != null ) {
+                  builder.setCursor(ProtobufUtil.toCursor(cursorCell));
                 }
               }
             }
@@ -3136,6 +3142,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         }
       }
       region.updateReadRequestsCount(numOfResults);
+      requestRowActionCount.add(numOfResults);
       long end = EnvironmentEdgeManager.currentTime();
       long responseCellSize = context != null ? context.getResponseCellSize() : 0;
       region.getMetrics().updateScanTime(end - before);

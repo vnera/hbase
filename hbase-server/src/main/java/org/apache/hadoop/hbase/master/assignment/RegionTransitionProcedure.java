@@ -48,11 +48,35 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProto
  * The AssignmentManager will notify this procedure when the RS completes
  * the operation and reports the transitioned state
  * (see the Assign and Unassign class for more detail).
+ *
  * <p>Procedures move from the REGION_TRANSITION_QUEUE state when they are
  * first submitted, to the REGION_TRANSITION_DISPATCH state when the request
  * to remote server is sent and the Procedure is suspended waiting on external
  * event to be woken again. Once the external event is triggered, Procedure
  * moves to the REGION_TRANSITION_FINISH state.
+ *
+ * <p>NOTE: {@link AssignProcedure} and {@link UnassignProcedure} should not be thought of
+ * as being asymmetric, at least currently.
+ * <ul>
+ * <li>{@link AssignProcedure} moves through all the above described states and implements methods
+ * associated with each while {@link UnassignProcedure} starts at state
+ * REGION_TRANSITION_DISPATCH and state REGION_TRANSITION_QUEUE is not supported.</li>
+ *
+ * <li>When any step in {@link AssignProcedure} fails, failure handler
+ * AssignProcedure#handleFailure(MasterProcedureEnv, RegionStateNode) re-attempts the
+ * assignment by setting the procedure state to REGION_TRANSITION_QUEUE and forces
+ * assignment to a different target server by setting {@link AssignProcedure#forceNewPlan}. When
+ * the number of attempts reach hreshold configuration 'hbase.assignment.maximum.attempts',
+ * the procedure is aborted. For {@link UnassignProcedure}, similar re-attempts are
+ * intentionally not implemented. It is a 'one shot' procedure. See its class doc for how it
+ * handles failure.
+ * </li>
+ * </ul>
+ *
+ * <p>TODO: Considering it is a priority doing all we can to get make a region available as soon as possible,
+ * re-attempting with any target makes sense if specified target fails in case of
+ * {@link AssignProcedure}. For {@link UnassignProcedure}, our concern is preventing data loss
+ * on failed unassign. See class doc for explanation.
  */
 @InterfaceAudience.Private
 public abstract class RegionTransitionProcedure
@@ -137,7 +161,13 @@ public abstract class RegionTransitionProcedure
       RegionStateNode regionNode, TransitionCode code, long seqId) throws UnexpectedStateException;
 
   public abstract RemoteOperation remoteCallBuild(MasterProcedureEnv env, ServerName serverName);
-  protected abstract void remoteCallFailed(MasterProcedureEnv env,
+
+  /**
+   * @return True if processing of fail is complete; the procedure will be woken from its suspend
+   * and we'll go back to running through procedure steps:
+   * otherwise if false we leave the procedure in suspended state.
+   */
+  protected abstract boolean remoteCallFailed(MasterProcedureEnv env,
       RegionStateNode regionNode, IOException exception);
 
   @Override
@@ -153,12 +183,15 @@ public abstract class RegionTransitionProcedure
     assert serverName.equals(regionNode.getRegionLocation());
     String msg = exception.getMessage() == null? exception.getClass().getSimpleName():
       exception.getMessage();
-    LOG.warn("Failed " + this + "; " + regionNode.toShortString() + "; exception=" + msg);
-    remoteCallFailed(env, regionNode, exception);
-    // NOTE: This call to wakeEvent puts this Procedure back on the scheduler.
-    // Thereafter, another Worker can be in here so DO NOT MESS WITH STATE beyond
-    // this method. Just get out of this current processing quickly.
-    env.getProcedureScheduler().wakeEvent(regionNode.getProcedureEvent());
+    LOG.warn("Remote call failed " + this + "; " + regionNode.toShortString() +
+      "; exception=" + msg);
+    if (remoteCallFailed(env, regionNode, exception)) {
+      // NOTE: This call to wakeEvent puts this Procedure back on the scheduler.
+      // Thereafter, another Worker can be in here so DO NOT MESS WITH STATE beyond
+      // this method. Just get out of this current processing quickly.
+      env.getProcedureScheduler().wakeEvent(regionNode.getProcedureEvent());
+    }
+    // else leave the procedure in suspended state; it is waiting on another call to this callback
   }
 
   /**
@@ -182,9 +215,10 @@ public abstract class RegionTransitionProcedure
     // from remote regionserver. Means Procedure associated ProcedureEvent is marked not 'ready'.
     env.getProcedureScheduler().suspendEvent(getRegionState(env).getProcedureEvent());
 
-    // Tricky because this can fail. If it fails need to backtrack on stuff like
-    // the 'suspend' done above -- tricky as the 'wake' requeues us -- and ditto
-    // up in the caller; it needs to undo state changes.
+    // Tricky because the below call to addOperationToNode can fail. If it fails, we need to
+    // backtrack on stuff like the 'suspend' done above -- tricky as the 'wake' requeues us -- and
+    // ditto up in the caller; it needs to undo state changes. Inside in remoteCallFailed, it does
+    // wake to undo the above suspend.
     if (!env.getRemoteDispatcher().addOperationToNode(targetServer, this)) {
       remoteCallFailed(env, targetServer,
           new FailedRemoteDispatchException(this + " to " + targetServer));

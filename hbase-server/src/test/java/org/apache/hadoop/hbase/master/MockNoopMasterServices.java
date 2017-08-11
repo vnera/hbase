@@ -33,6 +33,7 @@ import org.apache.hadoop.hbase.TableDescriptors;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.ClusterConnection;
 import org.apache.hadoop.hbase.client.MasterSwitchType;
+import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.executor.ExecutorService;
 import org.apache.hadoop.hbase.favored.FavoredNodesManager;
 import org.apache.hadoop.hbase.master.assignment.AssignmentManager;
@@ -236,7 +237,7 @@ public class MockNoopMasterServices implements MasterServices, Server {
   }
 
   @Override
-  public List<HTableDescriptor> listTableDescriptorsByNamespace(String name) throws IOException {
+  public List<TableDescriptor> listTableDescriptorsByNamespace(String name) throws IOException {
     return null;  //To change body of implemented methods use File | Settings | File Templates.
   }
 
@@ -446,7 +447,7 @@ public class MockNoopMasterServices implements MasterServices, Server {
 
   @Override
   public String getRegionServerVersion(ServerName sn) {
-    return null;
+    return "0.0.0";
   }
 
   @Override
