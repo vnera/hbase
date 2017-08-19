@@ -23,7 +23,7 @@ import static org.apache.hadoop.hbase.client.NonceGenerator.CLIENT_NONCES_ENABLE
 
 import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 
-import io.netty.util.HashedWheelTimer;
+import org.apache.hadoop.hbase.shaded.io.netty.util.HashedWheelTimer;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
@@ -278,20 +278,20 @@ class AsyncConnectionImpl implements AsyncConnection {
   }
 
   @Override
-  public AsyncAdminBuilder<RawAsyncHBaseAdmin> getAdminBuilder() {
-    return new AsyncAdminBuilderBase<RawAsyncHBaseAdmin>(connConf) {
+  public AsyncAdminBuilder getAdminBuilder() {
+    return new AsyncAdminBuilderBase(connConf) {
       @Override
-      public RawAsyncHBaseAdmin build() {
+      public AsyncAdmin build() {
         return new RawAsyncHBaseAdmin(AsyncConnectionImpl.this, this);
       }
     };
   }
 
   @Override
-  public AsyncAdminBuilder<AsyncHBaseAdmin> getAdminBuilder(ExecutorService pool) {
-    return new AsyncAdminBuilderBase<AsyncHBaseAdmin>(connConf) {
+  public AsyncAdminBuilder getAdminBuilder(ExecutorService pool) {
+    return new AsyncAdminBuilderBase(connConf) {
       @Override
-      public AsyncHBaseAdmin build() {
+      public AsyncAdmin build() {
         RawAsyncHBaseAdmin rawAdmin = new RawAsyncHBaseAdmin(AsyncConnectionImpl.this, this);
         return new AsyncHBaseAdmin(rawAdmin, pool);
       }

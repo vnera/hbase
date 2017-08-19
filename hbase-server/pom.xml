@@ -264,6 +264,7 @@
           </properties>
           <systemPropertyVariables>
             <test.build.webapps>target/test-classes/webapps</test.build.webapps>
+            <org.apache.hadoop.hbase.shaded.io.netty.packagePrefix>org.apache.hadoop.hbase.shaded.</org.apache.hadoop.hbase.shaded.io.netty.packagePrefix>
           </systemPropertyVariables>
         </configuration>
       </plugin>
@@ -471,10 +472,6 @@
       <groupId>org.glassfish.jersey.containers</groupId>
       <artifactId>jersey-container-servlet-core</artifactId>
     </dependency>
-    <dependency>
-      <groupId>org.glassfish.jersey.media</groupId>
-      <artifactId>jersey-media-json-jackson1</artifactId>
-    </dependency>
     <!-- General dependencies -->
     <dependency>
        <groupId>com.github.stephenc.findbugs</groupId>
@@ -520,10 +517,6 @@
     <dependency>
       <groupId>org.jamon</groupId>
       <artifactId>jamon-runtime</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.netty</groupId>
-      <artifactId>netty-all</artifactId>
     </dependency>
     <dependency>
       <groupId>javax.ws.rs</groupId>
@@ -826,7 +819,7 @@
         <dependency>
           <groupId>io.netty</groupId>
           <artifactId>netty</artifactId>
-          <version>3.6.2.Final</version>
+          <version>${netty.hadoop.version}</version>
           <scope>test</scope>
         </dependency>
       </dependencies>
