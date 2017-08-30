@@ -45,17 +45,16 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.ArrayBackedTag;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellComparator;
-import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.TagType;
 import org.apache.hadoop.hbase.TagUtil;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.MobCompactPartitionPolicy;
-import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.io.HFileLink;
 import org.apache.hadoop.hbase.io.crypto.Encryption;
@@ -109,7 +108,7 @@ public class PartitionedMobCompactor extends MobCompactor {
   private Encryption.Context cryptoContext = Encryption.Context.NONE;
 
   public PartitionedMobCompactor(Configuration conf, FileSystem fs, TableName tableName,
-    HColumnDescriptor column, ExecutorService pool) throws IOException {
+                                 ColumnFamilyDescriptor column, ExecutorService pool) throws IOException {
     super(conf, fs, tableName, column, pool);
     mergeableSize = conf.getLong(MobConstants.MOB_COMPACTION_MERGEABLE_THRESHOLD,
       MobConstants.DEFAULT_MOB_COMPACTION_MERGEABLE_THRESHOLD);
@@ -805,15 +804,12 @@ public class PartitionedMobCompactor extends MobCompactor {
    * @throws IOException if IO failure is encountered
    */
   private StoreScanner createScanner(List<StoreFile> filesToCompact, ScanType scanType)
-    throws IOException {
+      throws IOException {
     List<StoreFileScanner> scanners = StoreFileScanner.getScannersForStoreFiles(filesToCompact,
       false, true, false, false, HConstants.LATEST_TIMESTAMP);
-    Scan scan = new Scan();
-    scan.setMaxVersions(column.getMaxVersions());
     long ttl = HStore.determineTTLFromFamily(column);
     ScanInfo scanInfo = new ScanInfo(conf, column, ttl, 0, CellComparator.COMPARATOR);
-    return new StoreScanner(scan, scanInfo, scanType, null, scanners, 0L,
-      HConstants.LATEST_TIMESTAMP);
+    return new StoreScanner(scanInfo, scanType, scanners);
   }
 
   /**
@@ -915,23 +911,20 @@ public class PartitionedMobCompactor extends MobCompactor {
 
   private FileStatus getLinkedFileStatus(HFileLink link) throws IOException {
     Path[] locations = link.getLocations();
+    FileStatus file;
     for (Path location : locations) {
-      FileStatus file = getFileStatus(location);
-      if (file != null) {
-        return file;
-      }
-    }
-    return null;
-  }
 
-  private FileStatus getFileStatus(Path path) throws IOException {
-    try {
-      if (path != null) {
-        return fs.getFileStatus(path);
+      if (location != null) {
+        try {
+          file = fs.getFileStatus(location);
+          if (file != null) {
+            return file;
+          }
+        }  catch (FileNotFoundException e) {
+        }
       }
-    } catch (FileNotFoundException e) {
-      LOG.warn("The file " + path + " can not be found", e);
     }
+    LOG.warn("The file " + link + " links to can not be found");
     return null;
   }
 }

@@ -61,6 +61,8 @@
   </licenses>
 
   <modules>
+    <module>hbase-replication</module>
+    <module>hbase-mapreduce</module>
     <module>hbase-resource-bundle</module>
     <module>hbase-server</module>
     <module>hbase-thrift</module>
@@ -87,6 +89,7 @@
     <module>hbase-metrics-api</module>
     <module>hbase-metrics</module>
     <module>hbase-spark-it</module>
+    <module>hbase-backup</module>
   </modules>
   <!--Add apache snapshots in case we want to use unreleased versions of plugins:
       e.g. surefire 2.18-SNAPSHOT-->
@@ -526,6 +529,11 @@
      -->
     <pluginManagement>
       <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-dependency-plugin</artifactId>
+          <version>${maven.dependency.version}</version>
+        </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
            <artifactId>maven-javadoc-plugin</artifactId>
@@ -1307,8 +1315,8 @@
       <plugin>
         <!-- CLOUDERA-BUILD - use up-to-date scala-maven-plugin instead of maven-scala-plugin -->
         <artifactId>scala-maven-plugin</artifactId>
-        <groupId>net.alchim31.maven</groupId> 
-        <version>3.2.2</version> 
+        <groupId>net.alchim31.maven</groupId>
+        <version>3.2.2</version>
       </plugin>
     </plugins>
   </build>
@@ -1354,7 +1362,7 @@
     <!-- end HBASE-15925 default hadoop compatibility values -->
     <avro.version>${cdh.avro.version}</avro.version>
     <commons-cli.version>1.4</commons-cli.version>
-    <commons-codec.version>1.9</commons-codec.version>
+    <commons-codec.version>1.10</commons-codec.version>
     <!-- pretty outdated -->
     <commons-io.version>2.5</commons-io.version>
     <commons-lang.version>2.6</commons-lang.version>
@@ -1407,6 +1415,10 @@
     <!-- Plugin Dependencies -->
     <apache.rat.version>0.12</apache.rat.version>
     <asciidoctor.plugin.version>1.5.5</asciidoctor.plugin.version>
+    <!-- Required by enforcer plugin added in HBASE-18577. Maybe CDH pom dependencies are too old
+     to get the required enforcer rules so updating version here. -->
+    <maven.dependency.version>3.0.1</maven.dependency.version>
+    <maven.enforcer.version>1.4.1</maven.enforcer.version>
     <asciidoctorj.pdf.version>1.5.0-alpha.15</asciidoctorj.pdf.version>
     <build.helper.maven.version>3.0.0</build.helper.maven.version>
     <buildnumber.maven.version>1.4</buildnumber.maven.version>
@@ -1420,6 +1432,7 @@
     <maven.bundle.version>3.3.0</maven.bundle.version>
     <maven.checkstyle.version>2.17</maven.checkstyle.version>
     <maven.compiler.version>3.6.1</maven.compiler.version>
+    <maven.dependency.version>3.0.1</maven.dependency.version>
     <maven.eclipse.version>2.10</maven.eclipse.version>
     <maven.install.version>2.5.2</maven.install.version>
     <maven.jar.version>3.0.2</maven.jar.version>
@@ -1434,7 +1447,7 @@
     <spotbugs.version>3.1.0-RC3</spotbugs.version>
     <wagon.ssh.version>2.12</wagon.ssh.version>
     <xml.maven.version>1.0.1</xml.maven.version>
-    <hbase-thirdparty.version>1.0.0</hbase-thirdparty.version>
+    <hbase-thirdparty.version>1.0.1</hbase-thirdparty.version>
     <!-- General Packaging -->
     <package.prefix>/usr</package.prefix>
     <package.conf.dir>/etc/hbase</package.conf.dir>
@@ -1451,6 +1464,7 @@
     <it.test.jar>hbase-it-${project.version}-tests.jar</it.test.jar>
     <annotations.test.jar>hbase-annotations-${project.version}-tests.jar</annotations.test.jar>
     <rsgroup.test.jar>hbase-rsgroup-${project.version}-tests.jar</rsgroup.test.jar>
+    <shell-executable>bash</shell-executable>
     <surefire.version>2.19.1</surefire.version>
     <surefire.provider>surefire-junit47</surefire.provider>
     <!-- default: run small & medium, medium with 2 threads -->
@@ -1463,7 +1477,7 @@
     <surefire.testFailureIgnore>false</surefire.testFailureIgnore>
     <test.output.tofile>true</test.output.tofile>
     <surefire.timeout>900</surefire.timeout>
-    
+
     <!-- CDH - For flaky tests exclusion -->
     <test.exclude></test.exclude>
     <test.exclude.pattern>**/${test.exclude}.java</test.exclude.pattern>
@@ -1588,12 +1602,29 @@
         <scope>test</scope>
       </dependency>
       <dependency>
+        <artifactId>hbase-replication</artifactId>
+        <groupId>org.apache.hbase</groupId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
         <artifactId>hbase-server</artifactId>
         <groupId>org.apache.hbase</groupId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
         <artifactId>hbase-server</artifactId>
+        <groupId>org.apache.hbase</groupId>
+        <version>${project.version}</version>
+        <type>test-jar</type>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <artifactId>hbase-mapreduce</artifactId>
+        <groupId>org.apache.hbase</groupId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <artifactId>hbase-mapreduce</artifactId>
         <groupId>org.apache.hbase</groupId>
         <version>${project.version}</version>
         <type>test-jar</type>
@@ -2083,6 +2114,16 @@
       <build>
         <pluginManagement>
           <plugins>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-dependency-plugin</artifactId>
+              <version>${maven.dependency.version}</version>
+            </plugin>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-enforcer-plugin</artifactId>
+              <version>${maven.enforcer.version}</version>
+            </plugin>
             <plugin>
               <groupId>org.apache.maven.plugins</groupId>
               <artifactId>maven-javadoc-plugin</artifactId>

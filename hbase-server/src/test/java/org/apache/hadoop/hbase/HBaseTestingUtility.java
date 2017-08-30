@@ -71,6 +71,7 @@ import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Durability;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.client.ImmutableHTableDescriptor;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.RegionLocator;
 import org.apache.hadoop.hbase.client.Result;
@@ -466,10 +467,20 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
 
   /**
    * @return META table descriptor
+   * @deprecated since 2.0 version and will be removed in 3.0 version.
+   *             use {@link #getMetaDescriptor()}
    */
+  @Deprecated
   public HTableDescriptor getMetaTableDescriptor() {
+    return new ImmutableHTableDescriptor(getMetaTableDescriptorBuilder().build());
+  }
+
+  /**
+   * @return META table descriptor
+   */
+  public TableDescriptorBuilder getMetaTableDescriptorBuilder() {
     try {
-      return new FSTableDescriptors(conf).get(TableName.META_TABLE_NAME);
+      return FSTableDescriptors.createMetaTableDescriptorBuilder(conf);
     } catch (IOException e) {
       throw new RuntimeException("Unable to create META table descriptor", e);
     }
@@ -4413,5 +4424,23 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
     } while (bindException);
     HBaseKerberosUtils.setKeytabFileForTesting(keytabFile.getAbsolutePath());
     return kdc;
+  }
+
+  public int getNumHFiles(final TableName tableName, final byte[] family) {
+    int numHFiles = 0;
+    for (RegionServerThread regionServerThread : getMiniHBaseCluster().getRegionServerThreads()) {
+      numHFiles+= getNumHFilesForRS(regionServerThread.getRegionServer(), tableName,
+                                    family);
+    }
+    return numHFiles;
+  }
+
+  public int getNumHFilesForRS(final HRegionServer rs, final TableName tableName,
+                               final byte[] family) {
+    int numHFiles = 0;
+    for (Region region : rs.getOnlineRegions(tableName)) {
+      numHFiles += region.getStore(family).getStorefilesCount();
+    }
+    return numHFiles;
   }
 }

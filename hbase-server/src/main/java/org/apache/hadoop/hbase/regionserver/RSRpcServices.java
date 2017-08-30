@@ -58,7 +58,6 @@ import org.apache.hadoop.hbase.DroppedSnapshotException;
 import org.apache.hadoop.hbase.HBaseIOException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MultiActionResultTooLarge;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.ServerName;
@@ -77,6 +76,7 @@ import org.apache.hadoop.hbase.client.RegionReplicaUtil;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.RowMutations;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.client.VersionInfoUtil;
 import org.apache.hadoop.hbase.conf.ConfigurationObserver;
 import org.apache.hadoop.hbase.exceptions.FailedSanityCheckException;
@@ -1131,16 +1131,17 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
 
   // Exposed for testing
   static interface LogDelegate {
-    void logBatchWarning(int sum, int rowSizeWarnThreshold);
+    void logBatchWarning(String firstRegionName, int sum, int rowSizeWarnThreshold);
   }
 
   private static LogDelegate DEFAULT_LOG_DELEGATE = new LogDelegate() {
     @Override
-    public void logBatchWarning(int sum, int rowSizeWarnThreshold) {
+    public void logBatchWarning(String firstRegionName, int sum, int rowSizeWarnThreshold) {
       if (LOG.isWarnEnabled()) {
         LOG.warn("Large batch operation detected (greater than " + rowSizeWarnThreshold
             + ") (HBASE-18023)." + " Requested Number of Rows: " + sum + " Client: "
-            + RpcServer.getRequestUserName() + "/" + RpcServer.getRemoteAddress());
+            + RpcServer.getRequestUserName() + "/" + RpcServer.getRemoteAddress()
+            + " first region in multi=" + firstRegionName);
       }
     }
   };
@@ -1859,7 +1860,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
 
     OpenRegionResponse.Builder builder = OpenRegionResponse.newBuilder();
     final int regionCount = request.getOpenInfoCount();
-    final Map<TableName, HTableDescriptor> htds = new HashMap<>(regionCount);
+    final Map<TableName, TableDescriptor> htds = new HashMap<>(regionCount);
     final boolean isBulkAssign = regionCount > 1;
     try {
       checkOpen();
@@ -1898,7 +1899,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
 
     for (RegionOpenInfo regionOpenInfo : request.getOpenInfoList()) {
       final HRegionInfo region = HRegionInfo.convert(regionOpenInfo.getRegion());
-      HTableDescriptor htd;
+      TableDescriptor htd;
       try {
         String encodedName = region.getEncodedName();
         byte[] encodedNameBytes = region.getEncodedNameAsBytes();
@@ -2020,7 +2021,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
 
     RegionInfo regionInfo = request.getRegionInfo();
     final HRegionInfo region = HRegionInfo.convert(regionInfo);
-    HTableDescriptor htd;
+    TableDescriptor htd;
     WarmupRegionResponse response = WarmupRegionResponse.getDefaultInstance();
 
     try {
@@ -2513,11 +2514,15 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
 
   private void checkBatchSizeAndLogLargeSize(MultiRequest request) {
     int sum = 0;
+    String firstRegionName = null;
     for (RegionAction regionAction : request.getRegionActionList()) {
+      if (sum == 0) {
+        firstRegionName = Bytes.toStringBinary(regionAction.getRegion().getValue().toByteArray());
+      }
       sum += regionAction.getActionCount();
     }
     if (sum > rowSizeWarnThreshold) {
-      ld.logBatchWarning(sum, rowSizeWarnThreshold);
+      ld.logBatchWarning(firstRegionName, sum, rowSizeWarnThreshold);
     }
   }
 

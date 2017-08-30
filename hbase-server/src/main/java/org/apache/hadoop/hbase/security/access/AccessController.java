@@ -347,13 +347,13 @@ public class AccessController implements MasterObserver, RegionObserver, RegionS
                     permRequest, tableName, makeFamilyMap(family.getKey(), qualifier));
               }
             }
-          } else if (family.getValue() instanceof List) { // List<KeyValue>
-            List<KeyValue> kvList = (List<KeyValue>)family.getValue();
-            for (KeyValue kv : kvList) {
+          } else if (family.getValue() instanceof List) { // List<Cell>
+            List<Cell> cellList = (List<Cell>)family.getValue();
+            for (Cell cell : cellList) {
               if (!authManager.authorize(user, tableName, family.getKey(),
-                CellUtil.cloneQualifier(kv), permRequest)) {
+                CellUtil.cloneQualifier(cell), permRequest)) {
                 return AuthResult.deny(request, "Failed qualifier check", user, permRequest,
-                  tableName, makeFamilyMap(family.getKey(), CellUtil.cloneQualifier(kv)));
+                  tableName, makeFamilyMap(family.getKey(), CellUtil.cloneQualifier(cell)));
               }
             }
           }
@@ -954,7 +954,7 @@ public class AccessController implements MasterObserver, RegionObserver, RegionS
     } else if (env instanceof RegionCoprocessorEnvironment) {
       // if running at region
       regionEnv = (RegionCoprocessorEnvironment) env;
-      conf.addStringMap(regionEnv.getRegion().getTableDescriptor().getConfiguration());
+      conf.addBytesMap(regionEnv.getRegion().getTableDescriptor().getValues());
       zk = regionEnv.getRegionServerServices().getZooKeeper();
       compatibleEarlyTermination = conf.getBoolean(AccessControlConstants.CF_ATTRIBUTE_EARLY_OUT,
         AccessControlConstants.DEFAULT_ATTRIBUTE_EARLY_OUT);

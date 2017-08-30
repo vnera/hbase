@@ -54,8 +54,8 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValue.Type;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.MobCompactPartitionPolicy;
-import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.hfile.HFileContext;
 import org.apache.hadoop.hbase.io.hfile.HFileContextBuilder;
@@ -514,7 +514,7 @@ public class TestPartitionedMobCompactor {
     CacheConfig cacheConfig = null;
 
     MyPartitionedMobCompactor(Configuration conf, FileSystem fs, TableName tableName,
-        HColumnDescriptor column, ExecutorService pool, final int delPartitionSize,
+        ColumnFamilyDescriptor column, ExecutorService pool, final int delPartitionSize,
         final CacheConfig cacheConf, final int PartitionsIncludeDelFiles)
         throws IOException {
       super(conf, fs, tableName, column, pool);
@@ -882,13 +882,10 @@ public class TestPartitionedMobCompactor {
     }
     List<KeyValueScanner> scanners = new ArrayList<>(StoreFileScanner.getScannersForStoreFiles(sfs,
       false, true, false, false, HConstants.LATEST_TIMESTAMP));
-    Scan scan = new Scan();
-    scan.setMaxVersions(hcd.getMaxVersions());
     long timeToPurgeDeletes = Math.max(conf.getLong("hbase.hstore.time.to.purge.deletes", 0), 0);
     long ttl = HStore.determineTTLFromFamily(hcd);
     ScanInfo scanInfo = new ScanInfo(conf, hcd, ttl, timeToPurgeDeletes, CellComparator.COMPARATOR);
-    StoreScanner scanner = new StoreScanner(scan, scanInfo, ScanType.COMPACT_RETAIN_DELETES, null,
-        scanners, 0L, HConstants.LATEST_TIMESTAMP);
+    StoreScanner scanner = new StoreScanner(scanInfo, ScanType.COMPACT_RETAIN_DELETES, scanners);
     List<Cell> results = new ArrayList<>();
     boolean hasMore = true;
 

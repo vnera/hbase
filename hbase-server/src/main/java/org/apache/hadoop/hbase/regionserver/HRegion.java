@@ -32,6 +32,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.lang.reflect.Constructor;
+import java.nio.ByteBuffer;
 import java.text.ParseException;
 import java.util.AbstractList;
 import java.util.ArrayList;
@@ -73,6 +74,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Function;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -121,11 +123,13 @@ import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.apache.hadoop.hbase.conf.ConfigurationManager;
 import org.apache.hadoop.hbase.conf.PropagatingConfigurationObserver;
 import org.apache.hadoop.hbase.coprocessor.RegionObserver.MutationType;
+import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.errorhandling.ForeignExceptionSnare;
 import org.apache.hadoop.hbase.exceptions.FailedSanityCheckException;
 import org.apache.hadoop.hbase.exceptions.RegionInRecoveryException;
 import org.apache.hadoop.hbase.exceptions.TimeoutIOException;
 import org.apache.hadoop.hbase.exceptions.UnknownProtocolException;
+import org.apache.hadoop.hbase.ExtendedCellBuilderFactory;
 import org.apache.hadoop.hbase.filter.ByteArrayComparable;
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
 import org.apache.hadoop.hbase.filter.FilterWrapper;
@@ -173,6 +177,7 @@ import org.apache.hadoop.hbase.snapshot.SnapshotManifest;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CancelableProgressable;
 import org.apache.hadoop.hbase.util.ClassSize;
+import org.apache.hadoop.hbase.util.CollectionUtils;
 import org.apache.hadoop.hbase.util.CompressionTest;
 import org.apache.hadoop.hbase.util.EncryptionTest;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
@@ -716,7 +721,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     this.baseConf = confParam;
     this.conf = new CompoundConfiguration()
       .add(confParam)
-      .addStringMap(htd.getConfiguration())
       .addBytesMap(htd.getValues());
     this.flushCheckInterval = conf.getInt(MEMSTORE_PERIODIC_FLUSH_INTERVAL,
         DEFAULT_CACHE_FLUSH_INTERVAL);
@@ -7499,14 +7503,20 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
           mutationType = MutationType.INCREMENT;
           // If delta amount to apply is 0, don't write WAL or MemStore.
           long deltaAmount = getLongValue(delta);
+          // TODO: Does zero value mean reset Cell? For example, the ttl.
           apply = deltaAmount != 0;
-          newCell = reckonIncrement(delta, deltaAmount, currentValue, columnFamily, now,
-            (Increment)mutation);
+          final long newValue = currentValue == null ? deltaAmount : getLongValue(currentValue) + deltaAmount;
+          newCell = reckonDelta(delta, currentValue, columnFamily, now, mutation, (oldCell) -> Bytes.toBytes(newValue));
           break;
         case APPEND:
           mutationType = MutationType.APPEND;
           // Always apply Append. TODO: Does empty delta value mean reset Cell? It seems to.
-          newCell = reckonAppend(delta, currentValue, now, (Append)mutation);
+          newCell = reckonDelta(delta, currentValue, columnFamily, now, mutation, (oldCell) ->
+            ByteBuffer.wrap(new byte[delta.getValueLength() + oldCell.getValueLength()])
+                    .put(oldCell.getValueArray(), oldCell.getValueOffset(), oldCell.getValueLength())
+                    .put(delta.getValueArray(), delta.getValueOffset(), delta.getValueLength())
+                    .array()
+          );
           break;
         default: throw new UnsupportedOperationException(op.toString());
       }
@@ -7528,82 +7538,29 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     return toApply;
   }
 
-  /**
-   * Calculate new Increment Cell.
-   * @return New Increment Cell with delta applied to currentValue if currentValue is not null;
-   *  otherwise, a new Cell with the delta set as its value.
-   */
-  private Cell reckonIncrement(final Cell delta, final long deltaAmount, final Cell currentValue,
-      byte [] columnFamily, final long now, Mutation mutation)
-  throws IOException {
+  private static Cell reckonDelta(final Cell delta, final Cell currentCell,
+                                  final byte[] columnFamily, final long now,
+                                  Mutation mutation, Function<Cell, byte[]> supplier) throws IOException {
     // Forward any tags found on the delta.
     List<Tag> tags = TagUtil.carryForwardTags(delta);
-    long newValue = deltaAmount;
-    long ts = now;
-    if (currentValue != null) {
-      tags = TagUtil.carryForwardTags(tags, currentValue);
-      ts = Math.max(now, currentValue.getTimestamp() + 1);
-      newValue += getLongValue(currentValue);
-    }
-    // Now make up the new Cell. TODO: FIX. This is carnel knowledge of how KeyValues are made...
-    // doesn't work well with offheaping or if we are doing a different Cell type.
-    byte [] incrementAmountInBytes = Bytes.toBytes(newValue);
     tags = TagUtil.carryForwardTTLTag(tags, mutation.getTTL());
-    byte [] row = mutation.getRow();
-    return new KeyValue(row, 0, row.length,
-      columnFamily, 0, columnFamily.length,
-      delta.getQualifierArray(), delta.getQualifierOffset(), delta.getQualifierLength(),
-      ts, KeyValue.Type.Put,
-      incrementAmountInBytes, 0, incrementAmountInBytes.length,
-      tags);
-  }
-
-  private Cell reckonAppend(final Cell delta, final Cell currentValue, final long now,
-      Append mutation)
-  throws IOException {
-    // Forward any tags found on the delta.
-    List<Tag> tags = TagUtil.carryForwardTags(delta);
-    long ts = now;
-    Cell newCell = null;
-    byte [] row = mutation.getRow();
-    if (currentValue != null) {
-      tags = TagUtil.carryForwardTags(tags, currentValue);
-      ts = Math.max(now, currentValue.getTimestamp() + 1);
-      tags = TagUtil.carryForwardTTLTag(tags, mutation.getTTL());
-      byte[] tagBytes = TagUtil.fromList(tags);
-      // Allocate an empty cell and copy in all parts.
-      // TODO: This is intimate knowledge of how a KeyValue is made. Undo!!! Prevents our doing
-      // other Cell types. Copying on-heap too if an off-heap Cell.
-      newCell = new KeyValue(row.length, delta.getFamilyLength(),
-        delta.getQualifierLength(), ts, KeyValue.Type.Put,
-        delta.getValueLength() + currentValue.getValueLength(),
-        tagBytes == null? 0: tagBytes.length);
-      // Copy in row, family, and qualifier
-      System.arraycopy(row, 0, newCell.getRowArray(), newCell.getRowOffset(), row.length);
-      System.arraycopy(delta.getFamilyArray(), delta.getFamilyOffset(),
-          newCell.getFamilyArray(), newCell.getFamilyOffset(), delta.getFamilyLength());
-      System.arraycopy(delta.getQualifierArray(), delta.getQualifierOffset(),
-          newCell.getQualifierArray(), newCell.getQualifierOffset(), delta.getQualifierLength());
-      // Copy in the value
-      CellUtil.copyValueTo(currentValue, newCell.getValueArray(), newCell.getValueOffset());
-      System.arraycopy(delta.getValueArray(), delta.getValueOffset(),
-          newCell.getValueArray(), newCell.getValueOffset() + currentValue.getValueLength(),
-          delta.getValueLength());
-      // Copy in tag data
-      if (tagBytes != null) {
-        System.arraycopy(tagBytes, 0,
-            newCell.getTagsArray(), newCell.getTagsOffset(), tagBytes.length);
-      }
+    if (currentCell != null) {
+      tags = TagUtil.carryForwardTags(tags, currentCell);
+      byte[] newValue = supplier.apply(currentCell);
+      return ExtendedCellBuilderFactory.create(CellBuilderType.SHALLOW_COPY)
+              .setRow(mutation.getRow(), 0, mutation.getRow().length)
+              .setFamily(columnFamily, 0, columnFamily.length)
+              // copy the qualifier if the cell is located in shared memory.
+              .setQualifier(CellUtil.cloneQualifier(delta))
+              .setTimestamp(Math.max(currentCell.getTimestamp() + 1, now))
+              .setType(KeyValue.Type.Put.getCode())
+              .setValue(newValue, 0, newValue.length)
+              .setTags(TagUtil.fromList(tags))
+              .build();
     } else {
-      // Append's KeyValue.Type==Put and ts==HConstants.LATEST_TIMESTAMP
       CellUtil.updateLatestStamp(delta, now);
-      newCell = delta;
-      tags = TagUtil.carryForwardTTLTag(tags, mutation.getTTL());
-      if (tags != null) {
-        newCell = CellUtil.createCell(delta, tags);
-      }
+      return CollectionUtils.isEmpty(tags) ? delta : CellUtil.createCell(delta, tags);
     }
-    return newCell;
   }
 
   /**

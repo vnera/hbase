@@ -255,6 +255,7 @@ import org.apache.hadoop.hbase.util.Pair;
 
 /**
  * The implementation of AsyncAdmin.
+ * @since 2.0.0
  */
 @InterfaceAudience.Private
 public class RawAsyncHBaseAdmin implements AsyncAdmin {
@@ -453,7 +454,7 @@ public class RawAsyncHBaseAdmin implements AsyncAdmin {
             return;
           }
           if (!tableSchemas.isEmpty()) {
-            future.complete(ProtobufUtil.convertToTableDesc(tableSchemas.get(0)));
+            future.complete(ProtobufUtil.toTableDescriptor(tableSchemas.get(0)));
           } else {
             future.completeExceptionally(new TableNotFoundException(tableName.getNameAsString()));
           }
