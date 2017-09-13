@@ -22,6 +22,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -31,13 +32,11 @@ import java.util.regex.Pattern;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.ClusterStatus;
-import org.apache.hadoop.hbase.ClusterStatus.Options;
-import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.NamespaceNotFoundException;
-import org.apache.hadoop.hbase.ProcedureInfo;
 import org.apache.hadoop.hbase.RegionLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableExistsException;
@@ -47,7 +46,6 @@ import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.client.replication.TableCFs;
 import org.apache.hadoop.hbase.client.security.SecurityCapability;
 import org.apache.hadoop.hbase.ipc.CoprocessorRpcChannel;
-import org.apache.hadoop.hbase.procedure2.LockInfo;
 import org.apache.hadoop.hbase.quotas.QuotaFilter;
 import org.apache.hadoop.hbase.quotas.QuotaRetriever;
 import org.apache.hadoop.hbase.quotas.QuotaSettings;
@@ -291,50 +289,8 @@ public interface Admin extends Abortable, Closeable {
    * @throws org.apache.hadoop.hbase.TableExistsException if table already exists (If concurrent
    * threads, the table may have been created between test-for-existence and attempt-at-creation).
    * @throws IOException if a remote or network exception occurs
-   * @deprecated since 2.0 version and will be removed in 3.0 version.
-   *             use {@link #createTable(TableDescriptor)}
-   */
-  @Deprecated
-  default void createTable(HTableDescriptor desc) throws IOException {
-    createTable((TableDescriptor) desc);
-  }
-
-  /**
-   * Creates a new table. Synchronous operation.
-   *
-   * @param desc table descriptor for table
-   * @throws IllegalArgumentException if the table name is reserved
-   * @throws org.apache.hadoop.hbase.MasterNotRunningException if master is not running
-   * @throws org.apache.hadoop.hbase.TableExistsException if table already exists (If concurrent
-   * threads, the table may have been created between test-for-existence and attempt-at-creation).
-   * @throws IOException if a remote or network exception occurs
    */
   void createTable(TableDescriptor desc) throws IOException;
-
-  /**
-   * Creates a new table with the specified number of regions.  The start key specified will become
-   * the end key of the first region of the table, and the end key specified will become the start
-   * key of the last region of the table (the first region has a null start key and the last region
-   * has a null end key). BigInteger math will be used to divide the key range specified into enough
-   * segments to make the required number of total regions. Synchronous operation.
-   *
-   * @param desc table descriptor for table
-   * @param startKey beginning of key range
-   * @param endKey end of key range
-   * @param numRegions the total number of regions to create
-   * @throws IllegalArgumentException if the table name is reserved
-   * @throws org.apache.hadoop.hbase.MasterNotRunningException if master is not running
-   * @throws org.apache.hadoop.hbase.TableExistsException if table already exists (If concurrent
-   * threads, the table may have been created between test-for-existence and attempt-at-creation).
-   * @throws IOException
-   * @deprecated since 2.0 version and will be removed in 3.0 version.
-   *             use {@link #createTable(TableDescriptor, byte[], byte[], int)}
-   */
-  @Deprecated
-  default void createTable(HTableDescriptor desc, byte[] startKey, byte[] endKey, int numRegions)
-      throws IOException {
-    createTable((TableDescriptor) desc, startKey, endKey, numRegions);
-  }
 
   /**
    * Creates a new table with the specified number of regions.  The start key specified will become
@@ -369,52 +325,8 @@ public interface Admin extends Abortable, Closeable {
    * @throws org.apache.hadoop.hbase.TableExistsException if table already exists (If concurrent
    * threads, the table may have been created between test-for-existence and attempt-at-creation).
    * @throws IOException
-   * @deprecated since 2.0 version and will be removed in 3.0 version.
-   *             use {@link #createTable(TableDescriptor, byte[][])}
-   */
-  @Deprecated
-  default void createTable(final HTableDescriptor desc, byte[][] splitKeys) throws IOException {
-    createTable((TableDescriptor) desc, splitKeys);
-  }
-
-  /**
-   * Creates a new table with an initial set of empty regions defined by the specified split keys.
-   * The total number of regions created will be the number of split keys plus one. Synchronous
-   * operation. Note : Avoid passing empty split key.
-   *
-   * @param desc table descriptor for table
-   * @param splitKeys array of split keys for the initial regions of the table
-   * @throws IllegalArgumentException if the table name is reserved, if the split keys are repeated
-   * and if the split key has empty byte array.
-   * @throws org.apache.hadoop.hbase.MasterNotRunningException if master is not running
-   * @throws org.apache.hadoop.hbase.TableExistsException if table already exists (If concurrent
-   * threads, the table may have been created between test-for-existence and attempt-at-creation).
-   * @throws IOException
    */
   void createTable(final TableDescriptor desc, byte[][] splitKeys) throws IOException;
-
-  /**
-   * Creates a new table but does not block and wait for it to come online.
-   * You can use Future.get(long, TimeUnit) to wait on the operation to complete.
-   * It may throw ExecutionException if there was an error while executing the operation
-   * or TimeoutException in case the wait timeout was not long enough to allow the
-   * operation to complete.
-   * Throws IllegalArgumentException Bad table name, if the split keys
-   *    are repeated and if the split key has empty byte array.
-   *
-   * @param desc table descriptor for table
-   * @param splitKeys keys to check if the table has been created with all split keys
-   * @throws IOException if a remote or network exception occurs
-   * @return the result of the async creation. You can use Future.get(long, TimeUnit)
-   *    to wait on the operation to complete.
-   * @deprecated since 2.0 version and will be removed in 3.0 version.
-   *             use {@link #createTableAsync(TableDescriptor, byte[][])}
-   */
-  @Deprecated
-  default Future<Void> createTableAsync(final HTableDescriptor desc, final byte[][] splitKeys)
-      throws IOException {
-    return createTableAsync((TableDescriptor) desc, splitKeys);
-  }
 
   /**
    * Creates a new table but does not block and wait for it to come online.
@@ -718,8 +630,10 @@ public interface Admin extends Abortable, Closeable {
    *             Use {@link #addColumnFamily(TableName, ColumnFamilyDescriptor)}.
    */
   @Deprecated
-  void addColumn(final TableName tableName, final HColumnDescriptor columnFamily)
-    throws IOException;
+  default void addColumn(final TableName tableName, final ColumnFamilyDescriptor columnFamily)
+    throws IOException {
+    addColumnFamily(tableName, columnFamily);
+  }
 
   /**
    * Add a column family to an existing table.
@@ -798,8 +712,10 @@ public interface Admin extends Abortable, Closeable {
    *             Use {@link #modifyColumnFamily(TableName, ColumnFamilyDescriptor)}.
    */
   @Deprecated
-  void modifyColumn(final TableName tableName, final HColumnDescriptor columnFamily)
-      throws IOException;
+  default void modifyColumn(final TableName tableName, final ColumnFamilyDescriptor columnFamily)
+      throws IOException {
+    modifyColumnFamily(tableName, columnFamily);
+  }
 
   /**
    * Modify an existing column family on a table.
@@ -1231,13 +1147,13 @@ public interface Admin extends Abortable, Closeable {
    * Modify an existing table, more IRB friendly version.
    *
    * @param tableName name of table.
-   * @param htd modified description of the table
+   * @param td modified description of the table
    * @throws IOException if a remote or network exception occurs
    * @deprecated since 2.0 version and will be removed in 3.0 version.
    *             use {@link #modifyTable(TableDescriptor)}
    */
   @Deprecated
-  void modifyTable(final TableName tableName, final HTableDescriptor htd)
+  void modifyTable(final TableName tableName, final TableDescriptor td)
       throws IOException;
 
   /**
@@ -1257,7 +1173,7 @@ public interface Admin extends Abortable, Closeable {
    * operation to complete.
    *
    * @param tableName name of table.
-   * @param htd modified description of the table
+   * @param td modified description of the table
    * @throws IOException if a remote or network exception occurs
    * @return the result of the async modify. You can use Future.get(long, TimeUnit) to wait on the
    *     operation to complete
@@ -1265,7 +1181,7 @@ public interface Admin extends Abortable, Closeable {
    *             use {@link #modifyTableAsync(TableDescriptor)}
    */
   @Deprecated
-  Future<Void> modifyTableAsync(final TableName tableName, final HTableDescriptor htd)
+  Future<Void> modifyTableAsync(final TableName tableName, final TableDescriptor td)
       throws IOException;
 
   /**
@@ -1316,17 +1232,27 @@ public interface Admin extends Abortable, Closeable {
   void stopRegionServer(final String hostnamePort) throws IOException;
 
   /**
+   * Get whole cluster status, containing status about:
+   * <pre>
+   * hbase version
+   * cluster id
+   * primary/backup master(s)
+   * master's coprocessors
+   * live/dead regionservers
+   * balancer
+   * regions in transition
+   * </pre>
    * @return cluster status
    * @throws IOException if a remote or network exception occurs
    */
   ClusterStatus getClusterStatus() throws IOException;
 
   /**
-   * Get cluster status with options to filter out unwanted status.
+   * Get cluster status with a set of {@link Option} to get desired status.
    * @return cluster status
    * @throws IOException if a remote or network exception occurs
    */
-  ClusterStatus getClusterStatus(Options options) throws IOException;
+  ClusterStatus getClusterStatus(EnumSet<Option> options) throws IOException;
 
   /**
    * Get {@link RegionLoad} of all regions hosted on a regionserver.
@@ -1537,19 +1463,19 @@ public interface Admin extends Abortable, Closeable {
     final boolean mayInterruptIfRunning) throws IOException;
 
   /**
-   * List procedures
-   * @return procedure list
+   * Get procedures.
+   * @return procedure list in JSON
    * @throws IOException
    */
-  ProcedureInfo[] listProcedures()
+  String getProcedures()
       throws IOException;
 
   /**
-   * List locks.
-   * @return lock list
+   * Get locks.
+   * @return lock list in JSON
    * @throws IOException if a remote or network exception occurs
    */
-  LockInfo[] listLocks()
+  String getLocks()
       throws IOException;
 
   /**
@@ -2339,4 +2265,18 @@ public interface Admin extends Abortable, Closeable {
    */
   void clearCompactionQueues(final ServerName sn, final Set<String> queues)
     throws IOException, InterruptedException;
+
+  /**
+   * List dead region servers.
+   * @return List of dead region servers.
+   */
+  List<ServerName> listDeadServers() throws IOException;
+
+  /**
+   * Clear dead region servers from master.
+   * @param servers list of dead region servers.
+   * @throws IOException if a remote or network exception occurs
+   * @return List of servers that are not cleared
+   */
+  List<ServerName> clearDeadServers(final List<ServerName> servers) throws IOException;
 }

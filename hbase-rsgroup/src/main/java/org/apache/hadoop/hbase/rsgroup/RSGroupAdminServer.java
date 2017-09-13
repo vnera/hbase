@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -38,17 +38,16 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.constraint.ConstraintException;
 import org.apache.hadoop.hbase.master.HMaster;
-import org.apache.hadoop.hbase.master.assignment.AssignmentManager;
-import org.apache.hadoop.hbase.master.assignment.RegionStates.RegionStateNode;
 import org.apache.hadoop.hbase.master.LoadBalancer;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.master.RegionPlan;
 import org.apache.hadoop.hbase.master.RegionState;
 import org.apache.hadoop.hbase.master.ServerManager;
+import org.apache.hadoop.hbase.master.assignment.AssignmentManager;
+import org.apache.hadoop.hbase.master.assignment.RegionStates.RegionStateNode;
 import org.apache.hadoop.hbase.master.locking.LockManager;
-import org.apache.hadoop.hbase.master.locking.LockProcedure;
 import org.apache.hadoop.hbase.net.Address;
-
+import org.apache.hadoop.hbase.procedure2.LockType;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.Maps;
 
@@ -253,7 +252,7 @@ public class RSGroupAdminServer implements RSGroupAdmin {
     for (TableName table: tables) {
       LOG.info("Unassigning region(s) from " + table + " for table move to " + targetGroupName);
       LockManager.MasterLock lock = master.getLockManager().createMasterLock(table,
-              LockProcedure.LockType.EXCLUSIVE, this.getClass().getName() + ": RSGroup: table move");
+              LockType.EXCLUSIVE, this.getClass().getName() + ": RSGroup: table move");
       try {
         try {
           lock.acquire();
@@ -420,7 +419,7 @@ public class RSGroupAdminServer implements RSGroupAdmin {
     }
     for (TableName table: tables) {
       LockManager.MasterLock lock = master.getLockManager().createMasterLock(table,
-          LockProcedure.LockType.EXCLUSIVE, this.getClass().getName() + ": RSGroup: table move");
+          LockType.EXCLUSIVE, this.getClass().getName() + ": RSGroup: table move");
       try {
         try {
           lock.acquire();
@@ -492,7 +491,6 @@ public class RSGroupAdminServer implements RSGroupAdmin {
     AssignmentManager assignmentManager = master.getAssignmentManager();
     LoadBalancer balancer = master.getLoadBalancer();
 
-    boolean balancerRan;
     synchronized (balancer) {
       // If balance not true, don't run balancer.
       if (!((HMaster) master).isBalancerOn()) return false;
@@ -530,8 +528,8 @@ public class RSGroupAdminServer implements RSGroupAdmin {
         }
       }
       long startTime = System.currentTimeMillis();
-      balancerRan = plans != null;
-      if (plans != null && !plans.isEmpty()) {
+      boolean balancerRan = !plans.isEmpty();
+      if (balancerRan) {
         LOG.info("RSGroup balance " + groupName + " starting with plan count: " + plans.size());
         for (RegionPlan plan: plans) {
           LOG.info("balance " + plan);
@@ -543,8 +541,8 @@ public class RSGroupAdminServer implements RSGroupAdmin {
       if (master.getMasterCoprocessorHost() != null) {
         master.getMasterCoprocessorHost().postBalanceRSGroup(groupName, balancerRan);
       }
+      return balancerRan;
     }
-    return balancerRan;
   }
 
   @Override

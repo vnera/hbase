@@ -20,13 +20,14 @@ package org.apache.hadoop.hbase.shaded.protobuf;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.apache.hadoop.hbase.CellScannable;
-import org.apache.hadoop.hbase.ClusterStatus.Options;
+import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -87,6 +88,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.AddColumnRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.AssignRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.BalanceRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ClearDeadServersRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.CreateNamespaceRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.CreateTableRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.DeleteColumnRequest;
@@ -1516,9 +1518,9 @@ public final class RequestConverter {
    *
    * @return A GetClusterStatusRequest
    */
-  public static GetClusterStatusRequest buildGetClusterStatusRequest(Options opt) {
+  public static GetClusterStatusRequest buildGetClusterStatusRequest(EnumSet<Option> options) {
     return GetClusterStatusRequest.newBuilder()
-                                  .setClusterOptions(ProtobufUtil.toOptions(opt))
+                                  .addAllOptions(ProtobufUtil.toOptions(options))
                                   .build();
   }
 
@@ -1807,6 +1809,14 @@ public final class RequestConverter {
     ClearCompactionQueuesRequest.Builder builder = ClearCompactionQueuesRequest.newBuilder();
     for(String name: queues) {
       builder.addQueueName(name);
+    }
+    return builder.build();
+  }
+
+  public static ClearDeadServersRequest buildClearDeadServersRequest(List<ServerName> deadServers) {
+    ClearDeadServersRequest.Builder builder = ClearDeadServersRequest.newBuilder();
+    for(ServerName server: deadServers) {
+      builder.addServerName(ProtobufUtil.toServerName(server));
     }
     return builder.build();
   }

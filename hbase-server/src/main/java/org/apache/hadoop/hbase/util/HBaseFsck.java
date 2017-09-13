@@ -69,8 +69,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.RandomStringUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -3484,7 +3484,7 @@ public class HBaseFsck extends Configured implements Closeable {
       errors.print("This sidelined region dir should be bulk loaded: "
         + path.toString());
       errors.print("Bulk load command looks like: "
-        + "hbase org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles "
+        + "hbase org.apache.hadoop.hbase.tool.LoadIncrementalHFiles "
         + path.toUri().getPath() + " "+ tableName);
     }
   }

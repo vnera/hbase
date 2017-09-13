@@ -32,6 +32,8 @@ import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_TABLE
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_TABLE_LIST_DESC;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_WORKERS;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_WORKERS_DESC;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_YARN_QUEUE_NAME;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_YARN_QUEUE_NAME_DESC;
 
 import java.io.IOException;
 import java.net.URI;
@@ -40,7 +42,7 @@ import java.util.List;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
@@ -103,9 +105,6 @@ public final class BackupCommands {
       + "  backup_id       Backup image id\n";
 
   public static final String REPAIR_CMD_USAGE = "Usage: hbase backup repair\n";
-
-  public static final String CANCEL_CMD_USAGE = "Usage: hbase backup cancel <backup_id>\n"
-      + "  backup_id       Backup image id\n";
 
   public static final String SET_CMD_USAGE = "Usage: hbase backup set COMMAND [name] [tables]\n"
       + "  name            Backup set name\n"
@@ -219,9 +218,6 @@ public final class BackupCommands {
     case DELETE:
       cmd = new DeleteCommand(conf, cmdline);
       break;
-    case CANCEL:
-      cmd = new CancelCommand(conf, cmdline);
-      break;
     case HISTORY:
       cmd = new HistoryCommand(conf, cmdline);
       break;
@@ -321,6 +317,12 @@ public final class BackupCommands {
           cmdline.hasOption(OPTION_WORKERS) ? Integer.parseInt(cmdline
               .getOptionValue(OPTION_WORKERS)) : -1;
 
+      if (cmdline.hasOption(OPTION_YARN_QUEUE_NAME)) {
+        String queueName = cmdline.getOptionValue(OPTION_YARN_QUEUE_NAME);
+        // Set system property value for MR job
+        System.setProperty("mapreduce.job.queuename", queueName);
+      }
+
       try (BackupAdminImpl admin = new BackupAdminImpl(conn);) {
 
         BackupRequest.Builder builder = new BackupRequest.Builder();
@@ -368,6 +370,8 @@ public final class BackupCommands {
       options.addOption(OPTION_BANDWIDTH, true, OPTION_BANDWIDTH_DESC);
       options.addOption(OPTION_SET, true, OPTION_SET_BACKUP_DESC);
       options.addOption(OPTION_TABLE, true, OPTION_TABLE_LIST_DESC);
+      options.addOption(OPTION_YARN_QUEUE_NAME, true, OPTION_YARN_QUEUE_NAME_DESC);
+
 
       HelpFormatter helpFormatter = new HelpFormatter();
       helpFormatter.setLeftPadding(2);
@@ -417,8 +421,6 @@ public final class BackupCommands {
         System.out.println(PROGRESS_CMD_USAGE);
       } else if (BackupCommand.DELETE.name().equalsIgnoreCase(type)) {
         System.out.println(DELETE_CMD_USAGE);
-      } else if (BackupCommand.CANCEL.name().equalsIgnoreCase(type)) {
-        System.out.println(CANCEL_CMD_USAGE);
       } else if (BackupCommand.SET.name().equalsIgnoreCase(type)) {
         System.out.println(SET_CMD_USAGE);
       } else {
@@ -726,25 +728,6 @@ public final class BackupCommands {
     @Override
     protected void printUsage() {
       System.out.println(MERGE_CMD_USAGE);
-    }
-  }
-
-  // TODO Cancel command
-
-  private static class CancelCommand extends Command {
-
-    CancelCommand(Configuration conf, CommandLine cmdline) {
-      super(conf);
-      this.cmdline = cmdline;
-    }
-
-    @Override
-    public void execute() throws IOException {
-      throw new UnsupportedOperationException("Cancel command is not supported yet.");
-    }
-
-    @Override
-    protected void printUsage() {
     }
   }
 

@@ -1,5 +1,4 @@
-/**
- *
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -16,16 +15,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.regionserver;
+package org.apache.hadoop.hbase.procedure2;
 
-import org.apache.hadoop.hbase.classification.InterfaceAudience;
+import java.io.IOException;
 
-@InterfaceAudience.Private
-public enum RegionOpeningState {
+import org.apache.hadoop.hbase.shaded.com.google.protobuf.Message;
 
-  OPENED,
+public interface ProcedureStateSerializer {
+  void serialize(Message message) throws IOException;
 
-  ALREADY_OPENED,
-
-  FAILED_OPENING;
+  <M extends Message> M deserialize(Class<M> clazz) throws IOException;
 }

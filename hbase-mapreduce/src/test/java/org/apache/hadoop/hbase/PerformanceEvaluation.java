@@ -43,7 +43,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -1889,7 +1889,7 @@ public class PerformanceEvaluation extends Configured implements Tool {
       this.table.put(put);
       RowMutations mutations = new RowMutations(bytes);
       mutations.add(put);
-      this.table.checkAndMutate(bytes, FAMILY_NAME, getQualifier(), CompareOp.EQUAL, bytes,
+      this.table.checkAndMutate(bytes, FAMILY_NAME, getQualifier(), CompareOperator.EQUAL, bytes,
           mutations);
     }
   }
@@ -1906,7 +1906,7 @@ public class PerformanceEvaluation extends Configured implements Tool {
       Put put = new Put(bytes);
       put.addColumn(FAMILY_NAME, getQualifier(), bytes);
       this.table.put(put);
-      this.table.checkAndPut(bytes, FAMILY_NAME, getQualifier(), CompareOp.EQUAL, bytes, put);
+      this.table.checkAndPut(bytes, FAMILY_NAME, getQualifier(), CompareOperator.EQUAL, bytes, put);
     }
   }
 
@@ -1924,7 +1924,8 @@ public class PerformanceEvaluation extends Configured implements Tool {
       this.table.put(put);
       Delete delete = new Delete(put.getRow());
       delete.addColumn(FAMILY_NAME, getQualifier());
-      this.table.checkAndDelete(bytes, FAMILY_NAME, getQualifier(), CompareOp.EQUAL, bytes, delete);
+      this.table.checkAndDelete(bytes, FAMILY_NAME, getQualifier(),
+        CompareOperator.EQUAL, bytes, delete);
     }
   }
 
@@ -2008,7 +2009,7 @@ public class PerformanceEvaluation extends Configured implements Tool {
     protected Scan constructScan(byte[] valuePrefix) throws IOException {
       FilterList list = new FilterList();
       Filter filter = new SingleColumnValueFilter(
-          FAMILY_NAME, COLUMN_ZERO, CompareFilter.CompareOp.EQUAL,
+          FAMILY_NAME, COLUMN_ZERO, CompareOperator.EQUAL,
           new BinaryComparator(valuePrefix)
       );
       list.addFilter(filter);

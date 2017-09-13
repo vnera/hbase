@@ -18,32 +18,7 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InterruptedIOException;
-import java.net.BindException;
-import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.NavigableMap;
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.LongAdder;
-
-import org.apache.commons.lang.mutable.MutableObject;
+import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -53,6 +28,7 @@ import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellScannable;
 import org.apache.hadoop.hbase.CellScanner;
 import org.apache.hadoop.hbase.CellUtil;
+import org.apache.hadoop.hbase.CompareOperator;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.DroppedSnapshotException;
 import org.apache.hadoop.hbase.HBaseIOException;
@@ -83,7 +59,6 @@ import org.apache.hadoop.hbase.exceptions.FailedSanityCheckException;
 import org.apache.hadoop.hbase.exceptions.OutOfOrderScannerNextException;
 import org.apache.hadoop.hbase.exceptions.ScannerResetException;
 import org.apache.hadoop.hbase.filter.ByteArrayComparable;
-import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
 import org.apache.hadoop.hbase.ipc.HBaseRPCErrorHandler;
 import org.apache.hadoop.hbase.ipc.HBaseRpcController;
 import org.apache.hadoop.hbase.ipc.PriorityFunction;
@@ -112,21 +87,9 @@ import org.apache.hadoop.hbase.regionserver.ScannerContext.LimitScope;
 import org.apache.hadoop.hbase.regionserver.handler.OpenMetaHandler;
 import org.apache.hadoop.hbase.regionserver.handler.OpenPriorityRegionHandler;
 import org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler;
-import org.apache.hadoop.hbase.regionserver.wal.WALEdit;
+import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.security.Superusers;
 import org.apache.hadoop.hbase.security.User;
-import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.DNS;
-import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
-import org.apache.hadoop.hbase.util.Pair;
-import org.apache.hadoop.hbase.util.ServerRegionReplicaUtil;
-import org.apache.hadoop.hbase.util.Strings;
-import org.apache.hadoop.hbase.wal.WAL;
-import org.apache.hadoop.hbase.wal.WALKey;
-import org.apache.hadoop.hbase.wal.WALSplitter;
-import org.apache.hadoop.hbase.zookeeper.ZKSplitLog;
-import org.apache.zookeeper.KeeperException;
-
 import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.hbase.shaded.com.google.common.cache.Cache;
 import org.apache.hadoop.hbase.shaded.com.google.common.cache.CacheBuilder;
@@ -220,6 +183,42 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.BulkLoadDescr
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.CompactionDescriptor;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.FlushDescriptor;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.RegionEventDescriptor;
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.DNS;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
+import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.util.ServerRegionReplicaUtil;
+import org.apache.hadoop.hbase.util.Strings;
+import org.apache.hadoop.hbase.wal.WAL;
+import org.apache.hadoop.hbase.wal.WALKey;
+import org.apache.hadoop.hbase.wal.WALSplitter;
+import org.apache.hadoop.hbase.zookeeper.ZKSplitLog;
+import org.apache.zookeeper.KeeperException;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.net.BindException;
+import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.NavigableMap;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Implements the regionserver RPC services.
@@ -597,12 +596,12 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
    * @param row
    * @param family
    * @param qualifier
-   * @param compareOp
+   * @param op
    * @param comparator @throws IOException
    */
   private boolean checkAndRowMutate(final Region region, final List<ClientProtos.Action> actions,
       final CellScanner cellScanner, byte[] row, byte[] family, byte[] qualifier,
-      CompareOp compareOp, ByteArrayComparable comparator, RegionActionResult.Builder builder,
+      CompareOperator op, ByteArrayComparable comparator, RegionActionResult.Builder builder,
       ActivePolicyEnforcement spaceQuotaEnforcement) throws IOException {
     if (!region.getRegionInfo().isMetaTable()) {
       regionServer.cacheFlusher.reclaimMemStoreMemory();
@@ -642,16 +641,12 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       builder.addResultOrException(
           resultOrExceptionOrBuilder.build());
     }
-    return region.checkAndRowMutate(row, family, qualifier, compareOp,
+    return region.checkAndRowMutate(row, family, qualifier, op,
         comparator, rm, Boolean.TRUE);
   }
 
   /**
    * Execute an append mutation.
-   *
-   * @param region
-   * @param m
-   * @param cellScanner
    * @return result to return to client if default operation should be
    * bypassed as indicated by RegionObserver, null otherwise
    * @throws IOException
@@ -2078,7 +2073,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         // empty input
         return ReplicateWALEntryResponse.newBuilder().build();
       }
-      ByteString regionName = entries.get(0).getKey().getEncodedRegionName();
+      ByteString regionName = entries.get(0).getEdit().getEncodedRegionName();
       Region region = regionServer.getRegionByEncodedName(regionName.toStringUtf8());
       RegionCoprocessorHost coprocessorHost =
           ServerRegionReplicaUtil.isDefaultReplica(region.getRegionInfo())
@@ -2091,19 +2086,19 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       Durability durability = isPrimary ? Durability.USE_DEFAULT : Durability.SKIP_WAL;
 
       for (WALEntry entry : entries) {
-        if (!regionName.equals(entry.getKey().getEncodedRegionName())) {
+        if (!regionName.equals(entry.getEdit().getEncodedRegionName())) {
           throw new NotServingRegionException("Replay request contains entries from multiple " +
               "regions. First region:" + regionName.toStringUtf8() + " , other region:"
-              + entry.getKey().getEncodedRegionName());
+              + entry.getEdit().getEncodedRegionName());
         }
         if (regionServer.nonceManager != null && isPrimary) {
-          long nonceGroup = entry.getKey().hasNonceGroup()
-            ? entry.getKey().getNonceGroup() : HConstants.NO_NONCE;
-          long nonce = entry.getKey().hasNonce() ? entry.getKey().getNonce() : HConstants.NO_NONCE;
+          long nonceGroup = entry.getEdit().hasNonceGroup()
+            ? entry.getEdit().getNonceGroup() : HConstants.NO_NONCE;
+          long nonce = entry.getEdit().hasNonce() ? entry.getEdit().getNonce() : HConstants.NO_NONCE;
           regionServer.nonceManager.reportOperationFromWal(
               nonceGroup,
               nonce,
-              entry.getKey().getWriteTime());
+              entry.getEdit().getWriteTime());
         }
         Pair<WALKey, WALEdit> walEntry = (coprocessorHost == null) ? null : new Pair<>();
         List<WALSplitter.MutationReplay> edits = WALSplitter.getMutationsFromWALEntry(entry,
@@ -2122,8 +2117,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           // HBASE-17924
           // sort to improve lock efficiency
           Collections.sort(edits);
-          long replaySeqId = (entry.getKey().hasOrigSequenceNumber()) ?
-            entry.getKey().getOrigSequenceNumber() : entry.getKey().getLogSequenceNumber();
+          long replaySeqId = (entry.getEdit().hasOrigSequenceNumber()) ?
+            entry.getEdit().getOrigSequenceNumber() : entry.getEdit().getLogSequenceNumber();
           OperationStatus[] result = doReplayBatchOp(region, edits, replaySeqId);
           // check if it's a partial success
           for (int i = 0; result != null && i < result.length; i++) {
@@ -2597,11 +2592,12 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
             byte[] row = condition.getRow().toByteArray();
             byte[] family = condition.getFamily().toByteArray();
             byte[] qualifier = condition.getQualifier().toByteArray();
-            CompareOp compareOp = CompareOp.valueOf(condition.getCompareType().name());
+            CompareOperator op =
+              CompareOperator.valueOf(condition.getCompareType().name());
             ByteArrayComparable comparator =
                 ProtobufUtil.toComparator(condition.getComparator());
             processed = checkAndRowMutate(region, regionAction.getActionList(),
-                  cellScanner, row, family, qualifier, compareOp,
+                  cellScanner, row, family, qualifier, op,
                   comparator, regionActionResultBuilder, spaceQuotaEnforcement);
           } else {
             mutateRows(region, regionAction.getActionList(), cellScanner,
@@ -2737,7 +2733,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           byte[] row = condition.getRow().toByteArray();
           byte[] family = condition.getFamily().toByteArray();
           byte[] qualifier = condition.getQualifier().toByteArray();
-          CompareOp compareOp = CompareOp.valueOf(condition.getCompareType().name());
+          CompareOperator compareOp =
+            CompareOperator.valueOf(condition.getCompareType().name());
           ByteArrayComparable comparator =
             ProtobufUtil.toComparator(condition.getComparator());
           if (region.getCoprocessorHost() != null) {
@@ -2768,19 +2765,19 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           byte[] row = condition.getRow().toByteArray();
           byte[] family = condition.getFamily().toByteArray();
           byte[] qualifier = condition.getQualifier().toByteArray();
-          CompareOp compareOp = CompareOp.valueOf(condition.getCompareType().name());
+          CompareOperator op = CompareOperator.valueOf(condition.getCompareType().name());
           ByteArrayComparable comparator =
             ProtobufUtil.toComparator(condition.getComparator());
           if (region.getCoprocessorHost() != null) {
             processed = region.getCoprocessorHost().preCheckAndDelete(
-              row, family, qualifier, compareOp, comparator, delete);
+              row, family, qualifier, op, comparator, delete);
           }
           if (processed == null) {
             boolean result = region.checkAndMutate(row, family,
-              qualifier, compareOp, comparator, delete, true);
+              qualifier, op, comparator, delete, true);
             if (region.getCoprocessorHost() != null) {
               result = region.getCoprocessorHost().postCheckAndDelete(row, family,
-                qualifier, compareOp, comparator, delete, result);
+                qualifier, op, comparator, delete, result);
             }
             processed = result;
           }

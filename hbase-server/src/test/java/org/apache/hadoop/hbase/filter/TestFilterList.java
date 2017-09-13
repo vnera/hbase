@@ -18,6 +18,7 @@
  */
 package org.apache.hadoop.hbase.filter;
 
+import org.apache.hadoop.hbase.CompareOperator;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -501,7 +502,7 @@ public class TestFilterList {
     FilterList filterList = new FilterList(Operator.MUST_PASS_ONE,
         Arrays.asList(new Filter [] { filterMinHint, filterMaxHint } ));
     assertEquals(0, CellComparator.COMPARATOR.compare(filterList.getNextCellHint(null),
-        minKeyValue));
+      minKeyValue));
 
     // Should have no hint if any filter has no hint
     filterList = new FilterList(Operator.MUST_PASS_ONE,
@@ -525,7 +526,7 @@ public class TestFilterList {
         Arrays.asList(new Filter [] { filterMinHint, filterMaxHint } ));
     filterList.filterKeyValue(null);
     assertEquals(0, CellComparator.COMPARATOR.compare(filterList.getNextCellHint(null),
-        minKeyValue));
+        maxKeyValue));
 
     filterList = new FilterList(Operator.MUST_PASS_ALL,
         Arrays.asList(new Filter [] { filterMaxHint, filterMinHint } ));
@@ -539,7 +540,7 @@ public class TestFilterList {
             new Filter [] { filterNoHint, filterMinHint, filterMaxHint } ));
     filterList.filterKeyValue(null);
     assertEquals(0, CellComparator.COMPARATOR.compare(filterList.getNextCellHint(null),
-        minKeyValue));
+        maxKeyValue));
     filterList = new FilterList(Operator.MUST_PASS_ALL,
         Arrays.asList(new Filter [] { filterNoHint, filterMaxHint } ));
     filterList.filterKeyValue(null);
@@ -565,12 +566,12 @@ public class TestFilterList {
     //  OR (family=fam AND qualifier=qual2)
     final FilterList flist = new FilterList(Operator.MUST_PASS_ONE, Lists.<Filter>newArrayList(
         new FilterList(Operator.MUST_PASS_ALL, Lists.<Filter>newArrayList(
-            new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(Bytes.toBytes("fam"))),
-            new QualifierFilter(CompareOp.EQUAL, new BinaryComparator(Bytes.toBytes("qual1"))),
+            new FamilyFilter(CompareOperator.EQUAL, new BinaryComparator(Bytes.toBytes("fam"))),
+            new QualifierFilter(CompareOperator.EQUAL, new BinaryComparator(Bytes.toBytes("qual1"))),
             new KeyOnlyFilter())),
         new FilterList(Operator.MUST_PASS_ALL, Lists.<Filter>newArrayList(
-            new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(Bytes.toBytes("fam"))),
-            new QualifierFilter(CompareOp.EQUAL, new BinaryComparator(Bytes.toBytes("qual2")))))));
+            new FamilyFilter(CompareOperator.EQUAL, new BinaryComparator(Bytes.toBytes("fam"))),
+            new QualifierFilter(CompareOperator.EQUAL, new BinaryComparator(Bytes.toBytes("qual2")))))));
 
     final KeyValue kvQual1 = new KeyValue(
         Bytes.toBytes("row"), Bytes.toBytes("fam"), Bytes.toBytes("qual1"), Bytes.toBytes("value"));

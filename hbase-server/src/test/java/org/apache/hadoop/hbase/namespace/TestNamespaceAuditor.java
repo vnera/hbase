@@ -33,7 +33,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -74,6 +74,7 @@ import org.apache.hadoop.hbase.quotas.QuotaUtil;
 import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.regionserver.Store;
 import org.apache.hadoop.hbase.regionserver.StoreFile;
+import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest;
 import org.apache.hadoop.hbase.snapshot.RestoreSnapshotException;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -459,8 +460,8 @@ public class TestNamespaceAuditor {
     volatile CountDownLatch postCompact;
 
     @Override
-    public void postCompact(ObserverContext<RegionCoprocessorEnvironment> e,
-                            Store store, StoreFile resultFile) throws IOException {
+    public void postCompact(ObserverContext<RegionCoprocessorEnvironment> e, Store store,
+        StoreFile resultFile, CompactionRequest request) throws IOException {
       postCompact.countDown();
     }
 

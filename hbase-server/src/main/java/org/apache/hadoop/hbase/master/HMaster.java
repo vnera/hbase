@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -56,7 +57,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.ClusterStatus;
-import org.apache.hadoop.hbase.ClusterStatus.Options;
+import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.CoordinatedStateException;
 import org.apache.hadoop.hbase.CoordinatedStateManager;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
@@ -68,7 +69,6 @@ import org.apache.hadoop.hbase.MasterNotRunningException;
 import org.apache.hadoop.hbase.MetaTableAccessor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.PleaseHoldException;
-import org.apache.hadoop.hbase.ProcedureInfo;
 import org.apache.hadoop.hbase.ServerLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableDescriptors;
@@ -138,11 +138,10 @@ import org.apache.hadoop.hbase.monitoring.MonitoredTask;
 import org.apache.hadoop.hbase.monitoring.TaskMonitor;
 import org.apache.hadoop.hbase.procedure.MasterProcedureManagerHost;
 import org.apache.hadoop.hbase.procedure.flush.MasterFlushTableProcedureManager;
-import org.apache.hadoop.hbase.procedure2.LockInfo;
+import org.apache.hadoop.hbase.procedure2.LockedResource;
 import org.apache.hadoop.hbase.procedure2.Procedure;
 import org.apache.hadoop.hbase.procedure2.ProcedureEvent;
 import org.apache.hadoop.hbase.procedure2.ProcedureExecutor;
-import org.apache.hadoop.hbase.procedure2.ProcedureUtil;
 import org.apache.hadoop.hbase.procedure2.store.wal.WALProcedureStore;
 import org.apache.hadoop.hbase.quotas.MasterQuotaManager;
 import org.apache.hadoop.hbase.quotas.MasterSpaceQuotaObserver;
@@ -2459,43 +2458,51 @@ public class HMaster extends HRegionServer implements MasterServices {
    * @return cluster status
    */
   public ClusterStatus getClusterStatus() throws InterruptedIOException {
-    return getClusterStatus(Options.getDefaultOptions());
+    return getClusterStatus(EnumSet.allOf(Option.class));
   }
 
   /**
    * @return cluster status
    */
-  public ClusterStatus getClusterStatus(Options options) throws InterruptedIOException {
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Retrieving cluster status info. " + options);
-    }
+  public ClusterStatus getClusterStatus(EnumSet<Option> options) throws InterruptedIOException {
     ClusterStatus.Builder builder = ClusterStatus.newBuilder();
-    if (options.includeHBaseVersion()) {
-      builder.setHBaseVersion(VersionInfo.getVersion());
-    }
-    if (options.includeClusterId()) {
-      builder.setClusterId(getClusterId());
-    }
-    if (options.includeLiveServers() && serverManager != null) {
-      builder.setLiveServers(serverManager.getOnlineServers());
-    }
-    if (options.includeDeadServers() && serverManager != null) {
-      builder.setDeadServers(serverManager.getDeadServers().copyServerNames());
-    }
-    if (options.includeMaster()) {
-      builder.setMaster(getServerName());
-    }
-    if (options.includeBackupMasters()) {
-      builder.setBackupMasters(getBackupMasters());
-    }
-    if (options.includeRegionState() && assignmentManager != null) {
-      builder.setRegionState(assignmentManager.getRegionStates().getRegionsStateInTransition());
-    }
-    if (options.includeMasterCoprocessors() && cpHost != null) {
-      builder.setMasterCoprocessors(getMasterCoprocessors());
-    }
-    if (options.includeBalancerOn() && loadBalancerTracker != null) {
-      builder.setBalancerOn(loadBalancerTracker.isBalancerOn());
+    for (Option opt : options) {
+      switch (opt) {
+        case HBASE_VERSION: builder.setHBaseVersion(VersionInfo.getVersion()); break;
+        case CLUSTER_ID: builder.setClusterId(getClusterId()); break;
+        case MASTER: builder.setMaster(getServerName()); break;
+        case BACKUP_MASTERS: builder.setBackupMasters(getBackupMasters()); break;
+        case LIVE_SERVERS: {
+          if (serverManager != null) {
+            builder.setLiveServers(serverManager.getOnlineServers());
+          }
+          break;
+        }
+        case DEAD_SERVERS: {
+          if (serverManager != null) {
+            builder.setDeadServers(serverManager.getDeadServers().copyServerNames());
+          }
+          break;
+        }
+        case MASTER_COPROCESSORS: {
+          if (cpHost != null) {
+            builder.setMasterCoprocessors(getMasterCoprocessors());
+          }
+          break;
+        }
+        case REGIONS_IN_TRANSITION: {
+          if (assignmentManager != null) {
+            builder.setRegionState(assignmentManager.getRegionStates().getRegionsStateInTransition());
+          }
+          break;
+        }
+        case BALANCER_ON: {
+          if (loadBalancerTracker != null) {
+            builder.setBalancerOn(loadBalancerTracker.isBalancerOn());
+          }
+          break;
+        }
+      }
     }
     return builder.build();
   }
@@ -3051,41 +3058,35 @@ public class HMaster extends HRegionServer implements MasterServices {
   }
 
   @Override
-  public List<ProcedureInfo> listProcedures() throws IOException {
+  public List<Procedure<?>> getProcedures() throws IOException {
     if (cpHost != null) {
-      cpHost.preListProcedures();
+      cpHost.preGetProcedures();
     }
 
-    final List<Procedure> procList = this.procedureExecutor.listProcedures();
-    final List<ProcedureInfo> procInfoList = new ArrayList<>(procList.size());
-
-    for (Procedure proc : procList) {
-      ProcedureInfo procInfo = ProcedureUtil.convertToProcedureInfo(proc);
-      procInfoList.add(procInfo);
-    }
+    final List<Procedure<?>> procList = this.procedureExecutor.getProcedures();
 
     if (cpHost != null) {
-      cpHost.postListProcedures(procInfoList);
+      cpHost.postGetProcedures(procList);
     }
 
-    return procInfoList;
+    return procList;
   }
 
   @Override
-  public List<LockInfo> listLocks() throws IOException {
+  public List<LockedResource> getLocks() throws IOException {
     if (cpHost != null) {
-      cpHost.preListLocks();
+      cpHost.preGetLocks();
     }
 
     MasterProcedureScheduler procedureScheduler = procedureExecutor.getEnvironment().getProcedureScheduler();
 
-    final List<LockInfo> lockInfoList = procedureScheduler.listLocks();
+    final List<LockedResource> lockedResources = procedureScheduler.getLocks();
 
     if (cpHost != null) {
-      cpHost.postListLocks(lockInfoList);
+      cpHost.postGetLocks(lockedResources);
     }
 
-    return lockInfoList;
+    return lockedResources;
   }
 
   /**

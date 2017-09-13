@@ -38,15 +38,15 @@
     <top.dir>${project.basedir}/..</top.dir>
   </properties>
   <dependencies>
-        <dependency>
-          <groupId>org.apache.hbase.thirdparty</groupId>
-          <artifactId>hbase-shaded-miscellaneous</artifactId>
-        </dependency>
     <dependency> <!-- CDH: we needed to add this explictly after moving to scala 2.11 -->
       <groupId>org.scala-lang.modules</groupId>
       <artifactId>scala-parser-combinators_${scala.binary.version}</artifactId>
       <version>1.0.4</version>
       <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hbase.thirdparty</groupId>
+      <artifactId>hbase-shaded-miscellaneous</artifactId>
     </dependency>
     <!-- Force import of Spark's servlet API for unit tests -->
     <dependency>
@@ -358,6 +358,16 @@
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase-annotations</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hbase</groupId>
+      <artifactId>hbase-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hbase</groupId>
+      <artifactId>hbase-annotations</artifactId>
+      <version>${project.version}</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
@@ -520,8 +530,8 @@
       <artifactId>protobuf-java</artifactId>
     </dependency>
     <dependency>
-      <groupId>commons-logging</groupId>
-      <artifactId>commons-logging</artifactId>
+      <groupId>commons-io</groupId>
+      <artifactId>commons-io</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>

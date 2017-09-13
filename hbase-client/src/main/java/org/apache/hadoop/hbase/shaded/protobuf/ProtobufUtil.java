@@ -25,6 +25,7 @@ import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -48,6 +49,7 @@ import org.apache.hadoop.hbase.CellScanner;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.ClusterId;
 import org.apache.hadoop.hbase.ClusterStatus;
+import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.ExtendedCellBuilder;
 import org.apache.hadoop.hbase.ExtendedCellBuilderFactory;
@@ -57,8 +59,6 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
-import org.apache.hadoop.hbase.ProcedureInfo;
-import org.apache.hadoop.hbase.ProcedureState;
 import org.apache.hadoop.hbase.ServerLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
@@ -94,8 +94,8 @@ import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.io.LimitInputStream;
 import org.apache.hadoop.hbase.io.TimeRange;
 import org.apache.hadoop.hbase.master.RegionState;
-import org.apache.hadoop.hbase.procedure2.LockInfo;
 import org.apache.hadoop.hbase.protobuf.ProtobufMagic;
+import org.apache.hadoop.hbase.protobuf.ProtobufMessageConverter;
 import org.apache.hadoop.hbase.quotas.QuotaScope;
 import org.apache.hadoop.hbase.quotas.QuotaType;
 import org.apache.hadoop.hbase.quotas.SpaceViolationPolicy;
@@ -104,6 +104,8 @@ import org.apache.hadoop.hbase.replication.ReplicationLoadSink;
 import org.apache.hadoop.hbase.replication.ReplicationLoadSource;
 import org.apache.hadoop.hbase.security.visibility.Authorizations;
 import org.apache.hadoop.hbase.security.visibility.CellVisibility;
+import org.apache.hadoop.hbase.shaded.com.google.gson.JsonArray;
+import org.apache.hadoop.hbase.shaded.com.google.gson.JsonElement;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.ByteString;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.CodedInputStream;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.InvalidProtocolBufferException;
@@ -164,7 +166,6 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.GetTableDe
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListNamespaceDescriptorsResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.MajorCompactionTimestampResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ProcedureProtos;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.ProcedureProtos.Procedure;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.QuotaProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionServerReportRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionServerStartupRequest;
@@ -182,9 +183,7 @@ import org.apache.hadoop.hbase.util.Addressing;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.DynamicClassLoader;
 import org.apache.hadoop.hbase.util.ExceptionUtil;
-import org.apache.hadoop.hbase.util.ForeignExceptionUtil;
 import org.apache.hadoop.hbase.util.Methods;
-import org.apache.hadoop.hbase.util.NonceKey;
 import org.apache.hadoop.hbase.util.VersionInfo;
 import org.apache.hadoop.ipc.RemoteException;
 
@@ -202,7 +201,6 @@ import org.apache.hadoop.ipc.RemoteException;
   value="DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED", justification="None. Address sometime.")
 @InterfaceAudience.Private // TODO: some clients (Hive, etc) use this class
 public final class ProtobufUtil {
-
   private ProtobufUtil() {
   }
 
@@ -409,6 +407,17 @@ public final class ProtobufUtil {
       startCode = proto.getStartCode();
     }
     return ServerName.valueOf(hostName, port, startCode);
+  }
+
+  /**
+   * Convert a list of protocol buffer ServerName to a list of ServerName
+   * @param proto protocol buffer ServerNameList
+   * @return a list of ServerName
+   */
+  public static List<ServerName> toServerNameList(
+          List<HBaseProtos.ServerName> proto) {
+    return proto.stream().map(ProtobufUtil::toServerName)
+            .collect(Collectors.toList());
   }
 
   /**
@@ -3005,42 +3014,71 @@ public final class ProtobufUtil {
   }
 
   /**
-   * Convert proto ClusterStatus.Options to ClusterStatusProtos.Options
-   * @param opt
-   * @return proto ClusterStatus.Options
+   * Convert ClusterStatusProtos.Option to ClusterStatus.Option
+   * @param option a ClusterStatusProtos.Option
+   * @return converted ClusterStatus.Option
    */
-  public static ClusterStatus.Options toOptions (ClusterStatusProtos.Options opt) {
-    ClusterStatus.Options option = ClusterStatus.Options.getDefaultOptions();
-    if (!opt.getIncludeHbaseVersion()) option.excludeHBaseVersion();
-    if (!opt.getIncludeLiveServers()) option.excludeLiveServers();
-    if (!opt.getIncludeDeadServers()) option.excludeDeadServers();
-    if (!opt.getIncludeRegionsState()) option.excludeRegionState();
-    if (!opt.getIncludeClusterId()) option.excludeClusterId();
-    if (!opt.getIncludeMasterCoprocessors()) option.excludeMasterCoprocessors();
-    if (!opt.getIncludeMaster()) option.excludeMaster();
-    if (!opt.getIncludeBackupMasters()) option.excludeBackupMasters();
-    if (!opt.getIncludeBalancerOn()) option.excludeBalancerOn();
-    return option;
+  public static ClusterStatus.Option toOption(ClusterStatusProtos.Option option) {
+    switch (option) {
+      case HBASE_VERSION: return ClusterStatus.Option.HBASE_VERSION;
+      case LIVE_SERVERS: return ClusterStatus.Option.LIVE_SERVERS;
+      case DEAD_SERVERS: return ClusterStatus.Option.DEAD_SERVERS;
+      case REGIONS_IN_TRANSITION: return ClusterStatus.Option.REGIONS_IN_TRANSITION;
+      case CLUSTER_ID: return ClusterStatus.Option.CLUSTER_ID;
+      case MASTER_COPROCESSORS: return ClusterStatus.Option.MASTER_COPROCESSORS;
+      case MASTER: return ClusterStatus.Option.MASTER;
+      case BACKUP_MASTERS: return ClusterStatus.Option.BACKUP_MASTERS;
+      case BALANCER_ON: return ClusterStatus.Option.BALANCER_ON;
+      // should not reach here
+      default: throw new IllegalArgumentException("Invalid option: " + option);
+    }
   }
 
   /**
-   * Convert ClusterStatus.Options to proto ClusterStatusProtos.Options
-   * @param opt
-   * @return ClusterStatus.Options
+   * Convert ClusterStatus.Option to ClusterStatusProtos.Option
+   * @param option a ClusterStatus.Option
+   * @return converted ClusterStatusProtos.Option
    */
-  public static ClusterStatusProtos.Options toOptions(ClusterStatus.Options opt) {
-    ClusterStatusProtos.Options.Builder option =
-        ClusterStatusProtos.Options.newBuilder();
-    option.setIncludeHbaseVersion(opt.includeHBaseVersion())
-          .setIncludeLiveServers(opt.includeLiveServers())
-          .setIncludeDeadServers(opt.includeDeadServers())
-          .setIncludeRegionsState(opt.includeRegionState())
-          .setIncludeClusterId(opt.includeClusterId())
-          .setIncludeMasterCoprocessors(opt.includeMasterCoprocessors())
-          .setIncludeMaster(opt.includeMaster())
-          .setIncludeBackupMasters(opt.includeBackupMasters())
-          .setIncludeBalancerOn(opt.includeBalancerOn());
-    return option.build();
+  public static ClusterStatusProtos.Option toOption(ClusterStatus.Option option) {
+    switch (option) {
+      case HBASE_VERSION: return ClusterStatusProtos.Option.HBASE_VERSION;
+      case LIVE_SERVERS: return ClusterStatusProtos.Option.LIVE_SERVERS;
+      case DEAD_SERVERS: return ClusterStatusProtos.Option.DEAD_SERVERS;
+      case REGIONS_IN_TRANSITION: return ClusterStatusProtos.Option.REGIONS_IN_TRANSITION;
+      case CLUSTER_ID: return ClusterStatusProtos.Option.CLUSTER_ID;
+      case MASTER_COPROCESSORS: return ClusterStatusProtos.Option.MASTER_COPROCESSORS;
+      case MASTER: return ClusterStatusProtos.Option.MASTER;
+      case BACKUP_MASTERS: return ClusterStatusProtos.Option.BACKUP_MASTERS;
+      case BALANCER_ON: return ClusterStatusProtos.Option.BALANCER_ON;
+      // should not reach here
+      default: throw new IllegalArgumentException("Invalid option: " + option);
+    }
+  }
+
+  /**
+   * Convert a list of ClusterStatusProtos.Option to an enum set of ClusterStatus.Option
+   * @param options
+   * @return an enum set of ClusterStatus.Option
+   */
+  public static EnumSet<Option> toOptions(List<ClusterStatusProtos.Option> options) {
+    EnumSet<Option> result = EnumSet.noneOf(Option.class);
+    for (ClusterStatusProtos.Option opt : options) {
+      result.add(toOption(opt));
+    }
+    return result;
+  }
+
+  /**
+   * Convert an enum set of ClusterStatus.Option to a list of ClusterStatusProtos.Option
+   * @param options
+   * @return a list of ClusterStatusProtos.Option
+   */
+  public static List<ClusterStatusProtos.Option> toOptions(EnumSet<Option> options) {
+    List<ClusterStatusProtos.Option> result = new ArrayList<>(options.size());
+    for (ClusterStatus.Option opt : options) {
+      result.add(toOption(opt));
+    }
+    return result;
   }
 
   /**
@@ -3240,175 +3278,32 @@ public final class ProtobufUtil {
   }
 
   /**
-   * @return Convert the current {@link ProcedureInfo} into a Protocol Buffers Procedure
-   * instance.
+   * Helper to convert the protobuf Procedure to JSON String
+   * @return Convert the current Protocol Buffers Procedure to JSON String
    */
-  public static ProcedureProtos.Procedure toProtoProcedure(ProcedureInfo procedure) {
-    ProcedureProtos.Procedure.Builder builder = ProcedureProtos.Procedure.newBuilder();
-
-    builder.setClassName(procedure.getProcName());
-    builder.setProcId(procedure.getProcId());
-    builder.setSubmittedTime(procedure.getSubmittedTime());
-    builder.setState(ProcedureProtos.ProcedureState.valueOf(procedure.getProcState().name()));
-    builder.setLastUpdate(procedure.getLastUpdate());
-
-    if (procedure.hasParentId()) {
-      builder.setParentId(procedure.getParentId());
+  public static String toProcedureJson(List<ProcedureProtos.Procedure> procProtos) {
+    JsonArray procJsons = new JsonArray(procProtos.size());
+    for (ProcedureProtos.Procedure procProto : procProtos) {
+      try {
+        JsonElement procJson = ProtobufMessageConverter.toJsonElement(procProto);
+        procJsons.add(procJson);
+      } catch (InvalidProtocolBufferException e) {
+        procJsons.add(e.toString());
+      }
     }
-
-    if (procedure.hasOwner()) {
-      builder.setOwner(procedure.getProcOwner());
-    }
-
-    if (procedure.isFailed()) {
-      builder.setException(ForeignExceptionUtil.toProtoForeignException(procedure.getException()));
-    }
-
-    if (procedure.hasResultData()) {
-      builder.setResult(UnsafeByteOperations.unsafeWrap(procedure.getResult()));
-    }
-
-    return builder.build();
+    return procJsons.toString();
   }
 
-  /**
-   * Helper to convert the protobuf object.
-   * @return Convert the current Protocol Buffers Procedure to {@link ProcedureInfo}
-   * instance.
-   */
-  public static ProcedureInfo toProcedureInfo(ProcedureProtos.Procedure procedureProto) {
-    NonceKey nonceKey = null;
-
-    if (procedureProto.getNonce() != HConstants.NO_NONCE) {
-      nonceKey = new NonceKey(procedureProto.getNonceGroup(), procedureProto.getNonce());
+  public static String toLockJson(List<LockServiceProtos.LockedResource> lockedResourceProtos) {
+    JsonArray lockedResourceJsons = new JsonArray(lockedResourceProtos.size());
+    for (LockServiceProtos.LockedResource lockedResourceProto : lockedResourceProtos) {
+      try {
+        JsonElement lockedResourceJson = ProtobufMessageConverter.toJsonElement(lockedResourceProto);
+        lockedResourceJsons.add(lockedResourceJson);
+      } catch (InvalidProtocolBufferException e) {
+        lockedResourceJsons.add(e.toString());
+      }
     }
-
-    return new ProcedureInfo(procedureProto.getProcId(), procedureProto.getClassName(),
-        procedureProto.hasOwner() ? procedureProto.getOwner() : null,
-        ProcedureState.valueOf(procedureProto.getState().name()),
-        procedureProto.hasParentId() ? procedureProto.getParentId() : -1, nonceKey,
-        procedureProto.hasException() ?
-          ForeignExceptionUtil.toIOException(procedureProto.getException()) : null,
-        procedureProto.getLastUpdate(), procedureProto.getSubmittedTime(),
-        procedureProto.hasResult() ? procedureProto.getResult().toByteArray() : null);
-  }
-
-  public static LockServiceProtos.ResourceType toProtoResourceType(
-      LockInfo.ResourceType resourceType) {
-    switch (resourceType) {
-    case SERVER:
-      return LockServiceProtos.ResourceType.RESOURCE_TYPE_SERVER;
-    case NAMESPACE:
-      return LockServiceProtos.ResourceType.RESOURCE_TYPE_NAMESPACE;
-    case TABLE:
-      return LockServiceProtos.ResourceType.RESOURCE_TYPE_TABLE;
-    case REGION:
-      return LockServiceProtos.ResourceType.RESOURCE_TYPE_REGION;
-    default:
-      throw new IllegalArgumentException("Unknown resource type: " + resourceType);
-    }
-  }
-
-  public static LockInfo.ResourceType toResourceType(
-      LockServiceProtos.ResourceType resourceTypeProto) {
-    switch (resourceTypeProto) {
-    case RESOURCE_TYPE_SERVER:
-      return LockInfo.ResourceType.SERVER;
-    case RESOURCE_TYPE_NAMESPACE:
-      return LockInfo.ResourceType.NAMESPACE;
-    case RESOURCE_TYPE_TABLE:
-      return LockInfo.ResourceType.TABLE;
-    case RESOURCE_TYPE_REGION:
-      return LockInfo.ResourceType.REGION;
-    default:
-      throw new IllegalArgumentException("Unknown resource type: " + resourceTypeProto);
-    }
-  }
-
-  public static LockServiceProtos.LockType toProtoLockType(
-      LockInfo.LockType lockType) {
-    return LockServiceProtos.LockType.valueOf(lockType.name());
-  }
-
-  public static LockInfo.LockType toLockType(
-      LockServiceProtos.LockType lockTypeProto) {
-    return LockInfo.LockType.valueOf(lockTypeProto.name());
-  }
-
-  public static LockServiceProtos.WaitingProcedure toProtoWaitingProcedure(
-      LockInfo.WaitingProcedure waitingProcedure) {
-    LockServiceProtos.WaitingProcedure.Builder builder = LockServiceProtos.WaitingProcedure.newBuilder();
-
-    ProcedureProtos.Procedure procedureProto =
-        toProtoProcedure(waitingProcedure.getProcedure());
-
-    builder
-        .setLockType(toProtoLockType(waitingProcedure.getLockType()))
-        .setProcedure(procedureProto);
-
-    return builder.build();
-  }
-
-  public static LockInfo.WaitingProcedure toWaitingProcedure(
-      LockServiceProtos.WaitingProcedure waitingProcedureProto) {
-    LockInfo.WaitingProcedure waiting = new LockInfo.WaitingProcedure();
-
-    waiting.setLockType(toLockType(waitingProcedureProto.getLockType()));
-
-    ProcedureInfo procedure =
-        toProcedureInfo(waitingProcedureProto.getProcedure());
-    waiting.setProcedure(procedure);
-
-    return waiting;
-  }
-
-  public static LockServiceProtos.LockInfo toProtoLockInfo(LockInfo lock)
-  {
-    LockServiceProtos.LockInfo.Builder builder = LockServiceProtos.LockInfo.newBuilder();
-
-    builder
-        .setResourceType(toProtoResourceType(lock.getResourceType()))
-        .setResourceName(lock.getResourceName())
-        .setLockType(toProtoLockType(lock.getLockType()));
-
-    ProcedureInfo exclusiveLockOwnerProcedure = lock.getExclusiveLockOwnerProcedure();
-
-    if (exclusiveLockOwnerProcedure != null) {
-      Procedure exclusiveLockOwnerProcedureProto =
-          toProtoProcedure(lock.getExclusiveLockOwnerProcedure());
-      builder.setExclusiveLockOwnerProcedure(exclusiveLockOwnerProcedureProto);
-    }
-
-    builder.setSharedLockCount(lock.getSharedLockCount());
-
-    for (LockInfo.WaitingProcedure waitingProcedure : lock.getWaitingProcedures()) {
-      builder.addWaitingProcedures(toProtoWaitingProcedure(waitingProcedure));
-    }
-
-    return builder.build();
-  }
-
-  public static LockInfo toLockInfo(LockServiceProtos.LockInfo lockProto)
-  {
-    LockInfo lock = new LockInfo();
-
-    lock.setResourceType(toResourceType(lockProto.getResourceType()));
-    lock.setResourceName(lockProto.getResourceName());
-    lock.setLockType(toLockType(lockProto.getLockType()));
-
-    if (lockProto.hasExclusiveLockOwnerProcedure()) {
-      ProcedureInfo exclusiveLockOwnerProcedureProto =
-          toProcedureInfo(lockProto.getExclusiveLockOwnerProcedure());
-
-      lock.setExclusiveLockOwnerProcedure(exclusiveLockOwnerProcedureProto);
-    }
-
-    lock.setSharedLockCount(lockProto.getSharedLockCount());
-
-    for (LockServiceProtos.WaitingProcedure waitingProcedureProto : lockProto.getWaitingProceduresList()) {
-      lock.addWaitingProcedure(toWaitingProcedure(waitingProcedureProto));
-    }
-
-    return lock;
+    return lockedResourceJsons.toString();
   }
 }

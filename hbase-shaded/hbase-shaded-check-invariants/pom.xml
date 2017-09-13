@@ -41,7 +41,7 @@
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
-      <artifactId>hbase-shaded-server</artifactId>
+      <artifactId>hbase-shaded-mapreduce</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- parent pom defines these for children. :( :( :( -->
@@ -161,6 +161,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
+        <version>1.6.0</version>
         <executions>
           <execution>
             <id>check-jar-contents</id>

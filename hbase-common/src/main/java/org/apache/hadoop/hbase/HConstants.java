@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
-import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.util.Bytes;
 
@@ -154,6 +154,7 @@ public final class HConstants {
   public static final boolean CLUSTER_IS_LOCAL = false;
 
   /** Cluster is fully-distributed */
+  @Deprecated // unused. see HBASE-13636. remove this in 3.0
   public static final boolean CLUSTER_IS_DISTRIBUTED = true;
 
   /** Default value for cluster distributed mode */
@@ -208,10 +209,12 @@ public final class HConstants {
   /**
    * Parameter name for the wait time for the recoverable zookeeper
    */
+  @Deprecated // unused. see HBASE-3065. remove this in 3.0
   public static final String ZOOKEEPER_RECOVERABLE_WAITTIME =
       "hbase.zookeeper.recoverable.waittime";
 
   /** Default wait time for the recoverable zookeeper */
+  @Deprecated // unused. see HBASE-3065. remove this in 3.0
   public static final long DEFAULT_ZOOKEPER_RECOVERABLE_WAITIME = 10000;
 
   /** Parameter name for the root dir in ZK for this cluster */
@@ -241,7 +244,7 @@ public final class HConstants {
   public static final String ZK_SESSION_TIMEOUT = "zookeeper.session.timeout";
 
   /** Default value for ZooKeeper session timeout */
-  public static final int DEFAULT_ZK_SESSION_TIMEOUT = 180 * 1000;
+  public static final int DEFAULT_ZK_SESSION_TIMEOUT = 90 * 1000;
 
   /** Parameter name for port region server listens on. */
   public static final String REGIONSERVER_PORT = "hbase.regionserver.port";
@@ -267,6 +270,7 @@ public final class HConstants {
   public static final String MASTER_IMPL= "hbase.master.impl";
 
   /** Parameter name for what hbase client implementation to use. */
+  @Deprecated // unused. see HBASE-7460. remove this in 3.0
   public static final String HBASECLIENT_IMPL= "hbase.hbaseclient.impl";
 
   /** Parameter name for how often threads should wake up */
@@ -339,6 +343,7 @@ public final class HConstants {
    * dynamically by the region servers. This value can be overridden by the
    * hbase.dynamic.jars.dir config.
    */
+  @Deprecated // unused. see HBASE-12054. remove this in 3.0
   public static final String LIB_DIR = "lib";
 
   /** Used to construct the name of the compaction directory during compaction */
@@ -430,14 +435,6 @@ public final class HConstants {
   // and meta regions always need to be on-line, this ensures that they will
   // be the first to be reassigned if the server(s) they are being served by
   // should go down.
-
-
-  /**
-   * The hbase:meta table's name.
-   * @deprecated For upgrades of 0.94 to 0.96
-   */
-  @Deprecated  // for compat from 0.94 -> 0.96.
-  public static final byte[] META_TABLE_NAME = TableName.META_TABLE_NAME.getName();
 
   public static final String BASE_NAMESPACE_DIR = "data";
 
@@ -623,6 +620,7 @@ public final class HConstants {
   /**
    * Seconds in a week
    */
+  @Deprecated // unused. see HBASE-2692. remove this in 3.0
   public static final int WEEK_IN_SECONDS = 7 * 24 * 3600;
 
   /**
@@ -653,17 +651,6 @@ public final class HConstants {
   public static final int [] RETRY_BACKOFF = {1, 2, 3, 5, 10, 20, 40, 100, 100, 100, 100, 200, 200};
 
   public static final String REGION_IMPL = "hbase.hregion.impl";
-
-  /** modifyTable op for replacing the table descriptor */
-  @InterfaceAudience.Private
-  public static enum Modify {
-    CLOSE_REGION,
-    TABLE_COMPACT,
-    TABLE_FLUSH,
-    TABLE_MAJOR_COMPACT,
-    TABLE_SET_HTD,
-    TABLE_SPLIT
-  }
 
   /**
    * Scope tag for locally scoped data.
@@ -803,7 +790,7 @@ public final class HConstants {
   /**
    * Default value of {@link #HBASE_CLIENT_RETRIES_NUMBER}.
    */
-  public static final int DEFAULT_HBASE_CLIENT_RETRIES_NUMBER = 31;
+  public static final int DEFAULT_HBASE_CLIENT_RETRIES_NUMBER = 35;
 
   /**
    * Parameter name to set the default scanner caching for all clients.
@@ -954,6 +941,7 @@ public final class HConstants {
   public static final String BULKLOAD_MAX_RETRIES_NUMBER = "hbase.bulkload.retries.number";
 
   /** HBCK special code name used as server name when manipulating ZK nodes */
+  @Deprecated // unused. see HBASE-3789. remove this in 3.0
   public static final String HBCK_CODE_NAME = "HBCKServerName";
 
   public static final String KEY_FOR_HOSTNAME_SEEN_BY_MASTER =
@@ -1055,10 +1043,13 @@ public final class HConstants {
       "hbase.regionserver.replication.handler.count";
   public static final int DEFAULT_REGION_SERVER_REPLICATION_HANDLER_COUNT = 3;
 
+  @Deprecated // unused. see HBASE-10569. remove this in 3.0
   public static final String MASTER_HANDLER_COUNT = "hbase.master.handler.count";
+  @Deprecated // unused. see HBASE-10569. remove this in 3.0
   public static final int DEFAULT_MASTER_HANLDER_COUNT = 25;
 
   /** Conf key that specifies timeout value to wait for a region ready */
+  @Deprecated // unused. see HBASE-13616. remove this in 3.0
   public static final String LOG_REPLAY_WAIT_REGION_TIMEOUT =
       "hbase.master.log.replay.wait.region.timeout";
 
@@ -1357,12 +1348,14 @@ public final class HConstants {
 
   public static final String SNAPSHOT_RESTORE_TAKE_FAILSAFE_SNAPSHOT =
       "hbase.snapshot.restore.take.failsafe.snapshot";
-  public static final boolean DEFAULT_SNAPSHOT_RESTORE_TAKE_FAILSAFE_SNAPSHOT = false;
+  public static final boolean DEFAULT_SNAPSHOT_RESTORE_TAKE_FAILSAFE_SNAPSHOT = true;
 
   public static final String SNAPSHOT_RESTORE_FAILSAFE_NAME =
       "hbase.snapshot.restore.failsafe.name";
   public static final String DEFAULT_SNAPSHOT_RESTORE_FAILSAFE_NAME =
       "hbase-failsafe-{snapshot.name}-{restore.timestamp}";
+
+  public static final String NOT_IMPLEMENTED = "Not implemented";
 
   private HConstants() {
     // Can't be instantiated with this ctor.

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -15,27 +15,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.mapreduce;
 
-import org.apache.hadoop.hbase.security.UserProvider;
+package org.apache.hadoop.hbase.procedure2;
 
-/**
- * A {@link UserProvider} that always says hadoop security is enabled, regardless of the underlying
- * configuration. HBase security is <i>not enabled</i> as this is used to determine if SASL is used
- * to do the authentication, which requires a Kerberos ticket (which we currently don't have in
- * tests).
- * <p>
- * This should only be used for <b>TESTING</b>.
- */
-public class HadoopSecurityEnabledUserProviderForTesting extends UserProvider {
+import org.apache.hadoop.hbase.classification.InterfaceAudience;
 
-  @Override
-  public boolean isHBaseSecurityEnabled() {
-    return false;
-  }
-
-  @Override
-  public boolean isHadoopSecurityEnabled() {
-    return true;
-  }
+@InterfaceAudience.Private
+public enum LockedResourceType {
+  SERVER, NAMESPACE, TABLE, REGION
 }

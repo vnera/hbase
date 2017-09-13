@@ -1294,17 +1294,17 @@ class ConnectionImplementation implements ClusterConnection, Closeable {
       }
 
       @Override
-      public MasterProtos.ListProceduresResponse listProcedures(
+      public MasterProtos.GetProceduresResponse getProcedures(
           RpcController controller,
-          MasterProtos.ListProceduresRequest request) throws ServiceException {
-        return stub.listProcedures(controller, request);
+          MasterProtos.GetProceduresRequest request) throws ServiceException {
+        return stub.getProcedures(controller, request);
       }
 
       @Override
-      public MasterProtos.ListLocksResponse listLocks(
+      public MasterProtos.GetLocksResponse getLocks(
           RpcController controller,
-          MasterProtos.ListLocksRequest request) throws ServiceException {
-        return stub.listLocks(controller, request);
+          MasterProtos.GetLocksRequest request) throws ServiceException {
+        return stub.getLocks(controller, request);
       }
 
       @Override
@@ -1774,6 +1774,18 @@ class ConnectionImplementation implements ClusterConnection, Closeable {
       public GetQuotaStatesResponse getQuotaStates(
           RpcController controller, GetQuotaStatesRequest request) throws ServiceException {
         return stub.getQuotaStates(controller, request);
+      }
+
+      @Override
+      public MasterProtos.ListDeadServersResponse listDeadServers(RpcController controller,
+          MasterProtos.ListDeadServersRequest request) throws ServiceException {
+        return stub.listDeadServers(controller, request);
+      }
+
+      @Override
+      public MasterProtos.ClearDeadServersResponse clearDeadServers(RpcController controller,
+          MasterProtos.ClearDeadServersRequest request) throws ServiceException {
+        return stub.clearDeadServers(controller, request);
       }
     };
   }

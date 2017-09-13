@@ -18,13 +18,15 @@
 */
 package org.apache.hadoop.hbase.replication;
 
-import org.apache.commons.lang.NotImplementedException;
+import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Abortable;
+import org.apache.hadoop.hbase.CompareOperator;
+import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 
 import org.apache.hadoop.hbase.client.Delete;
@@ -45,11 +47,8 @@ import org.apache.zookeeper.KeeperException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -298,26 +297,26 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
   @Override
   public void addPeerToHFileRefs(String peerId) throws ReplicationException {
     // TODO
-    throw new NotImplementedException();
+    throw new NotImplementedException(HConstants.NOT_IMPLEMENTED);
   }
 
   @Override
   public void removePeerFromHFileRefs(String peerId) {
     // TODO
-    throw new NotImplementedException();
+    throw new NotImplementedException(HConstants.NOT_IMPLEMENTED);
   }
 
   @Override
   public void addHFileRefs(String peerId, List<Pair<Path, Path>> pairs)
       throws ReplicationException {
     // TODO
-    throw new NotImplementedException();
+    throw new NotImplementedException(HConstants.NOT_IMPLEMENTED);
   }
 
   @Override
   public void removeHFileRefs(String peerId, List<String> files) {
     // TODO
-    throw new NotImplementedException();
+    throw new NotImplementedException(HConstants.NOT_IMPLEMENTED);
   }
 
   private String buildQueueRowKey(String queueId) {
@@ -366,7 +365,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
   private void safeQueueUpdate(RowMutations mutate) throws ReplicationException, IOException{
     try (Table replicationTable = getOrBlockOnReplicationTable()) {
       boolean updateSuccess = replicationTable.checkAndMutate(mutate.getRow(),
-          CF_QUEUE, COL_QUEUE_OWNER, CompareFilter.CompareOp.EQUAL, serverNameBytes, mutate);
+          CF_QUEUE, COL_QUEUE_OWNER, CompareOperator.EQUAL, serverNameBytes, mutate);
       if (!updateSuccess) {
         throw new ReplicationException("Failed to update Replication Table because we lost queue " +
             " ownership");
@@ -411,7 +410,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
     // new owner and update the queue's history
     try (Table replicationTable = getOrBlockOnReplicationTable()) {
       boolean success = replicationTable.checkAndMutate(queue.getRow(),
-          CF_QUEUE, COL_QUEUE_OWNER, CompareFilter.CompareOp.EQUAL, Bytes.toBytes(originalServer),
+          CF_QUEUE, COL_QUEUE_OWNER, CompareOperator.EQUAL, Bytes.toBytes(originalServer),
           claimAndRenameQueue);
       return success;
     }
@@ -434,7 +433,7 @@ public class TableBasedReplicationQueuesImpl extends ReplicationTableBase
     }
     scan.setMaxResultSize(1);
     SingleColumnValueFilter checkOwner = new SingleColumnValueFilter(CF_QUEUE, COL_QUEUE_OWNER,
-      CompareFilter.CompareOp.EQUAL, serverNameBytes);
+    CompareOperator.EQUAL, serverNameBytes);
     scan.setFilter(checkOwner);
     ResultScanner scanner = null;
     try (Table replicationTable = getOrBlockOnReplicationTable()) {

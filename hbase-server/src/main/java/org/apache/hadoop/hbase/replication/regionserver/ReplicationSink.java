@@ -30,7 +30,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -54,7 +54,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.WALEntry;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.BulkLoadDescriptor;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.StoreDescriptor;
-import org.apache.hadoop.hbase.regionserver.wal.WALEdit;
+import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
 
@@ -159,7 +159,7 @@ public class ReplicationSink {
 
       for (WALEntry entry : entries) {
         TableName table =
-            TableName.valueOf(entry.getKey().getTableName().toByteArray());
+            TableName.valueOf(entry.getEdit().getTableName().toByteArray());
         Cell previousCell = null;
         Mutation m = null;
         int count = entry.getAssociatedCellCount();
@@ -183,8 +183,8 @@ public class ReplicationSink {
                   CellUtil.isDelete(cell) ? new Delete(cell.getRowArray(), cell.getRowOffset(),
                       cell.getRowLength()) : new Put(cell.getRowArray(), cell.getRowOffset(),
                       cell.getRowLength());
-              List<UUID> clusterIds = new ArrayList<>(entry.getKey().getClusterIdsList().size());
-              for (HBaseProtos.UUID clusterId : entry.getKey().getClusterIdsList()) {
+              List<UUID> clusterIds = new ArrayList<>(entry.getEdit().getClusterIdsList().size());
+              for (HBaseProtos.UUID clusterId : entry.getEdit().getClusterIdsList()) {
                 clusterIds.add(toUUID(clusterId));
               }
               m.setClusterIds(clusterIds);
@@ -221,7 +221,7 @@ public class ReplicationSink {
       }
 
       int size = entries.size();
-      this.metrics.setAgeOfLastAppliedOp(entries.get(size - 1).getKey().getWriteTime());
+      this.metrics.setAgeOfLastAppliedOp(entries.get(size - 1).getEdit().getWriteTime());
       this.metrics.applyBatch(size + hfilesReplicated, hfilesReplicated);
       this.totalReplicatedEdits.addAndGet(totalReplicated);
     } catch (IOException ex) {

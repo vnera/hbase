@@ -56,8 +56,8 @@ import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 import javax.servlet.http.HttpServlet;
 
-import org.apache.commons.lang.SystemUtils;
-import org.apache.commons.lang.math.RandomUtils;
+import org.apache.commons.lang3.SystemUtils;
+import org.apache.commons.lang3.RandomUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -228,9 +228,6 @@ public class HRegionServer extends HasThread implements
   // Time to pause if master says 'please hold'. Make configurable if needed.
   private static final int INIT_PAUSE_TIME_MS = 1000;
 
-  public static final String REGION_LOCK_AWAIT_TIME_SEC =
-      "hbase.regionserver.region.lock.await.time.sec";
-  public static final int DEFAULT_REGION_LOCK_AWAIT_TIME_SEC = 300;  // 5 min
   private static final Log LOG = LogFactory.getLog(HRegionServer.class);
 
   /**
@@ -1824,7 +1821,7 @@ public class HRegionServer extends HasThread implements
         if (((HRegion)r).shouldFlush(whyFlush)) {
           FlushRequester requester = server.getFlushRequester();
           if (requester != null) {
-            long randomDelay = RandomUtils.nextInt(RANGE_OF_DELAY) + MIN_DELAY_TIME;
+            long randomDelay = RandomUtils.nextInt(0, RANGE_OF_DELAY) + MIN_DELAY_TIME;
             LOG.info(getName() + " requesting flush of " +
               r.getRegionInfo().getRegionNameAsString() + " because " +
               whyFlush.toString() +
@@ -3510,7 +3507,7 @@ public class HRegionServer extends HasThread implements
 
   private boolean isHealthCheckerConfigured() {
     String healthScriptLocation = this.conf.get(HConstants.HEALTH_SCRIPT_LOC);
-    return org.apache.commons.lang.StringUtils.isNotBlank(healthScriptLocation);
+    return org.apache.commons.lang3.StringUtils.isNotBlank(healthScriptLocation);
   }
 
   /**

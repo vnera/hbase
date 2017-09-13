@@ -19,6 +19,7 @@ package org.apache.hadoop.hbase.client;
 
 import java.util.List;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -27,15 +28,13 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import org.apache.hadoop.hbase.ClusterStatus;
-import org.apache.hadoop.hbase.ClusterStatus.Options;
+import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.ProcedureInfo;
 import org.apache.hadoop.hbase.RegionLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
-import org.apache.hadoop.hbase.procedure2.LockInfo;
 import org.apache.hadoop.hbase.quotas.QuotaFilter;
 import org.apache.hadoop.hbase.quotas.QuotaSettings;
 import org.apache.hadoop.hbase.client.RawAsyncTable.CoprocessorCallable;
@@ -804,15 +803,15 @@ public interface AsyncAdmin {
 
   /**
    * List procedures
-   * @return procedure list wrapped by {@link CompletableFuture}
+   * @return procedure list JSON wrapped by {@link CompletableFuture}
    */
-  CompletableFuture<List<ProcedureInfo>> listProcedures();
+  CompletableFuture<String> getProcedures();
 
   /**
-   * List procedure locks.
-   * @return lock list wrapped by {@link CompletableFuture}
+   * List locks.
+   * @return lock list JSON wrapped by {@link CompletableFuture}
    */
-  CompletableFuture<List<LockInfo>> listProcedureLocks();
+  CompletableFuture<String> getLocks();
 
   /**
    * Mark a region server as draining to prevent additional regions from getting assigned to it.
@@ -840,7 +839,7 @@ public interface AsyncAdmin {
   /**
    * @return cluster status wrapped by {@link CompletableFuture}
    */
-  CompletableFuture<ClusterStatus> getClusterStatus(Options options);
+  CompletableFuture<ClusterStatus> getClusterStatus(EnumSet<Option> options);
 
   /**
    * @return current master server name wrapped by {@link CompletableFuture}
@@ -1117,4 +1116,17 @@ public interface AsyncAdmin {
    */
   <S, R> CompletableFuture<R> coprocessorService(Function<RpcChannel, S> stubMaker,
     CoprocessorCallable<S, R> callable, ServerName serverName);
+
+  /**
+   * List all the dead region servers.
+   * @return - returns a list of dead region servers wrapped by a {@link CompletableFuture}.
+   */
+  CompletableFuture<List<ServerName>> listDeadServers();
+
+  /**
+   * Clear dead region servers from master.
+   * @param servers list of dead region servers.
+   * @return - returns a list of servers that not cleared wrapped by a {@link CompletableFuture}.
+   */
+  CompletableFuture<List<ServerName>> clearDeadServers(final List<ServerName> servers);
 }

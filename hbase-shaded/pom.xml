@@ -39,7 +39,7 @@
     </properties>
     <modules>
         <module>hbase-shaded-client</module>
-        <module>hbase-shaded-server</module>
+        <module>hbase-shaded-mapreduce</module>
         <module>hbase-shaded-check-invariants</module>
     </modules>
     <dependencies>
@@ -48,11 +48,6 @@
          <artifactId>hbase-resource-bundle</artifactId>
          <version>${project.version}</version>
          <optional>true</optional>
-      </dependency>
-      <dependency>
-        <groupId>junit</groupId>
-        <artifactId>junit</artifactId>
-        <scope>test</scope>
       </dependency>
       <!-- log4j has to be non-optional for Hadoop 2 atleast -->
       <dependency>
@@ -325,6 +320,10 @@
                                     <relocation>
                                         <pattern>org.apache.commons.lang</pattern>
                                         <shadedPattern>org.apache.hadoop.hbase.shaded.org.apache.commons.lang</shadedPattern>
+                                    </relocation>
+                                    <relocation>
+                                        <pattern>org.apache.commons.lang3</pattern>
+                                        <shadedPattern>org.apache.hadoop.hbase.shaded.org.apache.commons.lang3</shadedPattern>
                                     </relocation>
                                     <relocation>
                                         <pattern>org.apache.commons.el</pattern>
