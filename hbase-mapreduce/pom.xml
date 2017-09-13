@@ -408,6 +408,10 @@
               <groupId>xerces</groupId>
               <artifactId>xercesImpl</artifactId>
             </exclusion>
+            <exclusion>
+              <groupId>com.google.code.findbugs</groupId>
+              <artifactId>jsr305</artifactId>
+            </exclusion>
           </exclusions>
           <version>${hadoop-two.version}</version>
         </dependency>
