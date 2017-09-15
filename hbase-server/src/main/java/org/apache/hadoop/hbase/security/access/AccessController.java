@@ -43,7 +43,7 @@ import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
-import org.apache.hadoop.hbase.classification.InterfaceAudience;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.Delete;
@@ -92,6 +92,7 @@ import org.apache.hadoop.hbase.regionserver.RegionScanner;
 import org.apache.hadoop.hbase.regionserver.ScanType;
 import org.apache.hadoop.hbase.regionserver.ScannerContext;
 import org.apache.hadoop.hbase.regionserver.Store;
+import org.apache.hadoop.hbase.regionserver.compactions.CompactionLifeCycleTracker;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest;
 import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.replication.ReplicationEndpoint;
@@ -1532,7 +1533,8 @@ public class AccessController implements MasterObserver, RegionObserver, RegionS
 
   @Override
   public InternalScanner preCompact(ObserverContext<RegionCoprocessorEnvironment> c, Store store,
-      InternalScanner scanner, ScanType scanType, CompactionRequest request) throws IOException {
+      InternalScanner scanner, ScanType scanType, CompactionLifeCycleTracker tracker)
+      throws IOException {
     requirePermission(getActiveUser(c), "compact", getTableName(c.getEnvironment()), null, null,
       Action.ADMIN, Action.CREATE);
     return scanner;
@@ -2566,9 +2568,9 @@ public class AccessController implements MasterObserver, RegionObserver, RegionS
   }
 
   @Override
-  public void preDispatchMerge(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      HRegionInfo regionA, HRegionInfo regionB) throws IOException {
-    requirePermission(getActiveUser(ctx), "mergeRegions", regionA.getTable(), null, null,
+  public void preMergeRegions(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+                              final HRegionInfo[] regionsToMerge) throws IOException {
+    requirePermission(getActiveUser(ctx), "mergeRegions", regionsToMerge[0].getTable(), null, null,
       Action.ADMIN);
   }
 

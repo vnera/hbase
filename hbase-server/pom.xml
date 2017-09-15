@@ -21,10 +21,10 @@
 -->
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <artifactId>hbase</artifactId>
+    <artifactId>hbase-build-configuration</artifactId>
     <groupId>org.apache.hbase</groupId>
     <version>2.0.0-cdh6.x-SNAPSHOT</version>
-    <relativePath>..</relativePath>
+    <relativePath>../hbase-build-configuration</relativePath>
   </parent>
   <artifactId>hbase-server</artifactId>
   <name>Apache HBase - Server</name>
@@ -360,10 +360,6 @@
       <artifactId>hbase-common</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.apache.hbase</groupId>
-      <artifactId>hbase-annotations</artifactId>
-    </dependency>
-    <dependency>
       <!--Needed by the visiblity tags and acl CPEP things
            in here in hbase-server (that should be out in hbase-endpoints
            or integrated). -->
@@ -418,6 +414,12 @@
       <artifactId>hbase-metrics</artifactId>
     </dependency>
     <!-- resource bundle only needed at build time -->
+    <dependency>
+      <groupId>org.apache.hbase</groupId>
+      <artifactId>hbase-resource-bundle</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
     <dependency>
       <groupId>commons-codec</groupId>
       <artifactId>commons-codec</artifactId>
@@ -543,7 +545,7 @@
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
-      <artifactId>commons-math</artifactId>
+      <artifactId>commons-math3</artifactId>
     </dependency>
     <dependency>
       <groupId>log4j</groupId>

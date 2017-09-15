@@ -21,14 +21,15 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.NavigableSet;
+import java.util.Optional;
 
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.CellComparator;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.classification.InterfaceAudience;
-import org.apache.hadoop.hbase.classification.InterfaceStability;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.yetus.audience.InterfaceStability;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.conf.PropagatingConfigurationObserver;
@@ -37,6 +38,7 @@ import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.hfile.HFileDataBlockEncoder;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionContext;
+import org.apache.hadoop.hbase.regionserver.compactions.CompactionLifeCycleTracker;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionProgress;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest;
 import org.apache.hadoop.hbase.regionserver.querymatcher.ScanQueryMatcher;
@@ -51,7 +53,8 @@ import org.apache.hadoop.hbase.security.User;
 @InterfaceStability.Evolving
 public interface Store extends HeapSize, StoreConfigInformation, PropagatingConfigurationObserver {
 
-  /* The default priority for user-specified compaction requests.
+  /**
+   * The default priority for user-specified compaction requests.
    * The user gets top priority unless we have blocking compactions. (Pri <= 0)
    */
   int PRIORITY_USER = 1;
@@ -253,17 +256,12 @@ public interface Store extends HeapSize, StoreConfigInformation, PropagatingConf
    */
   CompactionProgress getCompactionProgress();
 
-  CompactionContext requestCompaction() throws IOException;
+  default Optional<CompactionContext> requestCompaction() throws IOException {
+    return requestCompaction(NO_PRIORITY, CompactionLifeCycleTracker.DUMMY, null);
+  }
 
-  /**
-   * @deprecated see requestCompaction(int, CompactionRequest, User)
-   */
-  @Deprecated
-  CompactionContext requestCompaction(int priority, CompactionRequest baseRequest)
-      throws IOException;
-
-  CompactionContext requestCompaction(int priority, CompactionRequest baseRequest, User user)
-      throws IOException;
+  Optional<CompactionContext> requestCompaction(int priority, CompactionLifeCycleTracker tracker,
+      User user) throws IOException;
 
   void cancelRequestedCompaction(CompactionContext compaction);
 

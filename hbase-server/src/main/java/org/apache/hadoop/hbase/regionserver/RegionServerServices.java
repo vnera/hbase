@@ -29,8 +29,8 @@ import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.classification.InterfaceAudience;
-import org.apache.hadoop.hbase.classification.InterfaceStability;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.yetus.audience.InterfaceStability;
 import org.apache.hadoop.hbase.client.locking.EntityLock;
 import org.apache.hadoop.hbase.executor.ExecutorService;
 import org.apache.hadoop.hbase.ipc.RpcServerInterface;
@@ -62,11 +62,6 @@ public interface RegionServerServices extends OnlineRegions, FavoredNodesForRegi
    *  Doesn't include the meta WAL
    */
   List<WAL> getWALs() throws IOException;
-
-  /**
-   * @return Implementation of {@link CompactionRequestor} or null.
-   */
-  CompactionRequestor getCompactionRequester();
 
   /**
    * @return Implementation of {@link FlushRequester} or null.

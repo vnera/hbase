@@ -38,7 +38,7 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.backup.BackupRestoreFactory;
 import org.apache.hadoop.hbase.backup.HBackupFileSystem;
 import org.apache.hadoop.hbase.backup.RestoreJob;
-import org.apache.hadoop.hbase.classification.InterfaceAudience;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.Connection;
@@ -177,7 +177,7 @@ public class RestoreTool {
         LOG.debug("Found descriptor " + tableDescriptor + " through " + incrBackupId);
 
         TableName newTableName = newTableNames[i];
-        TableDescriptor newTableDescriptor = admin.listTableDescriptor(newTableName);
+        TableDescriptor newTableDescriptor = admin.getDescriptor(newTableName);
         List<ColumnFamilyDescriptor> families = Arrays.asList(tableDescriptor.getColumnFamilies());
         List<ColumnFamilyDescriptor> existingFamilies =
             Arrays.asList(newTableDescriptor.getColumnFamilies());

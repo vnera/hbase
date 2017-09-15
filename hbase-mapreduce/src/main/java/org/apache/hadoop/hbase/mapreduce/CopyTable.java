@@ -31,7 +31,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.classification.InterfaceAudience;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
@@ -161,7 +161,7 @@ public class CopyTable extends Configured implements Tool {
       try (Connection conn = ConnectionFactory.createConnection(getConf());
           Admin admin = conn.getAdmin()) {
         HFileOutputFormat2.configureIncrementalLoadMap(job,
-            admin.listTableDescriptor((TableName.valueOf(dstTableName))));
+            admin.getDescriptor((TableName.valueOf(dstTableName))));
       }
     } else {
       TableMapReduceUtil.initTableMapperJob(tableName, scan,

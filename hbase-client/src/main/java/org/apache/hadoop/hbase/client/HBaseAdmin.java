@@ -69,8 +69,8 @@ import org.apache.hadoop.hbase.TableNotDisabledException;
 import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.UnknownRegionException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
-import org.apache.hadoop.hbase.classification.InterfaceAudience;
-import org.apache.hadoop.hbase.classification.InterfaceStability;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.yetus.audience.InterfaceStability;
 import org.apache.hadoop.hbase.client.replication.ReplicationSerDeHelper;
 import org.apache.hadoop.hbase.client.replication.TableCFs;
 import org.apache.hadoop.hbase.client.security.SecurityCapability;
@@ -342,7 +342,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public TableDescriptor listTableDescriptor(TableName tableName) throws TableNotFoundException, IOException {
+  public TableDescriptor getDescriptor(TableName tableName) throws TableNotFoundException, IOException {
     return getTableDescriptor(tableName, getConnection(), rpcCallerFactory, rpcControllerFactory,
        operationTimeout, rpcTimeout);
   }
@@ -395,6 +395,16 @@ public class HBaseAdmin implements Admin {
           return ProtobufUtil.toTableDescriptorList(master.getTableDescriptors(getRpcController(), req));
       }
     });
+  }
+
+  @Override
+  public List<RegionInfo> getRegions(final ServerName sn) throws IOException {
+    return getOnlineRegions(sn).stream().collect(Collectors.toList());
+  }
+
+  @Override
+  public List<RegionInfo> getRegions(final TableName tableName) throws IOException {
+    return getTableRegions(tableName).stream().collect(Collectors.toList());
   }
 
   private static class AbortProcedureFuture extends ProcedureFuture<Boolean> {
@@ -1143,12 +1153,24 @@ public class HBaseAdmin implements Admin {
     unassign(hri.getRegionName(), true);
   }
 
+  /**
+   *
+   * @param sn
+   * @return List of {@link HRegionInfo}.
+   * @throws IOException
+   * @deprecated As of release 2.0.0, this will be removed in HBase 3.0.0
+   *             Use {@link #getRegions(ServerName)}.
+   */
+  @Deprecated
   @Override
   public List<HRegionInfo> getOnlineRegions(final ServerName sn) throws IOException {
     AdminService.BlockingInterface admin = this.connection.getAdmin(sn);
     // TODO: There is no timeout on this controller. Set one!
     HBaseRpcController controller = rpcControllerFactory.newController();
-    return ProtobufUtil.getOnlineRegions(controller, admin);
+    List<HRegionInfo> onlineRegions = ProtobufUtil.getOnlineRegions(controller, admin);
+    return onlineRegions == null ? null : onlineRegions.stream()
+            .map(hri -> new ImmutableHRegionInfo(hri))
+            .collect(Collectors.toList());
   }
 
   @Override
@@ -1410,7 +1432,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public boolean setBalancerRunning(final boolean on, final boolean synchronous)
+  public boolean balancerSwitch(final boolean on, final boolean synchronous)
   throws IOException {
     return executeCallable(new MasterCallable<Boolean>(getConnection(), getRpcControllerFactory()) {
       @Override
@@ -1423,7 +1445,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public boolean balancer() throws IOException {
+  public boolean balance() throws IOException {
     return executeCallable(new MasterCallable<Boolean>(getConnection(), getRpcControllerFactory()) {
       @Override
       protected Boolean rpcCall() throws Exception {
@@ -1434,7 +1456,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public boolean balancer(final boolean force) throws IOException {
+  public boolean balance(final boolean force) throws IOException {
     return executeCallable(new MasterCallable<Boolean>(getConnection(), getRpcControllerFactory()) {
       @Override
       protected Boolean rpcCall() throws Exception {
@@ -1478,7 +1500,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public boolean setNormalizerRunning(final boolean on) throws IOException {
+  public boolean normalizerSwitch(final boolean on) throws IOException {
     return executeCallable(new MasterCallable<Boolean>(getConnection(), getRpcControllerFactory()) {
       @Override
       protected Boolean rpcCall() throws Exception {
@@ -1490,7 +1512,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public boolean enableCatalogJanitor(final boolean enable) throws IOException {
+  public boolean catalogJanitorSwitch(final boolean enable) throws IOException {
     return executeCallable(new MasterCallable<Boolean>(getConnection(), getRpcControllerFactory()) {
       @Override
       protected Boolean rpcCall() throws Exception {
@@ -1501,7 +1523,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public int runCatalogScan() throws IOException {
+  public int runCatalogJanitor() throws IOException {
     return executeCallable(new MasterCallable<Integer>(getConnection(), getRpcControllerFactory()) {
       @Override
       protected Integer rpcCall() throws Exception {
@@ -1523,7 +1545,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public boolean setCleanerChoreRunning(final boolean on) throws IOException {
+  public boolean cleanerChoreSwitch(final boolean on) throws IOException {
     return executeCallable(new MasterCallable<Boolean>(getConnection(), getRpcControllerFactory()) {
       @Override public Boolean rpcCall() throws Exception {
         return master.setCleanerChoreRunning(getRpcController(), RequestConverter
@@ -2340,6 +2362,15 @@ public class HBaseAdmin implements Admin {
     }
   }
 
+  /**
+   *
+   * @param tableName
+   * @return List of {@link HRegionInfo}.
+   * @throws IOException
+   * @deprecated As of release 2.0.0, this will be removed in HBase 3.0.0
+   *             Use {@link #getRegions(TableName)}.
+   */
+  @Deprecated
   @Override
   public List<HRegionInfo> getTableRegions(final TableName tableName)
   throws IOException {
@@ -2356,7 +2387,9 @@ public class HBaseAdmin implements Admin {
     } finally {
       zookeeper.close();
     }
-    return regions;
+    return regions == null ? null : regions.stream()
+            .map(hri -> new ImmutableHRegionInfo(hri))
+            .collect(Collectors.toList());
   }
 
   @Override
@@ -2450,7 +2483,7 @@ public class HBaseAdmin implements Admin {
   @Override
   public String[] getMasterCoprocessors() {
     try {
-      return getClusterStatus().getMasterCoprocessors();
+      return getClusterStatus(EnumSet.of(Option.MASTER_COPROCESSORS)).getMasterCoprocessors();
     } catch (IOException e) {
       LOG.error("Could not getClusterStatus()",e);
       return null;
@@ -2556,7 +2589,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public void takeSnapshotAsync(SnapshotDescription snapshotDesc) throws IOException,
+  public void snapshotAsync(SnapshotDescription snapshotDesc) throws IOException,
       SnapshotCreationException {
     asyncSnapshot(ProtobufUtil.createHBaseProtosSnapshotDesc(snapshotDesc));
   }
@@ -2763,7 +2796,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public byte[] execProcedureWithRet(String signature, String instance, Map<String, String> props)
+  public byte[] execProcedureWithReturn(String signature, String instance, Map<String, String> props)
       throws IOException {
     ProcedureDescription desc = ProtobufUtil.buildProcedureDescription(signature, instance, props);
     final ExecProcedureRequest request =
@@ -3155,13 +3188,15 @@ public class HBaseAdmin implements Admin {
 
   @Override
   public void updateConfiguration() throws IOException {
-    for (ServerName server : this.getClusterStatus().getServers()) {
+    ClusterStatus status = getClusterStatus(
+      EnumSet.of(Option.LIVE_SERVERS, Option.MASTER, Option.BACKUP_MASTERS));
+    for (ServerName server : status.getServers()) {
       updateConfiguration(server);
     }
 
-    updateConfiguration(this.getClusterStatus().getMaster());
+    updateConfiguration(status.getMaster());
 
-    for (ServerName server : this.getClusterStatus().getBackupMasters()) {
+    for (ServerName server : status.getBackupMasters()) {
       updateConfiguration(server);
     }
   }
@@ -3643,7 +3678,7 @@ public class HBaseAdmin implements Admin {
      * @return the table descriptor
      */
     protected TableDescriptor getTableDescriptor() throws IOException {
-      return getAdmin().listTableDescriptor(getTableName());
+      return getAdmin().getDescriptor(getTableName());
     }
 
     /**
@@ -3841,7 +3876,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public boolean[] setSplitOrMergeEnabled(final boolean enabled, final boolean synchronous,
+  public boolean[] splitOrMergeEnabledSwitch(final boolean enabled, final boolean synchronous,
                                           final MasterSwitchType... switchTypes)
     throws IOException {
     return executeCallable(new MasterCallable<boolean[]>(getConnection(),
@@ -3863,7 +3898,7 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public boolean isSplitOrMergeEnabled(final MasterSwitchType switchType) throws IOException {
+  public boolean splitOrMergeEnabledSwitch(final MasterSwitchType switchType) throws IOException {
     return executeCallable(new MasterCallable<Boolean>(getConnection(), getRpcControllerFactory()) {
       @Override
       protected Boolean rpcCall() throws Exception {

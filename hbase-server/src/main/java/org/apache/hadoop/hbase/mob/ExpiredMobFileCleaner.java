@@ -28,7 +28,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.classification.InterfaceAudience;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.Connection;
@@ -98,7 +98,7 @@ public class ExpiredMobFileCleaner extends Configured implements Tool {
     Connection connection = ConnectionFactory.createConnection(getConf());
     Admin admin = connection.getAdmin();
     try {
-      TableDescriptor htd = admin.listTableDescriptor(tn);
+      TableDescriptor htd = admin.getDescriptor(tn);
       ColumnFamilyDescriptor family = htd.getColumnFamily(Bytes.toBytes(familyName));
       if (family == null || !family.isMobEnabled()) {
         throw new IOException("Column family " + familyName + " is not a MOB column family");

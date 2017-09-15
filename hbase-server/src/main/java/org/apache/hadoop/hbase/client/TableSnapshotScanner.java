@@ -31,7 +31,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.classification.InterfaceAudience;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.snapshot.RestoreSnapshotHelper;
 import org.apache.hadoop.hbase.util.FSUtils;
 
@@ -62,7 +62,7 @@ import org.apache.hadoop.hbase.util.FSUtils;
  * snapshot/data files will completely circumvent the access control enforced by HBase.
  * See org.apache.hadoop.hbase.mapreduce.TableSnapshotInputFormat.
  */
-@InterfaceAudience.Public
+@InterfaceAudience.Private
 public class TableSnapshotScanner extends AbstractClientScanner {
 
   private static final Log LOG = LogFactory.getLog(TableSnapshotScanner.class);

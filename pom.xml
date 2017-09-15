@@ -61,6 +61,7 @@
   </licenses>
 
   <modules>
+    <module>hbase-build-configuration</module>
     <module>hbase-replication</module>
     <module>hbase-mapreduce</module>
     <module>hbase-resource-bundle</module>
@@ -780,7 +781,7 @@
                   <pluginExecutionFilter>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-enforcer-plugin</artifactId>
-                    <versionRange>[1.0.1,)</versionRange>
+                    <version>${enforcer.version}</version>
                     <goals>
                       <goal>enforce</goal>
                     </goals>
@@ -943,6 +944,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${enforcer.version}</version>
         <dependencies>
           <dependency>
             <groupId>org.codehaus.mojo</groupId>
@@ -1360,6 +1362,7 @@
     <hadoop.guava.version>11.0.2</hadoop.guava.version>
     <compat.module>hbase-hadoop2-compat</compat.module>
     <assembly.file>src/main/assembly/hadoop-two-compat.xml</assembly.file>
+    <audience-annotations.version>0.5.0</audience-annotations.version>
     <!-- end HBASE-15925 default hadoop compatibility values -->
     <avro.version>${cdh.avro.version}</avro.version>
     <commons-cli.version>1.4</commons-cli.version>
@@ -1368,7 +1371,7 @@
     <commons-io.version>2.5</commons-io.version>
     <commons-lang3.version>3.6</commons-lang3.version>
     <commons-logging.version>1.2</commons-logging.version>
-    <commons-math.version>2.2</commons-math.version>
+    <commons-math.version>3.6.1</commons-math.version>
     <disruptor.version>3.3.6</disruptor.version>
     <!-- Do not use versions earlier than 3.2.2 due to a security vulnerability -->
     <collections.version>4.1</collections.version>
@@ -1504,6 +1507,8 @@
     <argLine>${hbase-surefire.argLine}</argLine>
     <jacoco.version>0.7.5.201505241946</jacoco.version>
     <extra.enforcer.version>1.0-beta-6</extra.enforcer.version>
+    <!--See HBASE-17351; we need to set version to 1.4. 1.4.1 fails with MENFORCER-248-->
+    <enforcer.version>1.4</enforcer.version>
     <!-- Location of test resources -->
     <test.build.classes>${project.build.directory}/test-classes</test.build.classes>
     <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
@@ -1523,11 +1528,6 @@
           javax.servlet:jsp-api in favour of org.mortbay.jetty:jsp-api-2.1
         -->
       <!-- Intra-module dependencies -->
-      <dependency>
-        <groupId>org.apache.hbase</groupId>
-        <artifactId>hbase-annotations</artifactId>
-        <version>${project.version}</version>
-      </dependency>
       <dependency>
         <groupId>org.apache.hbase</groupId>
         <artifactId>hbase-annotations</artifactId>
@@ -1799,7 +1799,7 @@
       </dependency>
       <dependency>
         <groupId>org.apache.commons</groupId>
-        <artifactId>commons-math</artifactId>
+        <artifactId>commons-math3</artifactId>
         <version>${commons-math.version}</version>
       </dependency>
       <dependency>
@@ -2064,6 +2064,11 @@
         </exclusions>
       </dependency>
       <dependency>
+        <groupId>org.apache.yetus</groupId>
+        <artifactId>audience-annotations</artifactId>
+        <version>${audience-annotations.version}</version>
+      </dependency>
+      <dependency>
         <groupId>org.apache.hbase.thirdparty</groupId>
         <artifactId>hbase-shaded-miscellaneous</artifactId>
         <version>${hbase-thirdparty.version}</version>
@@ -2306,6 +2311,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-enforcer-plugin</artifactId>
+            <version>${enforcer.version}</version>
             <configuration>
               <rules>
                 <enforceBytecodeVersion>
@@ -3321,12 +3327,12 @@
             </reports>
             <configuration>
               <doclet>
-                org.apache.hadoop.hbase.classification.tools.IncludePublicAnnotationsStandardDoclet
+                org.apache.yetus.audience.tools.IncludePublicAnnotationsStandardDoclet
               </doclet>
               <docletArtifact>
-                <groupId>org.apache.hbase</groupId>
-                <artifactId>hbase-annotations</artifactId>
-                <version>${project.version}</version>
+                <groupId>org.apache.yetus</groupId>
+                <artifactId>audience-annotations</artifactId>
+                <version>${audience-annotations.version}</version>
               </docletArtifact>
               <useStandardDocletOptions>true</useStandardDocletOptions>
               <destDir>apidocs</destDir>
@@ -3337,10 +3343,6 @@
               </excludePackageNames>
               <!-- switch on dependency-driven aggregation -->
               <includeDependencySources>false</includeDependencySources>
-              <dependencySourceIncludes>
-                <!-- include ONLY dependencies I control -->
-                <dependencySourceInclude>org.apache.hbase:hbase-annotations</dependencySourceInclude>
-              </dependencySourceIncludes>
               <sourceFilesExclude>**/generated/*</sourceFilesExclude>
               <show>protected</show> <!-- (shows only public and protected classes and members) -->
               <quiet>true</quiet>
@@ -3378,12 +3380,12 @@
             </reports>
             <configuration>
               <doclet>
-                org.apache.hadoop.hbase.classification.tools.IncludePublicAnnotationsStandardDoclet
+                org.apache.yetus.audience.tools.IncludePublicAnnotationsStandardDoclet
               </doclet>
               <docletArtifact>
-                <groupId>org.apache.hbase</groupId>
-                <artifactId>hbase-annotations</artifactId>
-                <version>${project.version}</version>
+                <groupId>org.apache.yetus</groupId>
+                <artifactId>audience-annotations</artifactId>
+                <version>${audience-annotations.version}</version>
               </docletArtifact>
               <useStandardDocletOptions>true</useStandardDocletOptions>
               <destDir>testapidocs</destDir>
@@ -3394,10 +3396,6 @@
               </excludePackageNames>
               <!-- switch on dependency-driven aggregation -->
               <includeDependencySources>false</includeDependencySources>
-              <dependencySourceIncludes>
-                <!-- include ONLY dependencies I control -->
-                <dependencySourceInclude>org.apache.hbase:hbase-annotations</dependencySourceInclude>
-              </dependencySourceIncludes>
               <sourceFilesExclude>**/generated/*</sourceFilesExclude>
               <show>protected</show> <!-- (shows only public and protected classes and members) -->
               <quiet>true</quiet>
