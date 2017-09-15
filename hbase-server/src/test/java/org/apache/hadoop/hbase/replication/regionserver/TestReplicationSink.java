@@ -60,6 +60,8 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos.UUID;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.WALKey;
+import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -299,7 +301,7 @@ public class TestReplicationSink {
     // 3. Create a BulkLoadDescriptor and a WALEdit
     Map<byte[], List<Path>> storeFiles = new HashMap<>(1);
     storeFiles.put(FAM_NAME1, p);
-    org.apache.hadoop.hbase.wal.WALEdit edit = null;
+    WALEdit edit = null;
     WALProtos.BulkLoadDescriptor loadDescriptor = null;
 
     try (Connection c = ConnectionFactory.createConnection(conf);
@@ -309,8 +311,7 @@ public class TestReplicationSink {
           ProtobufUtil.toBulkLoadDescriptor(TABLE_NAME1,
               UnsafeByteOperations.unsafeWrap(regionInfo.getEncodedNameAsBytes()),
               storeFiles, storeFilesSize, 1);
-      edit = org.apache.hadoop.hbase.wal.WALEdit.createBulkLoadEvent(regionInfo,
-        loadDescriptor);
+      edit = WALEdit.createBulkLoadEvent(regionInfo, loadDescriptor);
     }
     List<WALEntry> entries = new ArrayList<>(1);
 
@@ -375,7 +376,7 @@ public class TestReplicationSink {
   private WALEntry.Builder createWALEntryBuilder(TableName table) {
     WALEntry.Builder builder = WALEntry.newBuilder();
     builder.setAssociatedCellCount(1);
-    WALProtos.WALEdit.Builder keyBuilder = WALProtos.WALEdit.newBuilder();
+    WALKey.Builder keyBuilder = WALKey.newBuilder();
     UUID.Builder uuidBuilder = UUID.newBuilder();
     uuidBuilder.setLeastSigBits(HConstants.DEFAULT_CLUSTER_ID.getLeastSignificantBits());
     uuidBuilder.setMostSigBits(HConstants.DEFAULT_CLUSTER_ID.getMostSignificantBits());
@@ -384,7 +385,7 @@ public class TestReplicationSink {
     keyBuilder.setWriteTime(System.currentTimeMillis());
     keyBuilder.setEncodedRegionName(UnsafeByteOperations.unsafeWrap(HConstants.EMPTY_BYTE_ARRAY));
     keyBuilder.setLogSequenceNumber(-1);
-    builder.setEdit(keyBuilder.build());
+    builder.setKey(keyBuilder.build());
     return builder;
   }
 }
