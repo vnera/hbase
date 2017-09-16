@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -16,40 +15,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.hadoop.hbase.replication.regionserver;
 
-package org.apache.hadoop.hbase.client;
+import java.util.OptionalLong;
 
-import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.fs.Path;
 import org.apache.yetus.audience.InterfaceAudience;
 
 /**
- * @deprecated As of release 2.0.0, this will be removed in HBase 3.0.0.
+ * Used by replication to prevent replicating unacked log entries. See
+ * https://issues.apache.org/jira/browse/HBASE-14004 for more details.
  */
-@InterfaceAudience.Public
-@Deprecated
-class UnmodifyableHRegionInfo extends HRegionInfo {
-  /*
-   * Creates an unmodifyable copy of an HRegionInfo
-   *
-   * @param info
-   */
-  UnmodifyableHRegionInfo(HRegionInfo info) {
-    super(info);
-  }
+@InterfaceAudience.Private
+@FunctionalInterface
+public interface WALFileLengthProvider {
 
-  /**
-   * @param split set split status
-   */
-  @Override
-  public void setSplit(boolean split) {
-    throw new UnsupportedOperationException("HRegionInfo is read-only");
-  }
-
-  /**
-   * @param offLine set online - offline status
-   */
-  @Override
-  public void setOffline(boolean offLine) {
-    throw new UnsupportedOperationException("HRegionInfo is read-only");
-  }
+  OptionalLong getLogFileSizeIfBeingWritten(Path path);
 }
