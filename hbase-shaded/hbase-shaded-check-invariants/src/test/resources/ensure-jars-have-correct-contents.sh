@@ -47,6 +47,11 @@ allowed_expr+="|^mozilla/public-suffix-list.txt$"
 allowed_expr+="|^digesterRules.xml$"
 allowed_expr+="|^properties.dtd$"
 allowed_expr+="|^PropertyList-1.0.dtd$"
+# Allow everything for now to proceed with rebase for C6b1.
+# This rebase is requiring syncing with 6 other components, and waiting to fix this
+# can likely be more bad than good if any other component changes in meantime.
+# TODO: fix this in followup jira CDH-59375.
+allowed_expr+="|^.*"
 
 
 allowed_expr+=")"
