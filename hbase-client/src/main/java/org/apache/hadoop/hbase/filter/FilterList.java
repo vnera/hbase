@@ -22,12 +22,15 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellComparator;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.hadoop.hbase.KeyValueUtil;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.FilterProtos;
@@ -64,7 +67,15 @@ final public class FilterList extends FilterBase {
   private static final int MAX_LOG_FILTERS = 5;
   private Operator operator = Operator.MUST_PASS_ALL;
   private final List<Filter> filters;
-  private Filter seekHintFilter = null;
+  private Set<Filter> seekHintFilter = new HashSet<>();
+
+  /**
+   * Save previous return code and previous cell for every filter in filter list. For MUST_PASS_ONE,
+   * we use the previous return code to decide whether we should pass current cell encountered to
+   * the filter. For MUST_PASS_ALL, the two list are meaningless.
+   */
+  private List<ReturnCode> prevFilterRCList = null;
+  private List<Cell> prevCellList = null;
 
   /** Reference Cell used by {@link #transformCell(Cell)} for validation purpose. */
   private Cell referenceCell = null;
@@ -87,6 +98,7 @@ final public class FilterList extends FilterBase {
   public FilterList(final List<Filter> rowFilters) {
     reversed = getReversed(rowFilters, reversed);
     this.filters = new ArrayList<>(rowFilters);
+    initPrevListForMustPassOne(rowFilters.size());
   }
 
   /**
@@ -106,6 +118,7 @@ final public class FilterList extends FilterBase {
   public FilterList(final Operator operator) {
     this.operator = operator;
     this.filters = new ArrayList<>();
+    initPrevListForMustPassOne(filters.size());
   }
 
   /**
@@ -117,6 +130,7 @@ final public class FilterList extends FilterBase {
   public FilterList(final Operator operator, final List<Filter> rowFilters) {
     this(rowFilters);
     this.operator = operator;
+    initPrevListForMustPassOne(rowFilters.size());
   }
 
   /**
@@ -128,7 +142,20 @@ final public class FilterList extends FilterBase {
   public FilterList(final Operator operator, final Filter... rowFilters) {
     this(rowFilters);
     this.operator = operator;
+    initPrevListForMustPassOne(rowFilters.length);
   }
+
+  public void initPrevListForMustPassOne(int size) {
+    if (operator == Operator.MUST_PASS_ONE) {
+      if (this.prevFilterRCList == null) {
+        prevFilterRCList = new ArrayList<>(Collections.nCopies(size, null));
+      }
+      if (this.prevCellList == null) {
+        prevCellList = new ArrayList<>(Collections.nCopies(size, null));
+      }
+    }
+  }
+
 
   /**
    * Get the operator.
@@ -184,6 +211,10 @@ final public class FilterList extends FilterBase {
   public void addFilter(List<Filter> filters) {
     checkReversed(filters, isReversed());
     this.filters.addAll(filters);
+    if (operator == Operator.MUST_PASS_ONE) {
+      this.prevFilterRCList.addAll(Collections.nCopies(filters.size(), null));
+      this.prevCellList.addAll(Collections.nCopies(filters.size(), null));
+    }
   }
 
   /**
@@ -200,8 +231,12 @@ final public class FilterList extends FilterBase {
     int listize = filters.size();
     for (int i = 0; i < listize; i++) {
       filters.get(i).reset();
+      if (operator == Operator.MUST_PASS_ONE) {
+        prevFilterRCList.set(i, null);
+        prevCellList.set(i, null);
+      }
     }
-    seekHintFilter = null;
+    seekHintFilter.clear();
   }
 
   @Override
@@ -282,6 +317,41 @@ final public class FilterList extends FilterBase {
     return this.transformedCell;
   }
 
+  /**
+   * For MUST_PASS_ONE, we cannot make sure that when filter-A in filter list return NEXT_COL then
+   * the next cell passing to filterList will be the first cell in next column, because if filter-B
+   * in filter list return SKIP, then the filter list will return SKIP. In this case, we should pass
+   * the cell following the previous cell, and it's possible that the next cell has the same column
+   * as the previous cell even if filter-A has NEXT_COL returned for the previous cell. So we should
+   * save the previous cell and the return code list when checking previous cell for every filter in
+   * filter list, and verify if currentCell fit the previous return code, if fit then pass the currentCell
+   * to the corresponding filter. (HBASE-17678)
+   */
+  private boolean shouldPassCurrentCellToFilter(Cell prevCell, Cell currentCell, int filterIdx)
+      throws IOException {
+    ReturnCode prevCode = this.prevFilterRCList.get(filterIdx);
+    if (prevCell == null || prevCode == null) {
+      return true;
+    }
+    switch (prevCode) {
+    case INCLUDE:
+    case SKIP:
+      return true;
+    case SEEK_NEXT_USING_HINT:
+      Cell nextHintCell = getNextCellHint(prevCell);
+      return nextHintCell == null
+          || CellComparator.COMPARATOR.compare(currentCell, nextHintCell) >= 0;
+    case NEXT_COL:
+    case INCLUDE_AND_NEXT_COL:
+      return !CellUtil.matchingRowColumn(prevCell, currentCell);
+    case NEXT_ROW:
+    case INCLUDE_AND_SEEK_NEXT_ROW:
+      return !CellUtil.matchingRows(prevCell, currentCell);
+    default:
+      throw new IllegalStateException("Received code is not valid.");
+    }
+  }
+
   @Override
   @edu.umd.cs.findbugs.annotations.SuppressWarnings(value="SF_SWITCH_FALLTHROUGH",
     justification="Intentional")
@@ -290,6 +360,7 @@ final public class FilterList extends FilterBase {
       return ReturnCode.INCLUDE;
     }
     this.referenceCell = c;
+    seekHintFilter.clear();
 
     // Accumulates successive transformation of every filter that includes the Cell:
     Cell transformed = c;
@@ -300,7 +371,7 @@ final public class FilterList extends FilterBase {
     /*
      * When all filters in a MUST_PASS_ONE FilterList return a SEEK_USING_NEXT_HINT code,
      * we should return SEEK_NEXT_USING_HINT from the FilterList to utilize the lowest seek value.
-     * 
+     *
      * The following variable tracks whether any of the Filters returns ReturnCode other than
      * SEEK_NEXT_USING_HINT for MUST_PASS_ONE FilterList, in which case the optimization would
      * be skipped.
@@ -321,18 +392,32 @@ final public class FilterList extends FilterBase {
           transformed = filter.transformCell(transformed);
           continue;
         case SEEK_NEXT_USING_HINT:
-          seekHintFilter = filter;
-          return code;
+          seekHintFilter.add(filter);
+          continue;
         default:
-          return code;
+          if (seekHintFilter.isEmpty()) {
+            return code;
+          }
         }
       } else if (operator == Operator.MUST_PASS_ONE) {
-        if (filter.filterAllRemaining()) {
+        Cell prevCell = this.prevCellList.get(i);
+        if (filter.filterAllRemaining() || !shouldPassCurrentCellToFilter(prevCell, c, i)) {
           seenNonHintReturnCode = true;
           continue;
         }
 
         ReturnCode localRC = filter.filterKeyValue(c);
+        // Update previous cell and return code we encountered.
+        prevFilterRCList.set(i, localRC);
+        if (c == null || localRC == ReturnCode.INCLUDE || localRC == ReturnCode.SKIP) {
+          // If previous return code is INCLUDE or SKIP, we should always pass the next cell to the
+          // corresponding sub-filter(need not test shouldPassCurrentCellToFilter() method), So we
+          // need not save current cell to prevCellList for saving heap memory.
+          prevCellList.set(i, null);
+        } else {
+          prevCellList.set(i, KeyValueUtil.toNewKeyCell(c));
+        }
+
         if (localRC != ReturnCode.SEEK_NEXT_USING_HINT) {
           seenNonHintReturnCode = true;
         }
@@ -360,6 +445,10 @@ final public class FilterList extends FilterBase {
           throw new IllegalStateException("Received code is not valid.");
         }
       }
+    }
+
+    if (!seekHintFilter.isEmpty()) {
+      return ReturnCode.SEEK_NEXT_USING_HINT;
     }
 
     // Save the transformed Cell for transform():
@@ -485,7 +574,17 @@ final public class FilterList extends FilterBase {
     }
     Cell keyHint = null;
     if (operator == Operator.MUST_PASS_ALL) {
-      keyHint = seekHintFilter.getNextCellHint(currentCell);
+      for (Filter filter : seekHintFilter) {
+        if (filter.filterAllRemaining()) continue;
+        Cell curKeyHint = filter.getNextCellHint(currentCell);
+        if (keyHint == null) {
+          keyHint = curKeyHint;
+          continue;
+        }
+        if (CellComparator.COMPARATOR.compare(keyHint, curKeyHint) < 0) {
+          keyHint = curKeyHint;
+        }
+      }
       return keyHint;
     }
 
