@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -54,6 +55,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
+import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.CompareOperator;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
@@ -69,11 +71,11 @@ import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Waiter;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.client.metrics.ScanMetrics;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.coprocessor.MultiRowMutationEndpoint;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
+import org.apache.hadoop.hbase.coprocessor.RegionCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.RegionObserver;
 import org.apache.hadoop.hbase.exceptions.ScannerResetException;
@@ -105,6 +107,7 @@ import org.apache.hadoop.hbase.protobuf.generated.MultiRowMutationProtos.MutateR
 import org.apache.hadoop.hbase.regionserver.DelegatingKeyValueScanner;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
+import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.KeyValueScanner;
 import org.apache.hadoop.hbase.regionserver.NoSuchColumnFamilyException;
 import org.apache.hadoop.hbase.regionserver.Region;
@@ -542,7 +545,7 @@ public class TestFromClientSide {
    * This is a coprocessor to inject a test failure so that a store scanner.reseek() call will
    * fail with an IOException() on the first call.
    */
-  public static class ExceptionInReseekRegionObserver implements RegionObserver {
+  public static class ExceptionInReseekRegionObserver implements RegionCoprocessor, RegionObserver {
     static AtomicLong reqCount = new AtomicLong(0);
     static AtomicBoolean isDoNotRetry = new AtomicBoolean(false); // whether to throw DNRIOE
     static AtomicBoolean throwOnce = new AtomicBoolean(true); // whether to only throw once
@@ -553,8 +556,13 @@ public class TestFromClientSide {
       throwOnce.set(true);
     }
 
+    @Override
+    public Optional<RegionObserver> getRegionObserver() {
+      return Optional.of(this);
+    }
+
     class MyStoreScanner extends StoreScanner {
-      public MyStoreScanner(Store store, ScanInfo scanInfo, Scan scan, NavigableSet<byte[]> columns,
+      public MyStoreScanner(HStore store, ScanInfo scanInfo, Scan scan, NavigableSet<byte[]> columns,
           long readPt) throws IOException {
         super(store, scanInfo, scan, columns, readPt);
       }
@@ -588,7 +596,7 @@ public class TestFromClientSide {
     public KeyValueScanner preStoreScannerOpen(ObserverContext<RegionCoprocessorEnvironment> c,
         Store store, Scan scan, NavigableSet<byte[]> targetCols, KeyValueScanner s,
         final long readPt) throws IOException {
-      return new MyStoreScanner(store, store.getScanInfo(), scan, targetCols, readPt);
+      return new MyStoreScanner((HStore) store, store.getScanInfo(), scan, targetCols, readPt);
     }
   }
 
@@ -4527,8 +4535,7 @@ public class TestFromClientSide {
       // set block size to 64 to making 2 kvs into one block, bypassing the walkForwardInSingleRow
       // in Store.rowAtOrBeforeFromStoreFile
       String regionName = locator.getAllRegionLocations().get(0).getRegionInfo().getEncodedName();
-      Region region =
-          TEST_UTIL.getRSForFirstRegionInTable(tableName).getFromOnlineRegions(regionName);
+      Region region = TEST_UTIL.getRSForFirstRegionInTable(tableName).getRegion(regionName);
       Put put1 = new Put(firstRow);
       Put put2 = new Put(secondRow);
       Put put3 = new Put(thirdRow);
@@ -5294,8 +5301,7 @@ public class TestFromClientSide {
       // get the block cache and region
       String regionName = locator.getAllRegionLocations().get(0).getRegionInfo().getEncodedName();
 
-      Region region = TEST_UTIL.getRSForFirstRegionInTable(tableName)
-          .getFromOnlineRegions(regionName);
+      Region region = TEST_UTIL.getRSForFirstRegionInTable(tableName).getRegion(regionName);
       Store store = region.getStores().iterator().next();
       CacheConfig cacheConf = store.getCacheConfig();
       cacheConf.setCacheDataOnWrite(true);

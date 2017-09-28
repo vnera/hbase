@@ -29,6 +29,7 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
@@ -69,6 +70,7 @@ import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
+import org.apache.hadoop.hbase.coprocessor.RegionCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.RegionObserver;
 import org.apache.hadoop.hbase.io.HFileLink;
@@ -719,12 +721,17 @@ public class TestMobCompactor {
    * This copro overwrites the default compaction policy. It always chooses two latest hfiles and
    * compacts them into a new one.
    */
-  public static class CompactTwoLatestHfilesCopro implements RegionObserver {
+  public static class CompactTwoLatestHfilesCopro implements RegionCoprocessor, RegionObserver {
+
+    @Override
+    public Optional<RegionObserver> getRegionObserver() {
+      return Optional.of(this);
+    }
 
     @Override
     public void preCompactSelection(ObserverContext<RegionCoprocessorEnvironment> c, Store store,
-        List<StoreFile> candidates, CompactionLifeCycleTracker tracker) throws IOException {
-
+        List<? extends StoreFile> candidates, CompactionLifeCycleTracker tracker)
+        throws IOException {
       int count = candidates.size();
       if (count >= 2) {
         for (int i = 0; i < count - 2; i++) {
@@ -815,7 +822,7 @@ public class TestMobCompactor {
       Assert.assertTrue(hasFiles);
       Path path = files[0].getPath();
       CacheConfig cacheConf = new CacheConfig(conf);
-      StoreFile sf = new HStoreFile(TEST_UTIL.getTestFileSystem(), path, conf, cacheConf,
+      HStoreFile sf = new HStoreFile(TEST_UTIL.getTestFileSystem(), path, conf, cacheConf,
         BloomType.NONE, true);
       sf.initReader();
       HFile.Reader reader = sf.getReader().getHFileReader();

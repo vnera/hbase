@@ -25,16 +25,15 @@ import java.util.Set;
 
 import org.apache.hadoop.hbase.Coprocessor;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
-import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.MetaMutationAnnotation;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.yetus.audience.InterfaceAudience;
-import org.apache.yetus.audience.InterfaceStability;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.MasterSwitchType;
 import org.apache.hadoop.hbase.client.Mutation;
+import org.apache.hadoop.hbase.client.RegionInfo;
+import org.apache.hadoop.hbase.client.SnapshotDescription;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.master.RegionPlan;
 import org.apache.hadoop.hbase.master.locking.LockProcedure;
@@ -44,9 +43,10 @@ import org.apache.hadoop.hbase.procedure2.LockType;
 import org.apache.hadoop.hbase.procedure2.LockedResource;
 import org.apache.hadoop.hbase.procedure2.Procedure;
 import org.apache.hadoop.hbase.procedure2.ProcedureExecutor;
+import org.apache.hadoop.hbase.quotas.GlobalQuotaSettings;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.QuotaProtos.Quotas;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos.SnapshotDescription;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.yetus.audience.InterfaceStability;
 
 
 /**
@@ -77,7 +77,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos.Snapshot
  */
 @InterfaceAudience.LimitedPrivate(HBaseInterfaceAudience.COPROC)
 @InterfaceStability.Evolving
-public interface MasterObserver extends Coprocessor {
+public interface MasterObserver {
   /**
    * Called before a new table is created by
    * {@link org.apache.hadoop.hbase.master.HMaster}.  Called as part of create
@@ -88,7 +88,7 @@ public interface MasterObserver extends Coprocessor {
    * @param regions the initial regions created for the table
    */
   default void preCreateTable(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      TableDescriptor desc, HRegionInfo[] regions) throws IOException {}
+      TableDescriptor desc, RegionInfo[] regions) throws IOException {}
 
   /**
    * Called after the createTable operation has been requested.  Called as part
@@ -98,7 +98,7 @@ public interface MasterObserver extends Coprocessor {
    * @param regions the initial regions created for the table
    */
   default void postCreateTable(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      TableDescriptor desc, HRegionInfo[] regions) throws IOException {}
+      TableDescriptor desc, RegionInfo[] regions) throws IOException {}
 
   /**
    * Called before a new table is created by
@@ -113,7 +113,7 @@ public interface MasterObserver extends Coprocessor {
   default void preCreateTableAction(
       final ObserverContext<MasterCoprocessorEnvironment> ctx,
       final TableDescriptor desc,
-      final HRegionInfo[] regions) throws IOException {}
+      final RegionInfo[] regions) throws IOException {}
 
   /**
    * Called after the createTable operation has been requested.  Called as part
@@ -127,7 +127,7 @@ public interface MasterObserver extends Coprocessor {
   default void postCompletedCreateTableAction(
       final ObserverContext<MasterCoprocessorEnvironment> ctx,
       final TableDescriptor desc,
-      final HRegionInfo[] regions) throws IOException {}
+      final RegionInfo[] regions) throws IOException {}
 
   /**
    * Called before {@link org.apache.hadoop.hbase.master.HMaster} deletes a
@@ -550,24 +550,24 @@ public interface MasterObserver extends Coprocessor {
   /**
    * Called prior to moving a given region from one region server to another.
    * @param ctx the environment to interact with the framework and master
-   * @param region the HRegionInfo
+   * @param region the RegionInfo
    * @param srcServer the source ServerName
    * @param destServer the destination ServerName
    */
   default void preMove(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo region, final ServerName srcServer,
+      final RegionInfo region, final ServerName srcServer,
       final ServerName destServer)
     throws IOException {}
 
   /**
    * Called after the region move has been requested.
    * @param ctx the environment to interact with the framework and master
-   * @param region the HRegionInfo
+   * @param region the RegionInfo
    * @param srcServer the source ServerName
    * @param destServer the destination ServerName
    */
   default void postMove(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo region, final ServerName srcServer,
+      final RegionInfo region, final ServerName srcServer,
       final ServerName destServer)
     throws IOException {}
 
@@ -577,7 +577,7 @@ public interface MasterObserver extends Coprocessor {
    * @param regionInfo the regionInfo of the region
    */
   default void preAssign(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo regionInfo) throws IOException {}
+      final RegionInfo regionInfo) throws IOException {}
 
   /**
    * Called after the region assignment has been requested.
@@ -585,7 +585,7 @@ public interface MasterObserver extends Coprocessor {
    * @param regionInfo the regionInfo of the region
    */
   default void postAssign(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo regionInfo) throws IOException {}
+      final RegionInfo regionInfo) throws IOException {}
 
   /**
    * Called prior to unassigning a given region.
@@ -594,7 +594,7 @@ public interface MasterObserver extends Coprocessor {
    * @param force whether to force unassignment or not
    */
   default void preUnassign(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo regionInfo, final boolean force) throws IOException {}
+      final RegionInfo regionInfo, final boolean force) throws IOException {}
 
   /**
    * Called after the region unassignment has been requested.
@@ -603,7 +603,7 @@ public interface MasterObserver extends Coprocessor {
    * @param force whether to force unassignment or not
    */
   default void postUnassign(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo regionInfo, final boolean force) throws IOException {}
+      final RegionInfo regionInfo, final boolean force) throws IOException {}
 
   /**
    * Called prior to marking a given region as offline. <code>ctx.bypass()</code> will not have any
@@ -612,7 +612,7 @@ public interface MasterObserver extends Coprocessor {
    * @param regionInfo
    */
   default void preRegionOffline(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo regionInfo) throws IOException {}
+      final RegionInfo regionInfo) throws IOException {}
 
   /**
    * Called after the region has been marked offline.
@@ -620,7 +620,7 @@ public interface MasterObserver extends Coprocessor {
    * @param regionInfo
    */
   default void postRegionOffline(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo regionInfo) throws IOException {}
+      final RegionInfo regionInfo) throws IOException {}
 
   /**
    * Called prior to requesting rebalancing of the cluster regions, though after
@@ -692,8 +692,8 @@ public interface MasterObserver extends Coprocessor {
    */
   default void postCompletedSplitRegionAction(
       final ObserverContext<MasterCoprocessorEnvironment> c,
-      final HRegionInfo regionInfoA,
-      final HRegionInfo regionInfoB) throws IOException {}
+      final RegionInfo regionInfoA,
+      final RegionInfo regionInfoB) throws IOException {}
 
   /**
    * This will be called before PONR step as part of split transaction. Calling
@@ -733,7 +733,7 @@ public interface MasterObserver extends Coprocessor {
    */
   default void preMergeRegionsAction(
       final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo[] regionsToMerge) throws IOException {}
+      final RegionInfo[] regionsToMerge) throws IOException {}
 
   /**
    * called after the regions merge.
@@ -741,8 +741,8 @@ public interface MasterObserver extends Coprocessor {
    */
   default void postCompletedMergeRegionsAction(
       final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo[] regionsToMerge,
-      final HRegionInfo mergedRegion) throws IOException {}
+      final RegionInfo[] regionsToMerge,
+      final RegionInfo mergedRegion) throws IOException {}
 
   /**
    * This will be called before PONR step as part of regions merge transaction. Calling
@@ -753,7 +753,7 @@ public interface MasterObserver extends Coprocessor {
    */
   default void preMergeRegionsCommitAction(
       final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo[] regionsToMerge,
+      final RegionInfo[] regionsToMerge,
       @MetaMutationAnnotation List<Mutation> metaEntries) throws IOException {}
 
   /**
@@ -762,8 +762,8 @@ public interface MasterObserver extends Coprocessor {
    */
   default void postMergeRegionsCommitAction(
       final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo[] regionsToMerge,
-      final HRegionInfo mergedRegion) throws IOException {}
+      final RegionInfo[] regionsToMerge,
+      final RegionInfo mergedRegion) throws IOException {}
 
   /**
    * This will be called after the roll back of the regions merge.
@@ -771,7 +771,7 @@ public interface MasterObserver extends Coprocessor {
    */
   default void postRollBackMergeRegionsAction(
       final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo[] regionsToMerge) throws IOException {}
+      final RegionInfo[] regionsToMerge) throws IOException {}
 
   /**
    * Called prior to modifying the flag used to enable/disable region balancing.
@@ -1075,95 +1075,99 @@ public interface MasterObserver extends Coprocessor {
    * Called before the quota for the user is stored.
    * @param ctx the environment to interact with the framework and master
    * @param userName the name of user
-   * @param quotas the quota settings
+   * @param quotas the current quota for the user
    */
   default void preSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final String userName, final Quotas quotas) throws IOException {}
+      final String userName, final GlobalQuotaSettings quotas) throws IOException {}
 
   /**
    * Called after the quota for the user is stored.
    * @param ctx the environment to interact with the framework and master
    * @param userName the name of user
-   * @param quotas the quota settings
+   * @param quotas the resulting quota for the user
    */
   default void postSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final String userName, final Quotas quotas) throws IOException {}
+      final String userName, final GlobalQuotaSettings quotas) throws IOException {}
 
   /**
    * Called before the quota for the user on the specified table is stored.
    * @param ctx the environment to interact with the framework and master
    * @param userName the name of user
    * @param tableName the name of the table
-   * @param quotas the quota settings
+   * @param quotas the current quota for the user on the table
    */
-  default void preSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final String userName, final TableName tableName, final Quotas quotas) throws IOException {}
+  default void preSetUserQuota(
+      final ObserverContext<MasterCoprocessorEnvironment> ctx, final String userName,
+      final TableName tableName, final GlobalQuotaSettings quotas) throws IOException {}
 
   /**
    * Called after the quota for the user on the specified table is stored.
    * @param ctx the environment to interact with the framework and master
    * @param userName the name of user
    * @param tableName the name of the table
-   * @param quotas the quota settings
+   * @param quotas the resulting quota for the user on the table
    */
-  default void postSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final String userName, final TableName tableName, final Quotas quotas) throws IOException {}
+  default void postSetUserQuota(
+      final ObserverContext<MasterCoprocessorEnvironment> ctx, final String userName,
+      final TableName tableName, final GlobalQuotaSettings quotas) throws IOException {}
 
   /**
    * Called before the quota for the user on the specified namespace is stored.
    * @param ctx the environment to interact with the framework and master
    * @param userName the name of user
    * @param namespace the name of the namespace
-   * @param quotas the quota settings
+   * @param quotas the current quota for the user on the namespace
    */
-  default void preSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final String userName, final String namespace, final Quotas quotas) throws IOException {}
+  default void preSetUserQuota(
+      final ObserverContext<MasterCoprocessorEnvironment> ctx, final String userName,
+      final String namespace, final GlobalQuotaSettings quotas) throws IOException {}
 
   /**
    * Called after the quota for the user on the specified namespace is stored.
    * @param ctx the environment to interact with the framework and master
    * @param userName the name of user
    * @param namespace the name of the namespace
-   * @param quotas the quota settings
+   * @param quotas the resulting quota for the user on the namespace
    */
-  default void postSetUserQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final String userName, final String namespace, final Quotas quotas) throws IOException {}
+  default void postSetUserQuota(
+      final ObserverContext<MasterCoprocessorEnvironment> ctx, final String userName,
+      final String namespace, final GlobalQuotaSettings quotas) throws IOException {}
 
   /**
    * Called before the quota for the table is stored.
    * @param ctx the environment to interact with the framework and master
    * @param tableName the name of the table
-   * @param quotas the quota settings
+   * @param quotas the current quota for the table
    */
   default void preSetTableQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final TableName tableName, final Quotas quotas) throws IOException {}
+      final TableName tableName, final GlobalQuotaSettings quotas) throws IOException {}
 
   /**
    * Called after the quota for the table is stored.
    * @param ctx the environment to interact with the framework and master
    * @param tableName the name of the table
-   * @param quotas the quota settings
+   * @param quotas the resulting quota for the table
    */
   default void postSetTableQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final TableName tableName, final Quotas quotas) throws IOException {}
+      final TableName tableName, final GlobalQuotaSettings quotas) throws IOException {}
 
   /**
    * Called before the quota for the namespace is stored.
    * @param ctx the environment to interact with the framework and master
    * @param namespace the name of the namespace
-   * @param quotas the quota settings
+   * @param quotas the current quota for the namespace
    */
   default void preSetNamespaceQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final String namespace, final Quotas quotas) throws IOException {}
+      final String namespace, final GlobalQuotaSettings quotas) throws IOException {}
 
   /**
    * Called after the quota for the namespace is stored.
    * @param ctx the environment to interact with the framework and master
    * @param namespace the name of the namespace
-   * @param quotas the quota settings
+   * @param quotas the resulting quota for the namespace
    */
   default void postSetNamespaceQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final String namespace, final Quotas quotas) throws IOException {}
+      final String namespace, final GlobalQuotaSettings quotas) throws IOException {}
 
   /**
    * Called before merge regions request.
@@ -1173,7 +1177,7 @@ public interface MasterObserver extends Coprocessor {
    */
   default void preMergeRegions(
       final ObserverContext<MasterCoprocessorEnvironment> ctx,
-      final HRegionInfo[] regionsToMerge) throws IOException {}
+      final RegionInfo[] regionsToMerge) throws IOException {}
 
   /**
    * called after merge regions request.
@@ -1182,7 +1186,7 @@ public interface MasterObserver extends Coprocessor {
    */
   default void postMergeRegions(
       final ObserverContext<MasterCoprocessorEnvironment> c,
-      final HRegionInfo[] regionsToMerge) throws IOException {}
+      final RegionInfo[] regionsToMerge) throws IOException {}
 
   /**
    * Called before servers are moved to target region server group
@@ -1407,7 +1411,7 @@ public interface MasterObserver extends Coprocessor {
    * @param ctx the environment to interact with the framework and master
    */
   default void preRequestLock(ObserverContext<MasterCoprocessorEnvironment> ctx, String namespace,
-      TableName tableName, HRegionInfo[] regionInfos, LockType type,
+      TableName tableName, RegionInfo[] regionInfos, LockType type,
       String description) throws IOException {}
 
   /**
@@ -1415,7 +1419,7 @@ public interface MasterObserver extends Coprocessor {
    * @param ctx the environment to interact with the framework and master
    */
   default void postRequestLock(ObserverContext<MasterCoprocessorEnvironment> ctx, String namespace,
-      TableName tableName, HRegionInfo[] regionInfos, LockType type,
+      TableName tableName, RegionInfo[] regionInfos, LockType type,
       String description) throws IOException {}
 
   /**

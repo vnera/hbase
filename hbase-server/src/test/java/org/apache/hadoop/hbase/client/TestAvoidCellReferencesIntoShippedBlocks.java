@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -38,12 +39,14 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.coprocessor.MultiRowMutationEndpoint;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
+import org.apache.hadoop.hbase.coprocessor.RegionCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.RegionObserver;
 import org.apache.hadoop.hbase.io.hfile.BlockCache;
 import org.apache.hadoop.hbase.io.hfile.BlockCacheKey;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.hfile.CachedBlock;
+import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
 import org.apache.hadoop.hbase.regionserver.KeyValueScanner;
 import org.apache.hadoop.hbase.regionserver.Region;
@@ -132,7 +135,7 @@ public class TestAvoidCellReferencesIntoShippedBlocks {
       RegionLocator locator = TEST_UTIL.getConnection().getRegionLocator(tableName);
       String regionName = locator.getAllRegionLocations().get(0).getRegionInfo().getEncodedName();
       Region region =
-          TEST_UTIL.getRSForFirstRegionInTable(tableName).getFromOnlineRegions(regionName);
+          TEST_UTIL.getRSForFirstRegionInTable(tableName).getRegion(regionName);
       Store store = region.getStores().iterator().next();
       CacheConfig cacheConf = store.getCacheConfig();
       cacheConf.setCacheDataOnWrite(true);
@@ -252,15 +255,22 @@ public class TestAvoidCellReferencesIntoShippedBlocks {
     }
   }
 
-  public static class CompactorRegionObserver implements RegionObserver {
+  public static class CompactorRegionObserver implements RegionCoprocessor, RegionObserver {
+
     @Override
-    public InternalScanner preCompactScannerOpen(ObserverContext<RegionCoprocessorEnvironment> c,
-        Store store, List<? extends KeyValueScanner> scanners, ScanType scanType, long earliestPutTs,
-        InternalScanner s, CompactionLifeCycleTracker request, long readPoint) throws IOException {
-      return createCompactorScanner(store, scanners, scanType, earliestPutTs);
+    public Optional<RegionObserver> getRegionObserver() {
+      return Optional.of(this);
     }
 
-    private InternalScanner createCompactorScanner(Store store,
+    @Override
+    public InternalScanner preCompactScannerOpen(ObserverContext<RegionCoprocessorEnvironment> c,
+        Store store, List<? extends KeyValueScanner> scanners, ScanType scanType,
+        long earliestPutTs, InternalScanner s, CompactionLifeCycleTracker request, long readPoint)
+        throws IOException {
+      return createCompactorScanner((HStore) store, scanners, scanType, earliestPutTs);
+    }
+
+    private InternalScanner createCompactorScanner(HStore store,
         List<? extends KeyValueScanner> scanners, ScanType scanType, long earliestPutTs)
         throws IOException {
       return new CompactorStoreScanner(store, store.getScanInfo(), OptionalInt.empty(), scanners,
@@ -270,7 +280,7 @@ public class TestAvoidCellReferencesIntoShippedBlocks {
 
   private static class CompactorStoreScanner extends StoreScanner {
 
-    public CompactorStoreScanner(Store store, ScanInfo scanInfo, OptionalInt maxVersions,
+    public CompactorStoreScanner(HStore store, ScanInfo scanInfo, OptionalInt maxVersions,
         List<? extends KeyValueScanner> scanners, ScanType scanType, long smallestReadPoint,
         long earliestPutTs) throws IOException {
       super(store, scanInfo, maxVersions, scanners, scanType, smallestReadPoint, earliestPutTs);
@@ -304,7 +314,7 @@ public class TestAvoidCellReferencesIntoShippedBlocks {
       RegionLocator locator = TEST_UTIL.getConnection().getRegionLocator(tableName);
       String regionName = locator.getAllRegionLocations().get(0).getRegionInfo().getEncodedName();
       Region region =
-          TEST_UTIL.getRSForFirstRegionInTable(tableName).getFromOnlineRegions(regionName);
+          TEST_UTIL.getRSForFirstRegionInTable(tableName).getRegion(regionName);
       Store store = region.getStores().iterator().next();
       CacheConfig cacheConf = store.getCacheConfig();
       cacheConf.setCacheDataOnWrite(true);

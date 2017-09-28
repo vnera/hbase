@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -37,7 +38,6 @@ import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.CompareOperator;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
-import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Durability;
@@ -45,6 +45,7 @@ import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Increment;
 import org.apache.hadoop.hbase.client.Mutation;
 import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.filter.ByteArrayComparable;
@@ -53,7 +54,6 @@ import org.apache.hadoop.hbase.io.Reference;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
 import org.apache.hadoop.hbase.regionserver.KeyValueScanner;
-import org.apache.hadoop.hbase.regionserver.Leases;
 import org.apache.hadoop.hbase.regionserver.MiniBatchOperationInProgress;
 import org.apache.hadoop.hbase.regionserver.Region.Operation;
 import org.apache.hadoop.hbase.regionserver.RegionScanner;
@@ -62,7 +62,6 @@ import org.apache.hadoop.hbase.regionserver.Store;
 import org.apache.hadoop.hbase.regionserver.StoreFile;
 import org.apache.hadoop.hbase.regionserver.StoreFileReader;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionLifeCycleTracker;
-import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.wal.WALEdit;
@@ -74,7 +73,7 @@ import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableList;
  * A sample region observer that tests the RegionObserver interface.
  * It works with TestRegionObserverInterface to provide the test case.
  */
-public class SimpleRegionObserver implements RegionObserver {
+public class SimpleRegionObserver implements RegionCoprocessor, RegionObserver {
 
   final AtomicInteger ctBeforeDelete = new AtomicInteger(1);
   final AtomicInteger ctPreOpen = new AtomicInteger(0);
@@ -137,13 +136,12 @@ public class SimpleRegionObserver implements RegionObserver {
   }
 
   @Override
+  public Optional<RegionObserver> getRegionObserver() {
+    return Optional.of(this);
+  }
+
+  @Override
   public void start(CoprocessorEnvironment e) throws IOException {
-    // this only makes sure that leases and locks are available to coprocessors
-    // from external packages
-    RegionCoprocessorEnvironment re = (RegionCoprocessorEnvironment)e;
-    Leases leases = re.getRegionServerServices().getLeases();
-    leases.createLease(re.getRegion().getRegionInfo().getRegionNameAsString(), 2000, null);
-    leases.cancelLease(re.getRegion().getRegionInfo().getRegionNameAsString());
   }
 
   @Override
@@ -204,13 +202,13 @@ public class SimpleRegionObserver implements RegionObserver {
 
   @Override
   public void preCompactSelection(ObserverContext<RegionCoprocessorEnvironment> c, Store store,
-      List<StoreFile> candidates, CompactionLifeCycleTracker tracker) throws IOException {
+      List<? extends StoreFile> candidates, CompactionLifeCycleTracker tracker) throws IOException {
     ctPreCompactSelect.incrementAndGet();
   }
 
   @Override
   public void postCompactSelection(ObserverContext<RegionCoprocessorEnvironment> c, Store store,
-      ImmutableList<StoreFile> selected, CompactionLifeCycleTracker tracker) {
+      ImmutableList<? extends StoreFile> selected, CompactionLifeCycleTracker tracker) {
     ctPostCompactSelect.incrementAndGet();
   }
 
@@ -619,19 +617,19 @@ public class SimpleRegionObserver implements RegionObserver {
 
   @Override
   public void preReplayWALs(ObserverContext<? extends RegionCoprocessorEnvironment> env,
-      HRegionInfo info, Path edits) throws IOException {
+      RegionInfo info, Path edits) throws IOException {
     ctPreReplayWALs.incrementAndGet();
   }
 
   @Override
   public void postReplayWALs(ObserverContext<? extends RegionCoprocessorEnvironment> env,
-      HRegionInfo info, Path edits) throws IOException {
+      RegionInfo info, Path edits) throws IOException {
     ctPostReplayWALs.incrementAndGet();
   }
 
   @Override
   public void preWALRestore(ObserverContext<? extends RegionCoprocessorEnvironment> env,
-      HRegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
+      RegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
     String tableName = logKey.getTablename().getNameAsString();
     if (tableName.equals(TABLE_SKIPPED)) {
       // skip recovery of TABLE_SKIPPED for testing purpose
@@ -643,7 +641,7 @@ public class SimpleRegionObserver implements RegionObserver {
 
   @Override
   public void postWALRestore(ObserverContext<? extends RegionCoprocessorEnvironment> env,
-                             HRegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
+                             RegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
     ctPostWALRestore.incrementAndGet();
   }
 

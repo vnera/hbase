@@ -67,6 +67,7 @@ import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.client.TestReplicasClient.SlowMeCopro;
+import org.apache.hadoop.hbase.coprocessor.MasterCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.MasterObserver;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
@@ -82,12 +83,6 @@ import org.apache.hadoop.hbase.master.assignment.RegionStates;
 import org.apache.hadoop.hbase.procedure2.ProcedureTestingUtility;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionContext;
 import org.apache.hadoop.hbase.regionserver.throttle.NoLimitThroughputController;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException;
-import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionStateTransition.TransitionCode;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionRequest;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionResponse;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.testclassification.RegionServerTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -108,6 +103,13 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.junit.rules.TestRule;
+
+import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
+import org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException;
+import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionStateTransition.TransitionCode;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionResponse;
 
 /**
  * The below tests are testing split region against a running cluster
@@ -206,8 +208,7 @@ public class TestSplitTransactionOnCluster {
 
       // we have to wait until the SPLITTING state is seen by the master
       FailingSplitMasterObserver observer =
-          (FailingSplitMasterObserver) master.getMasterCoprocessorHost().findCoprocessor(
-            FailingSplitMasterObserver.class.getName());
+          master.getMasterCoprocessorHost().findCoprocessor(FailingSplitMasterObserver.class);
       assertNotNull(observer);
       observer.latch.await();
 
@@ -268,12 +269,19 @@ public class TestSplitTransactionOnCluster {
     assertEquals(2, cluster.getRegions(tableName).size());
   }
 
-  public static class FailingSplitMasterObserver implements MasterObserver {
+  public static class FailingSplitMasterObserver implements MasterCoprocessor, MasterObserver {
     volatile CountDownLatch latch;
+
     @Override
     public void start(CoprocessorEnvironment e) throws IOException {
       latch = new CountDownLatch(1);
     }
+
+    @Override
+    public Optional<MasterObserver> getMasterObserver() {
+      return Optional.of(this);
+    }
+
     @Override
     public void preSplitRegionBeforePONRAction(
         final ObserverContext<MasterCoprocessorEnvironment> ctx,
@@ -750,8 +758,8 @@ public class TestSplitTransactionOnCluster {
         region.put(p);
       }
       region.flush(true);
-      Store store = region.getStore(Bytes.toBytes("f"));
-      Collection<StoreFile> storefiles = store.getStorefiles();
+      HStore store = region.getStore(Bytes.toBytes("f"));
+      Collection<HStoreFile> storefiles = store.getStorefiles();
       assertEquals(storefiles.size(), 1);
       assertFalse(region.hasReferences());
       Path referencePath =

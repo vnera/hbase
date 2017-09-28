@@ -18,6 +18,7 @@
 package org.apache.hadoop.hbase.regionserver;
 
 import static org.apache.hadoop.hbase.HConstants.REPLICATION_SCOPE_LOCAL;
+import static org.apache.hadoop.hbase.regionserver.HStoreFile.MAJOR_COMPACTION_KEY;
 import static org.apache.hadoop.hbase.util.CollectionUtils.computeIfAbsent;
 
 import java.io.EOFException;
@@ -100,7 +101,6 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.TagUtil;
 import org.apache.hadoop.hbase.UnknownScannerException;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.Delete;
@@ -147,9 +147,34 @@ import org.apache.hadoop.hbase.regionserver.compactions.CompactionLifeCycleTrack
 import org.apache.hadoop.hbase.regionserver.throttle.CompactionThroughputControllerFactory;
 import org.apache.hadoop.hbase.regionserver.throttle.NoLimitThroughputController;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputController;
-import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.regionserver.wal.WALUtil;
 import org.apache.hadoop.hbase.security.User;
+import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
+import org.apache.hadoop.hbase.snapshot.SnapshotManifest;
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.CancelableProgressable;
+import org.apache.hadoop.hbase.util.ClassSize;
+import org.apache.hadoop.hbase.util.CollectionUtils;
+import org.apache.hadoop.hbase.util.CompressionTest;
+import org.apache.hadoop.hbase.util.EncryptionTest;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
+import org.apache.hadoop.hbase.util.FSUtils;
+import org.apache.hadoop.hbase.util.HashedBytes;
+import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.util.ServerRegionReplicaUtil;
+import org.apache.hadoop.hbase.util.Threads;
+import org.apache.hadoop.hbase.wal.WAL;
+import org.apache.hadoop.hbase.wal.WALEdit;
+import org.apache.hadoop.hbase.wal.WALFactory;
+import org.apache.hadoop.hbase.wal.WALKey;
+import org.apache.hadoop.hbase.wal.WALSplitter;
+import org.apache.hadoop.hbase.wal.WALSplitter.MutationReplay;
+import org.apache.hadoop.io.MultipleIOException;
+import org.apache.hadoop.util.StringUtils;
+import org.apache.htrace.Trace;
+import org.apache.htrace.TraceScope;
+import org.apache.yetus.audience.InterfaceAudience;
+
 import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
@@ -172,29 +197,6 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.FlushDescript
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.RegionEventDescriptor;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.RegionEventDescriptor.EventType;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.StoreDescriptor;
-import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
-import org.apache.hadoop.hbase.snapshot.SnapshotManifest;
-import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.CancelableProgressable;
-import org.apache.hadoop.hbase.util.ClassSize;
-import org.apache.hadoop.hbase.util.CollectionUtils;
-import org.apache.hadoop.hbase.util.CompressionTest;
-import org.apache.hadoop.hbase.util.EncryptionTest;
-import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
-import org.apache.hadoop.hbase.util.FSUtils;
-import org.apache.hadoop.hbase.util.HashedBytes;
-import org.apache.hadoop.hbase.util.Pair;
-import org.apache.hadoop.hbase.util.ServerRegionReplicaUtil;
-import org.apache.hadoop.hbase.util.Threads;
-import org.apache.hadoop.hbase.wal.WAL;
-import org.apache.hadoop.hbase.wal.WALFactory;
-import org.apache.hadoop.hbase.wal.WALKey;
-import org.apache.hadoop.hbase.wal.WALSplitter;
-import org.apache.hadoop.hbase.wal.WALSplitter.MutationReplay;
-import org.apache.hadoop.io.MultipleIOException;
-import org.apache.hadoop.util.StringUtils;
-import org.apache.htrace.Trace;
-import org.apache.htrace.TraceScope;
 
 @SuppressWarnings("deprecation")
 @InterfaceAudience.Private
@@ -203,9 +205,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
 
   public static final String LOAD_CFS_ON_DEMAND_CONFIG_KEY =
     "hbase.hregion.scan.loadColumnFamiliesOnDemand";
-
-  public static final String HREGION_UNASSIGN_FOR_FNFE = "hbase.hregion.unassign.for.fnfe";
-  public static final boolean DEFAULT_HREGION_UNASSIGN_FOR_FNFE = true;
 
   public static final String HBASE_MAX_CELL_SIZE_KEY = "hbase.server.keyvalue.maxsize";
   public static final int DEFAULT_MAX_CELL_SIZE = 10485760;
@@ -654,8 +653,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
   private final NavigableMap<byte[], Integer> replicationScope = new TreeMap<>(
       Bytes.BYTES_COMPARATOR);
 
-  // whether to unassign region if we hit FNFE
-  private final RegionUnassigner regionUnassigner;
   /**
    * HRegion constructor. This constructor should only be used for testing and
    * extensions.  Instances of HRegion should be instantiated with the
@@ -815,14 +812,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
               HConstants.DEFAULT_ENABLE_CLIENT_BACKPRESSURE);
 
     this.maxCellSize = conf.getLong(HBASE_MAX_CELL_SIZE_KEY, DEFAULT_MAX_CELL_SIZE);
-
-    boolean unassignForFNFE =
-        conf.getBoolean(HREGION_UNASSIGN_FOR_FNFE, DEFAULT_HREGION_UNASSIGN_FOR_FNFE);
-    if (unassignForFNFE) {
-      this.regionUnassigner = new RegionUnassigner(rsServices, fs.getRegionInfo());
-    } else {
-      this.regionUnassigner = null;
-    }
   }
 
   void setHTableSpecificConf() {
@@ -1079,12 +1068,12 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
   private NavigableMap<byte[], List<Path>> getStoreFiles() {
     NavigableMap<byte[], List<Path>> allStoreFiles = new TreeMap<>(Bytes.BYTES_COMPARATOR);
     for (HStore store : stores.values()) {
-      Collection<StoreFile> storeFiles = store.getStorefiles();
+      Collection<HStoreFile> storeFiles = store.getStorefiles();
       if (storeFiles == null) {
         continue;
       }
       List<Path> storeFileNames = new ArrayList<>();
-      for (StoreFile storeFile : storeFiles) {
+      for (HStoreFile storeFile : storeFiles) {
         storeFileNames.add(storeFile.getPath());
       }
       allStoreFiles.put(store.getColumnFamilyDescriptor().getName(), storeFileNames);
@@ -1137,7 +1126,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
   public HDFSBlocksDistribution getHDFSBlocksDistribution() {
     HDFSBlocksDistribution hdfsBlocksDistribution = new HDFSBlocksDistribution();
     stores.values().stream().filter(s -> s.getStorefiles() != null)
-        .flatMap(s -> s.getStorefiles().stream()).map(StoreFile::getHDFSBlockDistribution)
+        .flatMap(s -> s.getStorefiles().stream()).map(HStoreFile::getHDFSBlockDistribution)
         .forEachOrdered(hdfsBlocksDistribution::add);
     return hdfsBlocksDistribution;
   }
@@ -1397,7 +1386,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     LOG.info("DEBUG LIST ALL FILES");
     for (HStore store : this.stores.values()) {
       LOG.info("store " + store.getColumnFamilyName());
-      for (StoreFile sf : store.getStorefiles()) {
+      for (HStoreFile sf : store.getStorefiles()) {
         LOG.info(sf.toStringDetailed());
       }
     }
@@ -1471,7 +1460,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    * because a Snapshot was not properly persisted. The region is put in closing mode, and the
    * caller MUST abort after this.
    */
-  public Map<byte[], List<StoreFile>> close() throws IOException {
+  public Map<byte[], List<HStoreFile>> close() throws IOException {
     return close(false);
   }
 
@@ -1512,7 +1501,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    * because a Snapshot was not properly persisted. The region is put in closing mode, and the
    * caller MUST abort after this.
    */
-  public Map<byte[], List<StoreFile>> close(final boolean abort) throws IOException {
+  public Map<byte[], List<HStoreFile>> close(boolean abort) throws IOException {
     // Only allow one thread to close at a time. Serialize them so dual
     // threads attempting to close will run up against each other.
     MonitoredTask status = TaskMonitor.get().createStatus(
@@ -1550,7 +1539,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
 
   @edu.umd.cs.findbugs.annotations.SuppressWarnings(value="UL_UNRELEASED_LOCK_EXCEPTION_PATH",
       justification="I think FindBugs is confused")
-  private Map<byte[], List<StoreFile>> doClose(final boolean abort, MonitoredTask status)
+  private Map<byte[], List<HStoreFile>> doClose(boolean abort, MonitoredTask status)
       throws IOException {
     if (isClosed()) {
       LOG.warn("Region " + this + " already closed");
@@ -1645,13 +1634,13 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
         }
       }
 
-      Map<byte[], List<StoreFile>> result = new TreeMap<>(Bytes.BYTES_COMPARATOR);
+      Map<byte[], List<HStoreFile>> result = new TreeMap<>(Bytes.BYTES_COMPARATOR);
       if (!stores.isEmpty()) {
         // initialize the thread pool for closing stores in parallel.
         ThreadPoolExecutor storeCloserThreadPool =
           getStoreOpenAndCloseThreadPool("StoreCloserThread-" +
             getRegionInfo().getRegionNameAsString());
-        CompletionService<Pair<byte[], Collection<StoreFile>>> completionService =
+        CompletionService<Pair<byte[], Collection<HStoreFile>>> completionService =
           new ExecutorCompletionService<>(storeCloserThreadPool);
 
         // close each store in parallel
@@ -1667,18 +1656,18 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
             }
           }
           completionService
-              .submit(new Callable<Pair<byte[], Collection<StoreFile>>>() {
+              .submit(new Callable<Pair<byte[], Collection<HStoreFile>>>() {
                 @Override
-                public Pair<byte[], Collection<StoreFile>> call() throws IOException {
+                public Pair<byte[], Collection<HStoreFile>> call() throws IOException {
                   return new Pair<>(store.getColumnFamilyDescriptor().getName(), store.close());
                 }
               });
         }
         try {
           for (int i = 0; i < stores.size(); i++) {
-            Future<Pair<byte[], Collection<StoreFile>>> future = completionService.take();
-            Pair<byte[], Collection<StoreFile>> storeFiles = future.get();
-            List<StoreFile> familyFiles = result.get(storeFiles.getFirst());
+            Future<Pair<byte[], Collection<HStoreFile>>> future = completionService.take();
+            Pair<byte[], Collection<HStoreFile>> storeFiles = future.get();
+            List<HStoreFile> familyFiles = result.get(storeFiles.getFirst());
             if (familyFiles == null) {
               familyFiles = new ArrayList<>();
               result.put(storeFiles.getFirst(), familyFiles);
@@ -1887,11 +1876,11 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
   public long getOldestHfileTs(boolean majorCompactionOnly) throws IOException {
     long result = Long.MAX_VALUE;
     for (HStore store : stores.values()) {
-      Collection<StoreFile> storeFiles = store.getStorefiles();
+      Collection<HStoreFile> storeFiles = store.getStorefiles();
       if (storeFiles == null) {
         continue;
       }
-      for (StoreFile file : storeFiles) {
+      for (HStoreFile file : storeFiles) {
         StoreFileReader sfReader = file.getReader();
         if (sfReader == null) {
           continue;
@@ -1901,7 +1890,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
           continue;
         }
         if (majorCompactionOnly) {
-          byte[] val = reader.loadFileInfo().get(StoreFile.MAJOR_COMPACTION_KEY);
+          byte[] val = reader.loadFileInfo().get(MAJOR_COMPACTION_KEY);
           if (val == null || !Bytes.toBoolean(val)) {
             continue;
           }
@@ -4195,7 +4184,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       // If this flag is set, make use of the hfile archiving by making recovered.edits a fake
       // column family. Have to fake out file type too by casting our recovered.edits as storefiles
       String fakeFamilyName = WALSplitter.getRegionDirRecoveredEditsDir(regiondir).getName();
-      Set<StoreFile> fakeStoreFiles = new HashSet<>(files.size());
+      Set<HStoreFile> fakeStoreFiles = new HashSet<>(files.size());
       for (Path file: files) {
         fakeStoreFiles.add(
           new HStoreFile(getRegionFileSystem().getFileSystem(), file, this.conf, null, null, true));
@@ -5309,11 +5298,11 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
           throw new IllegalArgumentException(
               "No column family : " + new String(column) + " available");
         }
-        Collection<StoreFile> storeFiles = store.getStorefiles();
+        Collection<HStoreFile> storeFiles = store.getStorefiles();
         if (storeFiles == null) {
           continue;
         }
-        for (StoreFile storeFile : storeFiles) {
+        for (HStoreFile storeFile : storeFiles) {
           storeFileNames.add(storeFile.getPath().toString());
         }
 
@@ -5873,12 +5862,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       try {
         for (Map.Entry<byte[], NavigableSet<byte[]>> entry : scan.getFamilyMap().entrySet()) {
           HStore store = stores.get(entry.getKey());
-          KeyValueScanner scanner;
-          try {
-            scanner = store.getScanner(scan, entry.getValue(), this.readPt);
-          } catch (FileNotFoundException e) {
-            throw handleFileNotFound(e);
-          }
+          KeyValueScanner scanner = store.getScanner(scan, entry.getValue(), this.readPt);
           instantiatedScanners.add(scanner);
           if (this.filter == null || !scan.doLoadColumnFamiliesOnDemand()
               || this.filter.isFamilyEssential(entry.getKey())) {
@@ -5902,21 +5886,8 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       }
     }
 
-    private FileNotFoundException handleFileNotFound(FileNotFoundException fnfe) {
-      // Try reopening the region since we have lost some storefiles.
-      // See HBASE-17712 for more details.
-      LOG.warn("Store file is lost; close and reopen region", fnfe);
-      if (regionUnassigner != null) {
-        regionUnassigner.unassign();
-      }
-      return fnfe;
-    }
-
     private IOException handleException(List<KeyValueScanner> instantiatedScanners,
         Throwable t) {
-      if (t instanceof FileNotFoundException) {
-        handleFileNotFound((FileNotFoundException)t);
-      }
       // remove scaner read point before throw the exception
       scannerReadPoints.remove(this);
       if (storeHeap != null) {
@@ -5999,19 +5970,14 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
         throw new UnknownScannerException("Scanner was closed");
       }
       boolean moreValues = false;
-      try {
-        if (outResults.isEmpty()) {
-          // Usually outResults is empty. This is true when next is called
-          // to handle scan or get operation.
-          moreValues = nextInternal(outResults, scannerContext);
-        } else {
-          List<Cell> tmpList = new ArrayList<Cell>();
-          moreValues = nextInternal(tmpList, scannerContext);
-          outResults.addAll(tmpList);
-        }
-      } catch (FileNotFoundException e) {
-        handleFileNotFound(e);
-        throw e;
+      if (outResults.isEmpty()) {
+        // Usually outResults is empty. This is true when next is called
+        // to handle scan or get operation.
+        moreValues = nextInternal(outResults, scannerContext);
+      } else {
+        List<Cell> tmpList = new ArrayList<Cell>();
+        moreValues = nextInternal(tmpList, scannerContext);
+        outResults.addAll(tmpList);
       }
 
       // If the size limit was reached it means a partial Result is being returned. Returning a
@@ -6061,33 +6027,29 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       boolean tmpKeepProgress = scannerContext.getKeepProgress();
       // Scanning between column families and thus the scope is between cells
       LimitScope limitScope = LimitScope.BETWEEN_CELLS;
-      try {
-        do {
-          // We want to maintain any progress that is made towards the limits while scanning across
-          // different column families. To do this, we toggle the keep progress flag on during calls
-          // to the StoreScanner to ensure that any progress made thus far is not wiped away.
-          scannerContext.setKeepProgress(true);
-          heap.next(results, scannerContext);
-          scannerContext.setKeepProgress(tmpKeepProgress);
+      do {
+        // We want to maintain any progress that is made towards the limits while scanning across
+        // different column families. To do this, we toggle the keep progress flag on during calls
+        // to the StoreScanner to ensure that any progress made thus far is not wiped away.
+        scannerContext.setKeepProgress(true);
+        heap.next(results, scannerContext);
+        scannerContext.setKeepProgress(tmpKeepProgress);
 
-          nextKv = heap.peek();
-          moreCellsInRow = moreCellsInRow(nextKv, currentRowCell);
-          if (!moreCellsInRow) incrementCountOfRowsScannedMetric(scannerContext);
-          if (moreCellsInRow && scannerContext.checkBatchLimit(limitScope)) {
-            return scannerContext.setScannerState(NextState.BATCH_LIMIT_REACHED).hasMoreValues();
-          } else if (scannerContext.checkSizeLimit(limitScope)) {
-            ScannerContext.NextState state =
-                moreCellsInRow ? NextState.SIZE_LIMIT_REACHED_MID_ROW : NextState.SIZE_LIMIT_REACHED;
-            return scannerContext.setScannerState(state).hasMoreValues();
-          } else if (scannerContext.checkTimeLimit(limitScope)) {
-            ScannerContext.NextState state =
-                moreCellsInRow ? NextState.TIME_LIMIT_REACHED_MID_ROW : NextState.TIME_LIMIT_REACHED;
-            return scannerContext.setScannerState(state).hasMoreValues();
-          }
-        } while (moreCellsInRow);
-      } catch (FileNotFoundException e) {
-        throw handleFileNotFound(e);
-      }
+        nextKv = heap.peek();
+        moreCellsInRow = moreCellsInRow(nextKv, currentRowCell);
+        if (!moreCellsInRow) incrementCountOfRowsScannedMetric(scannerContext);
+        if (moreCellsInRow && scannerContext.checkBatchLimit(limitScope)) {
+          return scannerContext.setScannerState(NextState.BATCH_LIMIT_REACHED).hasMoreValues();
+        } else if (scannerContext.checkSizeLimit(limitScope)) {
+          ScannerContext.NextState state =
+              moreCellsInRow ? NextState.SIZE_LIMIT_REACHED_MID_ROW : NextState.SIZE_LIMIT_REACHED;
+          return scannerContext.setScannerState(state).hasMoreValues();
+        } else if (scannerContext.checkTimeLimit(limitScope)) {
+          ScannerContext.NextState state =
+              moreCellsInRow ? NextState.TIME_LIMIT_REACHED_MID_ROW : NextState.TIME_LIMIT_REACHED;
+          return scannerContext.setScannerState(state).hasMoreValues();
+        }
+      } while (moreCellsInRow);
       return nextKv != null;
     }
 
@@ -6435,8 +6397,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
         if (this.joinedHeap != null) {
           result = this.joinedHeap.requestSeek(kv, true, true) || result;
         }
-      } catch (FileNotFoundException e) {
-        throw handleFileNotFound(e);
       } finally {
         closeRegionOperation();
       }

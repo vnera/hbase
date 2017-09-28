@@ -21,30 +21,38 @@ package org.apache.hadoop.hbase.backup;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
-import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.backup.impl.BackupManager;
 import org.apache.hadoop.hbase.backup.impl.BackupSystemTable;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
+import org.apache.hadoop.hbase.coprocessor.RegionCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.RegionObserver;
 import org.apache.hadoop.hbase.util.Pair;
+import org.apache.yetus.audience.InterfaceAudience;
 
 /**
  * An Observer to facilitate backup operations
  */
 @InterfaceAudience.LimitedPrivate(HBaseInterfaceAudience.CONFIG)
-public class BackupObserver implements RegionObserver {
+public class BackupObserver implements RegionCoprocessor, RegionObserver {
   private static final Log LOG = LogFactory.getLog(BackupObserver.class);
+
+  @Override
+  public Optional<RegionObserver> getRegionObserver() {
+    return Optional.of(this);
+  }
+
   @Override
   public boolean postBulkLoadHFile(ObserverContext<RegionCoprocessorEnvironment> ctx,
     List<Pair<byte[], String>> stagingFamilyPaths, Map<byte[], List<Path>> finalPaths,
@@ -61,7 +69,7 @@ public class BackupObserver implements RegionObserver {
     try (Connection connection = ConnectionFactory.createConnection(cfg);
         BackupSystemTable tbl = new BackupSystemTable(connection)) {
       List<TableName> fullyBackedUpTables = tbl.getTablesForBackupType(BackupType.FULL);
-      HRegionInfo info = ctx.getEnvironment().getRegionInfo();
+      RegionInfo info = ctx.getEnvironment().getRegionInfo();
       TableName tableName = info.getTable();
       if (!fullyBackedUpTables.contains(tableName)) {
         if (LOG.isTraceEnabled()) {
@@ -87,7 +95,7 @@ public class BackupObserver implements RegionObserver {
     try (Connection connection = ConnectionFactory.createConnection(cfg);
         BackupSystemTable tbl = new BackupSystemTable(connection)) {
       List<TableName> fullyBackedUpTables = tbl.getTablesForBackupType(BackupType.FULL);
-      HRegionInfo info = ctx.getEnvironment().getRegionInfo();
+      RegionInfo info = ctx.getEnvironment().getRegionInfo();
       TableName tableName = info.getTable();
       if (!fullyBackedUpTables.contains(tableName)) {
         if (LOG.isTraceEnabled()) {

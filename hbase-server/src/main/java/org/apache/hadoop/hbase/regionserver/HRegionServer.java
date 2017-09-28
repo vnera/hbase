@@ -18,7 +18,6 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
-
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.lang.Thread.UncaughtExceptionHandler;
@@ -84,7 +83,6 @@ import org.apache.hadoop.hbase.TableDescriptors;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.YouAreDeadException;
 import org.apache.hadoop.hbase.ZNodeClearer;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.ClusterConnection;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionUtils;
@@ -141,6 +139,44 @@ import org.apache.hadoop.hbase.replication.regionserver.ReplicationLoad;
 import org.apache.hadoop.hbase.security.Superusers;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.security.UserProvider;
+import org.apache.hadoop.hbase.trace.SpanReceiverHost;
+import org.apache.hadoop.hbase.util.Addressing;
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.CompressionTest;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
+import org.apache.hadoop.hbase.util.FSTableDescriptors;
+import org.apache.hadoop.hbase.util.FSUtils;
+import org.apache.hadoop.hbase.util.HasThread;
+import org.apache.hadoop.hbase.util.JSONBean;
+import org.apache.hadoop.hbase.util.JvmPauseMonitor;
+import org.apache.hadoop.hbase.util.NettyEventLoopGroupConfig;
+import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.util.ServerRegionReplicaUtil;
+import org.apache.hadoop.hbase.util.Sleeper;
+import org.apache.hadoop.hbase.util.Threads;
+import org.apache.hadoop.hbase.util.VersionInfo;
+import org.apache.hadoop.hbase.wal.AbstractFSWALProvider;
+import org.apache.hadoop.hbase.wal.NettyAsyncFSWALConfigHelper;
+import org.apache.hadoop.hbase.wal.WAL;
+import org.apache.hadoop.hbase.wal.WALFactory;
+import org.apache.hadoop.hbase.zookeeper.ClusterStatusTracker;
+import org.apache.hadoop.hbase.zookeeper.MasterAddressTracker;
+import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RecoveringRegionWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
+import org.apache.hadoop.hbase.zookeeper.ZKSplitLog;
+import org.apache.hadoop.hbase.zookeeper.ZKUtil;
+import org.apache.hadoop.hbase.zookeeper.ZooKeeperNodeTracker;
+import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.ipc.RemoteException;
+import org.apache.hadoop.metrics2.util.MBeans;
+import org.apache.hadoop.util.ReflectionUtils;
+import org.apache.hadoop.util.StringUtils;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.KeeperException.NoNodeException;
+import org.apache.zookeeper.data.Stat;
+
 import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.Maps;
@@ -177,42 +213,6 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProto
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRSFatalErrorRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionResponse;
-import org.apache.hadoop.hbase.trace.SpanReceiverHost;
-import org.apache.hadoop.hbase.util.Addressing;
-import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.CompressionTest;
-import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
-import org.apache.hadoop.hbase.util.FSTableDescriptors;
-import org.apache.hadoop.hbase.util.FSUtils;
-import org.apache.hadoop.hbase.util.HasThread;
-import org.apache.hadoop.hbase.util.JSONBean;
-import org.apache.hadoop.hbase.util.JvmPauseMonitor;
-import org.apache.hadoop.hbase.util.NettyEventLoopGroupConfig;
-import org.apache.hadoop.hbase.util.Pair;
-import org.apache.hadoop.hbase.util.ServerRegionReplicaUtil;
-import org.apache.hadoop.hbase.util.Sleeper;
-import org.apache.hadoop.hbase.util.Threads;
-import org.apache.hadoop.hbase.util.VersionInfo;
-import org.apache.hadoop.hbase.wal.AbstractFSWALProvider;
-import org.apache.hadoop.hbase.wal.NettyAsyncFSWALConfigHelper;
-import org.apache.hadoop.hbase.wal.WAL;
-import org.apache.hadoop.hbase.wal.WALFactory;
-import org.apache.hadoop.hbase.zookeeper.ClusterStatusTracker;
-import org.apache.hadoop.hbase.zookeeper.MasterAddressTracker;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
-import org.apache.hadoop.hbase.zookeeper.RecoveringRegionWatcher;
-import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
-import org.apache.hadoop.hbase.zookeeper.ZKSplitLog;
-import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperNodeTracker;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
-import org.apache.hadoop.ipc.RemoteException;
-import org.apache.hadoop.metrics2.util.MBeans;
-import org.apache.hadoop.util.ReflectionUtils;
-import org.apache.hadoop.util.StringUtils;
-import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.KeeperException.NoNodeException;
-import org.apache.zookeeper.data.Stat;
 
 import sun.misc.Signal;
 import sun.misc.SignalHandler;
@@ -2757,7 +2757,7 @@ public class HRegionServer extends HasThread implements
   }
 
   @Override
-  public void addToOnlineRegions(Region region) {
+  public void addRegion(Region region) {
     this.onlineRegions.put(region.getRegionInfo().getEncodedName(), region);
     configurationManager.registerObserver(region);
   }
@@ -3003,7 +3003,7 @@ public class HRegionServer extends HasThread implements
    * @return Online regions from <code>tableName</code>
    */
   @Override
-  public List<Region> getOnlineRegions(TableName tableName) {
+  public List<Region> getRegions(TableName tableName) {
      List<Region> tableRegions = new ArrayList<>();
      synchronized (this.onlineRegions) {
        for (Region region: this.onlineRegions.values()) {
@@ -3017,7 +3017,7 @@ public class HRegionServer extends HasThread implements
    }
 
   @Override
-  public List<Region> getOnlineRegions() {
+  public List<Region> getRegions() {
     List<Region> allRegions = new ArrayList<>();
     synchronized (this.onlineRegions) {
       // Return a clone copy of the onlineRegions
@@ -3103,7 +3103,7 @@ public class HRegionServer extends HasThread implements
   protected boolean closeRegion(String encodedName, final boolean abort, final ServerName sn)
       throws NotServingRegionException {
     //Check for permissions to close.
-    Region actualRegion = this.getFromOnlineRegions(encodedName);
+    Region actualRegion = this.getRegion(encodedName);
     // Can be null if we're calling close on a region that's not online
     if ((actualRegion != null) && (actualRegion.getCoprocessorHost() != null)) {
       try {
@@ -3128,7 +3128,7 @@ public class HRegionServer extends HasThread implements
         return closeRegion(encodedName, abort, sn);
       }
       // Let's get the region from the online region list again
-      actualRegion = this.getFromOnlineRegions(encodedName);
+      actualRegion = this.getRegion(encodedName);
       if (actualRegion == null) { // If already online, we still need to close it.
         LOG.info("The opening previously in progress has been cancelled by a CLOSE request.");
         // The master deletes the znode when it receives this exception.
@@ -3170,9 +3170,9 @@ public class HRegionServer extends HasThread implements
  protected boolean closeAndOfflineRegionForSplitOrMerge(
      final List<String> regionEncodedName) throws IOException {
    for (int i = 0; i < regionEncodedName.size(); ++i) {
-     Region regionToClose = this.getFromOnlineRegions(regionEncodedName.get(i));
+     Region regionToClose = this.getRegion(regionEncodedName.get(i));
      if (regionToClose != null) {
-       Map<byte[], List<StoreFile>> hstoreFiles = null;
+       Map<byte[], List<HStoreFile>> hstoreFiles = null;
        Exception exceptionToThrow = null;
        try{
          hstoreFiles = ((HRegion)regionToClose).close(false);
@@ -3211,7 +3211,7 @@ public class HRegionServer extends HasThread implements
          MetaTableAccessor.putToMetaTable(getConnection(), finalBarrier);
        }
        // Offline the region
-       this.removeFromOnlineRegions(regionToClose, null);
+       this.removeRegion(regionToClose, null);
      }
    }
    return true;
@@ -3232,13 +3232,13 @@ public class HRegionServer extends HasThread implements
   }
 
   @Override
-  public Region getFromOnlineRegions(final String encodedRegionName) {
+  public Region getRegion(final String encodedRegionName) {
     return this.onlineRegions.get(encodedRegionName);
   }
 
 
   @Override
-  public boolean removeFromOnlineRegions(final Region r, ServerName destination) {
+  public boolean removeRegion(final Region r, ServerName destination) {
     Region toReturn = this.onlineRegions.remove(r.getRegionInfo().getEncodedName());
     if (destination != null) {
       long closeSeqNum = r.getMaxFlushedSeqId();

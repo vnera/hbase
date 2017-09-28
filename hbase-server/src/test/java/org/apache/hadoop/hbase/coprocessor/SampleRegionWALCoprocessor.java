@@ -22,16 +22,17 @@ package org.apache.hadoop.hbase.coprocessor;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
-import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.KeyValue;
-import org.apache.hadoop.hbase.wal.WALEdit;
+import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.wal.WALKey;
 
 /**
@@ -39,9 +40,10 @@ import org.apache.hadoop.hbase.wal.WALKey;
  * passed-in WALEdit, i.e, ignore specified columns when writing, or add a KeyValue. On the other
  * side, it checks whether the ignored column is still in WAL when Restoreed at region reconstruct.
  */
-public class SampleRegionWALObserver implements WALObserver, RegionObserver {
+public class SampleRegionWALCoprocessor implements WALCoprocessor, RegionCoprocessor,
+    WALObserver, RegionObserver {
 
-  private static final Log LOG = LogFactory.getLog(SampleRegionWALObserver.class);
+  private static final Log LOG = LogFactory.getLog(SampleRegionWALCoprocessor.class);
 
   private byte[] tableName;
   private byte[] row;
@@ -81,15 +83,24 @@ public class SampleRegionWALObserver implements WALObserver, RegionObserver {
     postWALRollCalled = false;
   }
 
+  @Override public Optional<WALObserver> getWALObserver() {
+    return Optional.of(this);
+  }
+
+  @Override
+  public Optional<RegionObserver> getRegionObserver() {
+    return Optional.of(this);
+  }
+
   @Override
   public void postWALWrite(ObserverContext<? extends WALCoprocessorEnvironment> env,
-      HRegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
+      RegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
     postWALWriteCalled = true;
   }
 
   @Override
   public boolean preWALWrite(ObserverContext<? extends WALCoprocessorEnvironment> env,
-      HRegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
+      RegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
     boolean bypass = false;
     // check table name matches or not.
     if (!Bytes.equals(info.getTable().toBytes(), this.tableName)) {
@@ -132,7 +143,7 @@ public class SampleRegionWALObserver implements WALObserver, RegionObserver {
    */
   @Override
   public void preWALRestore(ObserverContext<? extends RegionCoprocessorEnvironment> env,
-      HRegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
+    RegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
     preWALRestoreCalled = true;
   }
 
@@ -154,7 +165,7 @@ public class SampleRegionWALObserver implements WALObserver, RegionObserver {
    */
   @Override
   public void postWALRestore(ObserverContext<? extends RegionCoprocessorEnvironment> env,
-      HRegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
+      RegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
     postWALRestoreCalled = true;
   }
 
@@ -167,13 +178,13 @@ public class SampleRegionWALObserver implements WALObserver, RegionObserver {
   }
 
   public boolean isPreWALRestoreCalled() {
-    LOG.debug(SampleRegionWALObserver.class.getName() +
+    LOG.debug(SampleRegionWALCoprocessor.class.getName() +
       ".isPreWALRestoreCalled is called.");
     return preWALRestoreCalled;
   }
 
   public boolean isPostWALRestoreCalled() {
-    LOG.debug(SampleRegionWALObserver.class.getName() +
+    LOG.debug(SampleRegionWALCoprocessor.class.getName() +
       ".isPostWALRestoreCalled is called.");
     return postWALRestoreCalled;
   }

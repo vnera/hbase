@@ -36,6 +36,7 @@ import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -72,12 +73,13 @@ import org.apache.hadoop.hbase.client.RegionLocator;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.SnapshotDescription;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.client.security.SecurityCapability;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
-import org.apache.hadoop.hbase.coprocessor.CoprocessorService;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
+import org.apache.hadoop.hbase.coprocessor.RegionCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.RegionServerCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.protobuf.generated.PingProtos.CountRequest;
@@ -110,7 +112,6 @@ import org.apache.hadoop.hbase.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.protobuf.generated.AccessControlProtos;
 import org.apache.hadoop.hbase.protobuf.generated.AccessControlProtos.AccessControlService;
 import org.apache.hadoop.hbase.protobuf.generated.AccessControlProtos.CheckPermissionsRequest;
-import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.regionserver.RegionCoprocessorHost;
@@ -136,7 +137,6 @@ import org.junit.rules.TestName;
 
 import org.apache.hadoop.hbase.shaded.ipc.protobuf.generated.TestProcedureProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ProcedureProtos.ProcedureState;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos.SnapshotDescription;
 
 /**
  * Performs authorization checks for common operations, according to different
@@ -227,13 +227,11 @@ public class TestAccessController extends SecureTestUtil {
     MasterCoprocessorHost cpHost =
       TEST_UTIL.getMiniHBaseCluster().getMaster().getMasterCoprocessorHost();
     cpHost.load(AccessController.class, Coprocessor.PRIORITY_HIGHEST, conf);
-    ACCESS_CONTROLLER = (AccessController) cpHost.findCoprocessor(AccessController.class.getName());
-    CP_ENV = cpHost.createEnvironment(AccessController.class, ACCESS_CONTROLLER,
-      Coprocessor.PRIORITY_HIGHEST, 1, conf);
+    ACCESS_CONTROLLER = cpHost.findCoprocessor(AccessController.class);
+    CP_ENV = cpHost.createEnvironment(ACCESS_CONTROLLER, Coprocessor.PRIORITY_HIGHEST, 1, conf);
     RegionServerCoprocessorHost rsHost = TEST_UTIL.getMiniHBaseCluster().getRegionServer(0)
       .getRegionServerCoprocessorHost();
-    RSCP_ENV = rsHost.createEnvironment(AccessController.class, ACCESS_CONTROLLER,
-      Coprocessor.PRIORITY_HIGHEST, 1, conf);
+    RSCP_ENV = rsHost.createEnvironment(ACCESS_CONTROLLER, Coprocessor.PRIORITY_HIGHEST, 1, conf);
 
     // Wait for the ACL table to become available
     TEST_UTIL.waitUntilAllRegionsAssigned(AccessControlLists.ACL_TABLE_NAME);
@@ -279,8 +277,7 @@ public class TestAccessController extends SecureTestUtil {
 
     Region region = TEST_UTIL.getHBaseCluster().getRegions(TEST_TABLE).get(0);
     RegionCoprocessorHost rcpHost = region.getCoprocessorHost();
-    RCP_ENV = rcpHost.createEnvironment(AccessController.class, ACCESS_CONTROLLER,
-      Coprocessor.PRIORITY_HIGHEST, 1, conf);
+    RCP_ENV = rcpHost.createEnvironment(ACCESS_CONTROLLER, Coprocessor.PRIORITY_HIGHEST, 1, conf);
 
     // Set up initial grants
 
@@ -2001,10 +1998,8 @@ public class TestAccessController extends SecureTestUtil {
   public void testSnapshot() throws Exception {
     Admin admin = TEST_UTIL.getAdmin();
     final HTableDescriptor htd = admin.getTableDescriptor(TEST_TABLE);
-    SnapshotDescription.Builder builder = SnapshotDescription.newBuilder();
-    builder.setName(TEST_TABLE.getNameAsString() + "-snapshot");
-    builder.setTable(TEST_TABLE.getNameAsString());
-    final SnapshotDescription snapshot = builder.build();
+    final SnapshotDescription snapshot = new SnapshotDescription(
+        TEST_TABLE.getNameAsString() + "-snapshot", TEST_TABLE);
     AccessTestAction snapshotAction = new AccessTestAction() {
       @Override
       public Object run() throws Exception {
@@ -2062,11 +2057,9 @@ public class TestAccessController extends SecureTestUtil {
   public void testSnapshotWithOwner() throws Exception {
     Admin admin = TEST_UTIL.getAdmin();
     final HTableDescriptor htd = admin.getTableDescriptor(TEST_TABLE);
-    SnapshotDescription.Builder builder = SnapshotDescription.newBuilder();
-    builder.setName(TEST_TABLE.getNameAsString() + "-snapshot");
-    builder.setTable(TEST_TABLE.getNameAsString());
-    builder.setOwner(USER_OWNER.getName());
-    final SnapshotDescription snapshot = builder.build();
+    final SnapshotDescription snapshot = new SnapshotDescription(
+        TEST_TABLE.getNameAsString() + "-snapshot", TEST_TABLE, null, USER_OWNER.getName());
+
     AccessTestAction snapshotAction = new AccessTestAction() {
       @Override
       public Object run() throws Exception {
@@ -2152,7 +2145,7 @@ public class TestAccessController extends SecureTestUtil {
 
       final int RETRIES_LIMIT = 10;
       int retries = 0;
-      while (newRs.getOnlineRegions(TEST_TABLE2).size() < 1 && retries < RETRIES_LIMIT) {
+      while (newRs.getRegions(TEST_TABLE2).size() < 1 && retries < RETRIES_LIMIT) {
         LOG.debug("Waiting for region to be opened. Already retried " + retries
             + " times.");
         try {
@@ -2562,8 +2555,7 @@ public class TestAccessController extends SecureTestUtil {
   }
 
 
-  public static class PingCoprocessor extends PingService implements Coprocessor,
-      CoprocessorService {
+  public static class PingCoprocessor extends PingService implements RegionCoprocessor {
 
     @Override
     public void start(CoprocessorEnvironment env) throws IOException { }
@@ -2572,8 +2564,8 @@ public class TestAccessController extends SecureTestUtil {
     public void stop(CoprocessorEnvironment env) throws IOException { }
 
     @Override
-    public Service getService() {
-      return this;
+    public Optional<Service> getService() {
+      return Optional.of(this);
     }
 
     @Override
@@ -2613,7 +2605,7 @@ public class TestAccessController extends SecureTestUtil {
     for (JVMClusterUtil.RegionServerThread thread:
         TEST_UTIL.getMiniHBaseCluster().getRegionServerThreads()) {
       HRegionServer rs = thread.getRegionServer();
-      for (Region region: rs.getOnlineRegions(TEST_TABLE)) {
+      for (Region region: rs.getRegions(TEST_TABLE)) {
         region.getCoprocessorHost().load(PingCoprocessor.class,
           Coprocessor.PRIORITY_USER, conf);
       }
@@ -2882,16 +2874,14 @@ public class TestAccessController extends SecureTestUtil {
     AccessTestAction prepareBulkLoadAction = new AccessTestAction() {
       @Override
       public Object run() throws Exception {
-        ACCESS_CONTROLLER.prePrepareBulkLoad(ObserverContext.createAndPrepare(RCP_ENV, null),
-          null);
+        ACCESS_CONTROLLER.prePrepareBulkLoad(ObserverContext.createAndPrepare(RCP_ENV, null));
         return null;
       }
     };
     AccessTestAction cleanupBulkLoadAction = new AccessTestAction() {
       @Override
       public Object run() throws Exception {
-        ACCESS_CONTROLLER.preCleanupBulkLoad(ObserverContext.createAndPrepare(RCP_ENV, null),
-          null);
+        ACCESS_CONTROLLER.preCleanupBulkLoad(ObserverContext.createAndPrepare(RCP_ENV, null));
         return null;
       }
     };
@@ -2904,10 +2894,8 @@ public class TestAccessController extends SecureTestUtil {
     AccessTestAction replicateLogEntriesAction = new AccessTestAction() {
       @Override
       public Object run() throws Exception {
-        ACCESS_CONTROLLER.preReplicateLogEntries(ObserverContext.createAndPrepare(RSCP_ENV, null),
-          null, null);
-        ACCESS_CONTROLLER.postReplicateLogEntries(ObserverContext.createAndPrepare(RSCP_ENV, null),
-          null, null);
+        ACCESS_CONTROLLER.preReplicateLogEntries(ObserverContext.createAndPrepare(RSCP_ENV, null));
+        ACCESS_CONTROLLER.postReplicateLogEntries(ObserverContext.createAndPrepare(RSCP_ENV, null));
         return null;
       }
     };
