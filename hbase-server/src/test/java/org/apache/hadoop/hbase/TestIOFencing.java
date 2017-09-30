@@ -32,6 +32,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
+import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.regionserver.CompactingMemStore;
@@ -99,7 +100,7 @@ public class TestIOFencing {
 
     @SuppressWarnings("deprecation")
     public CompactionBlockerRegion(Path tableDir, WAL log,
-        FileSystem fs, Configuration confParam, HRegionInfo info,
+        FileSystem fs, Configuration confParam, RegionInfo info,
         TableDescriptor htd, RegionServerServices rsServices) {
       super(tableDir, log, fs, confParam, info, htd, rsServices);
     }
@@ -145,7 +146,7 @@ public class TestIOFencing {
 
     public int countStoreFiles() {
       int count = 0;
-      for (Store store : stores.values()) {
+      for (HStore store : stores.values()) {
         count += store.getStorefilesCount();
       }
       return count;
@@ -159,7 +160,7 @@ public class TestIOFencing {
   public static class BlockCompactionsInPrepRegion extends CompactionBlockerRegion {
 
     public BlockCompactionsInPrepRegion(Path tableDir, WAL log,
-        FileSystem fs, Configuration confParam, HRegionInfo info,
+        FileSystem fs, Configuration confParam, RegionInfo info,
         TableDescriptor htd, RegionServerServices rsServices) {
       super(tableDir, log, fs, confParam, info, htd, rsServices);
     }
@@ -182,7 +183,7 @@ public class TestIOFencing {
    */
   public static class BlockCompactionsInCompletionRegion extends CompactionBlockerRegion {
     public BlockCompactionsInCompletionRegion(Path tableDir, WAL log,
-        FileSystem fs, Configuration confParam, HRegionInfo info,
+        FileSystem fs, Configuration confParam, RegionInfo info,
         TableDescriptor htd, RegionServerServices rsServices) {
       super(tableDir, log, fs, confParam, info, htd, rsServices);
     }

@@ -17,6 +17,21 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
+import static org.apache.hadoop.hbase.HBaseTestingUtility.fam1;
+import static org.apache.hadoop.hbase.HBaseTestingUtility.fam2;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -42,6 +57,7 @@ import org.apache.hadoop.hbase.client.Increment;
 import org.apache.hadoop.hbase.client.IsolationLevel;
 import org.apache.hadoop.hbase.client.Mutation;
 import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.RowMutations;
 import org.apache.hadoop.hbase.client.Scan;
@@ -60,21 +76,6 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-
-import static org.apache.hadoop.hbase.HBaseTestingUtility.fam1;
-import static org.apache.hadoop.hbase.HBaseTestingUtility.fam2;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 /**
  * Testing of HRegion.incrementColumnValue, HRegion.increment,
  * and HRegion.append
@@ -84,7 +85,7 @@ public class TestAtomicOperation {
   private static final Log LOG = LogFactory.getLog(TestAtomicOperation.class);
   @Rule public TestName name = new TestName();
 
-  Region region = null;
+  HRegion region = null;
   private HBaseTestingUtility TEST_UTIL = HBaseTestingUtility.createLocalHTU();
 
   // Test names
@@ -97,7 +98,7 @@ public class TestAtomicOperation {
   static final byte [] row = Bytes.toBytes("rowA");
   static final byte [] row2 = Bytes.toBytes("rowB");
 
-  @Before 
+  @Before
   public void setup() {
     tableName = Bytes.toBytes(name.getMethodName());
   }
@@ -115,7 +116,7 @@ public class TestAtomicOperation {
   }
   //////////////////////////////////////////////////////////////////////////////
   // New tests that doesn't spin up a mini cluster but rather just test the
-  // individual code pieces in the HRegion. 
+  // individual code pieces in the HRegion.
   //////////////////////////////////////////////////////////////////////////////
 
   /**
@@ -289,7 +290,7 @@ public class TestAtomicOperation {
           Result result = region.increment(inc, HConstants.NO_NONCE, HConstants.NO_NONCE);
           if (result != null) {
             assertEquals(Bytes.toLong(result.getValue(fam1, qual1))*2,
-              Bytes.toLong(result.getValue(fam1, qual2))); 
+              Bytes.toLong(result.getValue(fam1, qual2)));
             assertTrue(result.getValue(fam2, qual3) != null);
             assertEquals(Bytes.toLong(result.getValue(fam1, qual1))*3,
               Bytes.toLong(result.getValue(fam2, qual3)));
@@ -335,8 +336,8 @@ public class TestAtomicOperation {
 
               Get g = new Get(row);
               Result result = region.get(g);
-              assertEquals(result.getValue(fam1, qual1).length, result.getValue(fam1, qual2).length); 
-              assertEquals(result.getValue(fam1, qual1).length, result.getValue(fam2, qual3).length); 
+              assertEquals(result.getValue(fam1, qual1).length, result.getValue(fam1, qual2).length);
+              assertEquals(result.getValue(fam1, qual1).length, result.getValue(fam2, qual3).length);
             } catch (IOException e) {
               e.printStackTrace();
               failures.incrementAndGet();
@@ -568,7 +569,7 @@ public class TestAtomicOperation {
       this.failures = failures;
     }
   }
-  
+
   private static CountDownLatch latch = new CountDownLatch(1);
   private enum TestStep {
     INIT,                  // initial put of 10 to set value of the cell
@@ -580,11 +581,11 @@ public class TestAtomicOperation {
   }
   private static volatile TestStep testStep = TestStep.INIT;
   private final String family = "f1";
-     
+
   /**
    * Test written as a verifier for HBASE-7051, CheckAndPut should properly read
-   * MVCC. 
-   * 
+   * MVCC.
+   *
    * Moved into TestAtomicOperation from its original location, TestHBase7051
    */
   @Test
@@ -598,7 +599,7 @@ public class TestAtomicOperation {
     Put put = new Put(Bytes.toBytes("r1"));
     put.addColumn(Bytes.toBytes(family), Bytes.toBytes("q1"), Bytes.toBytes("10"));
     puts[0] = put;
-    
+
     region.batchMutate(puts, HConstants.NO_NONCE, HConstants.NO_NONCE);
     MultithreadedTestUtil.TestContext ctx =
       new MultithreadedTestUtil.TestContext(conf);
@@ -661,7 +662,7 @@ public class TestAtomicOperation {
   public static class MockHRegion extends HRegion {
 
     public MockHRegion(Path tableDir, WAL log, FileSystem fs, Configuration conf,
-        final HRegionInfo regionInfo, final TableDescriptor htd, RegionServerServices rsServices) {
+        final RegionInfo regionInfo, final TableDescriptor htd, RegionServerServices rsServices) {
       super(tableDir, log, fs, conf, regionInfo, htd, rsServices);
     }
 
@@ -672,7 +673,7 @@ public class TestAtomicOperation {
       }
       return new WrappedRowLock(super.getRowLockInternal(row, readLock));
     }
-    
+
     public class WrappedRowLock implements RowLock {
 
       private final RowLock rowLock;

@@ -23,21 +23,20 @@
   import="java.util.List"
   import="static org.apache.commons.lang3.StringEscapeUtils.escapeXml"
   import="org.apache.hadoop.conf.Configuration"
-  import="org.apache.hadoop.hbase.HTableDescriptor"
-  import="org.apache.hadoop.hbase.HColumnDescriptor"
   import="org.apache.hadoop.hbase.HBaseConfiguration"
-  import="org.apache.hadoop.hbase.HRegionInfo"
+  import="org.apache.hadoop.hbase.client.RegionInfoDisplay"
   import="org.apache.hadoop.hbase.regionserver.HRegionServer"
   import="org.apache.hadoop.hbase.regionserver.Region"
   import="org.apache.hadoop.hbase.regionserver.Store"
-  import="org.apache.hadoop.hbase.regionserver.StoreFile"%>
+  import="org.apache.hadoop.hbase.regionserver.StoreFile"
+%>
 <%
   String regionName = request.getParameter("name");
   HRegionServer rs = (HRegionServer) getServletContext().getAttribute(HRegionServer.REGIONSERVER);
   Configuration conf = rs.getConfiguration();
 
   Region region = rs.getRegion(regionName);
-  String displayName = HRegionInfo.getRegionNameAsStringForDisplay(region.getRegionInfo(),
+  String displayName = RegionInfoDisplay.getRegionNameAsStringForDisplay(region.getRegionInfo(),
     rs.getConfiguration());
 %>
 <!DOCTYPE html>
@@ -99,7 +98,7 @@
 
        <h3>Column Family: <%= cf %></h2>
 
-       <h4>Memstore size (MB): <%= (int) (store.getMemStoreSize() / 1024 / 1024) %></h3>
+       <h4>Memstore size (MB): <%= (int) (store.getMemStoreSize().getHeapSize() / 1024 / 1024) %></h3>
 
        <h4>Store Files</h3>
 
