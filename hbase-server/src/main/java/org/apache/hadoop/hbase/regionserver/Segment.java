@@ -31,10 +31,10 @@ import org.apache.hadoop.hbase.CellComparator;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValueUtil;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.io.TimeRange;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.ClassSize;
+import org.apache.yetus.audience.InterfaceAudience;
 
 import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 
@@ -54,7 +54,7 @@ public abstract class Segment {
       + Bytes.SIZEOF_LONG // minSequenceId
       + Bytes.SIZEOF_BOOLEAN); // tagsPresent
   public final static long DEEP_OVERHEAD = FIXED_OVERHEAD + ClassSize.ATOMIC_REFERENCE
-      + ClassSize.CELL_SET + 2 * ClassSize.ATOMIC_LONG + ClassSize.TIMERANGE_TRACKER;
+      + ClassSize.CELL_SET + 2 * ClassSize.ATOMIC_LONG + ClassSize.SYNC_TIMERANGE_TRACKER;
 
   private AtomicReference<CellSet> cellSet= new AtomicReference<>();
   private final CellComparator comparator;
@@ -73,7 +73,7 @@ public abstract class Segment {
     this.comparator = comparator;
     this.dataSize = new AtomicLong(0);
     this.heapSize = new AtomicLong(0);
-    this.timeRangeTracker = new TimeRangeTracker();
+    this.timeRangeTracker = TimeRangeTracker.create(TimeRangeTracker.Type.SYNC);
   }
 
   // This constructor is used to create empty Segments.
@@ -85,7 +85,7 @@ public abstract class Segment {
     this.dataSize = new AtomicLong(0);
     this.heapSize = new AtomicLong(0);
     this.tagsPresent = false;
-    this.timeRangeTracker = new TimeRangeTracker();
+    this.timeRangeTracker = TimeRangeTracker.create(TimeRangeTracker.Type.SYNC);
   }
 
   protected Segment(Segment segment) {
@@ -305,6 +305,10 @@ public abstract class Segment {
     }
   }
 
+  protected void updateMetaInfo(Cell cellToAdd, boolean succ, MemstoreSize memstoreSize) {
+    updateMetaInfo(cellToAdd, succ, (getMemStoreLAB()!=null), memstoreSize);
+  }
+
   /**
    * @return The increase in heap size because of this cell addition. This includes this cell POJO's
    *         heap size itself and additional overhead because of addition on to CSLM.
@@ -312,10 +316,12 @@ public abstract class Segment {
   protected long heapSizeChange(Cell cell, boolean succ) {
     if (succ) {
       return ClassSize
-          .align(ClassSize.CONCURRENT_SKIPLISTMAP_ENTRY + CellUtil.estimatedHeapSizeOf(cell));
+          .align(indexEntrySize() + CellUtil.estimatedHeapSizeOf(cell));
     }
     return 0;
   }
+
+  protected abstract long indexEntrySize();
 
   /**
    * Returns a subset of the segment cell set, which starts with the given cell

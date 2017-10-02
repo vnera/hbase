@@ -20,7 +20,6 @@
 
 package org.apache.hadoop.hbase.util;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,6 +28,8 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.yetus.audience.InterfaceAudience;
+
+import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 
 
 /**
@@ -89,6 +90,15 @@ public class ClassSize {
   /** Overhead for ConcurrentSkipListMap Entry */
   public static final int CONCURRENT_SKIPLISTMAP_ENTRY;
 
+  /** Overhead for CellFlatMap */
+  public static final int CELL_FLAT_MAP;
+
+  /** Overhead for CellChunkMap */
+  public static final int CELL_CHUNK_MAP;
+
+  /** Overhead for Cell Chunk Map Entry */
+  public static final int CELL_CHUNK_MAP_ENTRY;
+
   /** Overhead for CellArrayMap */
   public static final int CELL_ARRAY_MAP;
 
@@ -119,8 +129,8 @@ public class ClassSize {
   /** Overhead for timerange */
   public static final int TIMERANGE;
 
-  /** Overhead for TimeRangeTracker */
-  public static final int TIMERANGE_TRACKER;
+  /** Overhead for SyncTimeRangeTracker */
+  public static final int SYNC_TIMERANGE_TRACKER;
 
   /** Overhead for CellSkipListSet */
   public static final int CELL_SET;
@@ -275,13 +285,17 @@ public class ClassSize {
     // The size changes from jdk7 to jdk8, estimate the size rather than use a conditional
     CONCURRENT_SKIPLISTMAP = (int) estimateBase(ConcurrentSkipListMap.class, false);
 
-    // CELL_ARRAY_MAP is the size of an instance of CellArrayMap class, which extends
-    // CellFlatMap class. CellArrayMap object containing a ref to an Array, so
-    // OBJECT + REFERENCE + ARRAY
     // CellFlatMap object contains two integers, one boolean and one reference to object, so
     // 2*INT + BOOLEAN + REFERENCE
-    CELL_ARRAY_MAP = align(OBJECT + 2*Bytes.SIZEOF_INT + Bytes.SIZEOF_BOOLEAN
-        + ARRAY + 2*REFERENCE);
+    CELL_FLAT_MAP = OBJECT + 2*Bytes.SIZEOF_INT + Bytes.SIZEOF_BOOLEAN + REFERENCE;
+
+    // CELL_ARRAY_MAP is the size of an instance of CellArrayMap class, which extends
+    // CellFlatMap class. CellArrayMap object containing a ref to an Array of Cells
+    CELL_ARRAY_MAP = align(CELL_FLAT_MAP + REFERENCE + ARRAY);
+
+    // CELL_CHUNK_MAP is the size of an instance of CellChunkMap class, which extends
+    // CellFlatMap class. CellChunkMap object containing a ref to an Array of Chunks
+    CELL_CHUNK_MAP = align(CELL_FLAT_MAP + REFERENCE + ARRAY);
 
     CONCURRENT_SKIPLISTMAP_ENTRY = align(
         align(OBJECT + (3 * REFERENCE)) + /* one node per entry */
@@ -289,6 +303,12 @@ public class ClassSize {
 
     // REFERENCE in the CellArrayMap all the rest is counted in KeyValue.heapSize()
     CELL_ARRAY_MAP_ENTRY = align(REFERENCE);
+
+    // The Cell Representation in the CellChunkMap, the Cell object size shouldn't be counted
+    // in KeyValue.heapSize()
+    // each cell-representation requires three integers for chunkID (reference to the ByteBuffer),
+    // offset and length, and one long for seqID
+    CELL_CHUNK_MAP_ENTRY = 3*Bytes.SIZEOF_INT + Bytes.SIZEOF_LONG;
 
     REENTRANT_LOCK = align(OBJECT + (3 * REFERENCE));
 
@@ -306,7 +326,7 @@ public class ClassSize {
 
     TIMERANGE = align(ClassSize.OBJECT + Bytes.SIZEOF_LONG * 2 + Bytes.SIZEOF_BOOLEAN);
 
-    TIMERANGE_TRACKER = align(ClassSize.OBJECT + 2 * REFERENCE);
+    SYNC_TIMERANGE_TRACKER = align(ClassSize.OBJECT + 2 * REFERENCE);
     CELL_SET = align(OBJECT + REFERENCE);
 
     STORE_SERVICES = align(OBJECT + REFERENCE + ATOMIC_LONG);
