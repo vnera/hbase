@@ -36,6 +36,15 @@
 
 personality_plugins "all"
 
+if ! declare -f "yetus_info" >/dev/null; then
+
+  function yetus_info
+  {
+    echo "[$(date) INFO]: $*" 1>&2
+  }
+
+fi
+
 ## @description  Globals specific to this personality
 ## @audience     private
 ## @stability    evolving
@@ -50,19 +59,6 @@ function personality_globals
   JIRA_ISSUE_RE='^HBASE-[0-9]+$'
   #shellcheck disable=SC2034
   GITHUB_REPO="apache/hbase"
-
-  # All supported Hadoop versions that we want to test the compilation with
-  # See the Hadoop section on prereqs in the HBase Reference Guide
-  if [[ "${PATCH_BRANCH}" = branch-1* ]]; then
-    HBASE_HADOOP2_VERSIONS="2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3"
-    HBASE_HADOOP3_VERSIONS=""
-  elif [[ ${PATCH_BRANCH} = branch-2* ]]; then
-    HBASE_HADOOP2_VERSIONS="2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3"
-    HBASE_HADOOP3_VERSIONS="3.0.0-alpha4"
-  else # master or a feature branch
-    HBASE_HADOOP2_VERSIONS="2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3"
-    HBASE_HADOOP3_VERSIONS="3.0.0-alpha4"
-  fi
 
   # TODO use PATCH_BRANCH to select jdk versions to use.
 
@@ -88,9 +84,7 @@ function personality_modules
 
   extra="-DHBasePatchProcess"
 
-  if [[ ${repostatus} == branch
-     && ${testtype} == mvninstall ]] ||
-     [[ "${BUILDMODE}" == full ]];then
+  if [[ ${testtype} == mvninstall ]] || [[ "${BUILDMODE}" == full ]]; then
     personality_enqueue_module . ${extra}
     return
   fi
@@ -115,6 +109,11 @@ function personality_modules
   # and sets -Dtest.exclude.pattern/-Dtest to exclude/include the
   # tests respectively.
   if [[ ${testtype} = unit ]]; then
+    # if the modules include root, skip all the submodules HBASE-18505
+    if [[ "${CHANGED_MODULES[*]}" =~ \. ]]; then
+      CHANGED_MODULES=(.)
+    fi
+
     extra="${extra} -PrunAllTests"
     yetus_debug "EXCLUDE_TESTS_URL = ${EXCLUDE_TESTS_URL}"
     yetus_debug "INCLUDE_TESTS_URL = ${INCLUDE_TESTS_URL}"
@@ -172,12 +171,19 @@ function shadedjars_initialize
 {
   yetus_debug "initializing shaded client checks."
   maven_add_install shadedjars
-  add_test shadedjars
 }
 
-function shadedjars_clean
+## @description  only run the test if java changes.
+## @audience     private
+## @stability    evolving
+## @param        filename
+function shadedjars_filefilter
 {
-  "${MAVEN}" "${MAVEN_ARGS[@]}" clean -fae -pl hbase_shaded/hbase-shaded-check-invariants -am -Prelease
+  local filename=$1
+
+  if [[ ${filename} =~ \.java$ ]] || [[ ${filename} =~ pom.xml$ ]]; then
+    add_test shadedjars
+  fi
 }
 
 ## @description test the shaded client artifacts
@@ -188,6 +194,10 @@ function shadedjars_rebuild
 {
   local repostatus=$1
   local logfile="${PATCH_DIR}/${repostatus}-shadedjars.txt"
+
+  if ! verify_needed_test shadedjars; then
+    return 0
+  fi
 
   big_console_header "Checking shaded client builds on ${repostatus}"
 
@@ -219,7 +229,7 @@ function hadoopcheck_filefilter
 {
   local filename=$1
 
-  if [[ ${filename} =~ \.java$ ]]; then
+  if [[ ${filename} =~ \.java$ ]] || [[ ${filename} =~ pom.xml$ ]]; then
     add_test hadoopcheck
   fi
 }
@@ -242,11 +252,27 @@ function hadoopcheck_rebuild
     return 0
   fi
 
+  if ! verify_needed_test hadoopcheck; then
+    return 0
+  fi
+
   big_console_header "Compiling against various Hadoop versions"
 
-  hbase_hadoop2_versions=${HBASE_HADOOP2_VERSIONS}
-  hbase_hadoop3_versions=${HBASE_HADOOP3_VERSIONS}
-
+  # All supported Hadoop versions that we want to test the compilation with
+  # See the Hadoop section on prereqs in the HBase Reference Guide
+  if [[ "${PATCH_BRANCH}" = branch-1* ]]; then
+    yetus_info "setting Hadoop versions to test based on branch-1-ish rules."
+    hbase_hadoop2_versions="2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3"
+    hbase_hadoop3_versions=""
+  elif [[ ${PATCH_BRANCH} = branch-2* ]]; then
+    yetus_info "setting Hadoop versions to test based on branch-2-ish rules."
+    hbase_hadoop2_versions="2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3"
+    hbase_hadoop3_versions="3.0.0-alpha4"
+  else # master or a feature branch
+    yetus_info "setting Hadoop versions to test based on master/feature branch rules."
+    hbase_hadoop2_versions="2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3"
+    hbase_hadoop3_versions="3.0.0-alpha4"
+  fi
 
   export MAVEN_OPTS="${MAVEN_OPTS}"
   for hadoopver in ${hbase_hadoop2_versions}; do
@@ -306,7 +332,7 @@ function hbaseprotoc_filefilter
   fi
 }
 
-## @description  hadoopcheck test
+## @description  check hbase proto compilation
 ## @audience     private
 ## @stability    evolving
 ## @param        repostatus
@@ -414,6 +440,12 @@ function hbaseanti_patchfile
   warnings=$(${GREP} 'import org.apache.hadoop.classification' "${patchfile}")
   if [[ ${warnings} -gt 0 ]]; then
     add_vote_table -1 hbaseanti "" "The patch appears use Hadoop classification instead of HBase: ${warnings}."
+    ((result=result+1))
+  fi
+
+  warnings=$(${GREP} 'import org.codehaus.jackson' "${patchfile}")
+  if [[ ${warnings} -gt 0 ]]; then
+    add_vote_table -1 hbaseanti "" "The patch appears use Jackson 1 classes/annotations: ${warnings}."
     ((result=result+1))
   fi
 

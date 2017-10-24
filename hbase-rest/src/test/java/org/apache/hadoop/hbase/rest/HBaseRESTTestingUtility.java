@@ -18,12 +18,13 @@
  */
 package org.apache.hadoop.hbase.rest;
 
+import com.fasterxml.jackson.jaxrs.json.JacksonJaxbJsonProvider;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.security.UserProvider;
-import org.apache.hadoop.hbase.util.HttpServerUtil;
+import org.apache.hadoop.hbase.http.HttpServerUtil;
 import org.apache.hadoop.util.StringUtils;
 
 import org.eclipse.jetty.server.HttpConfiguration;
@@ -32,9 +33,7 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.ServletHolder;
-import org.eclipse.jetty.servlet.ServletContextHandler;
 
-import org.glassfish.jersey.jackson1.Jackson1Feature;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.servlet.ServletContainer;
 
@@ -63,7 +62,7 @@ public class HBaseRESTTestingUtility {
 
     // set up the Jersey servlet container for Jetty
     ResourceConfig app = new ResourceConfig().
-        packages("org.apache.hadoop.hbase.rest").register(Jackson1Feature.class);
+        packages("org.apache.hadoop.hbase.rest").register(JacksonJaxbJsonProvider.class);
     ServletHolder sh = new ServletHolder(new ServletContainer(app));
 
     // set up Jetty and run the embedded server
@@ -100,7 +99,7 @@ public class HBaseRESTTestingUtility {
     // get the port
     testServletPort = ((ServerConnector)server.getConnectors()[0]).getLocalPort();
 
-    LOG.info("started " + server.getClass().getName() + " on port " + 
+    LOG.info("started " + server.getClass().getName() + " on port " +
       testServletPort);
   }
 

@@ -91,6 +91,7 @@ import org.mockito.stubbing.Answer;
  * Tests the table import and table export MR job functionality
  */
 @Category({VerySlowMapReduceTests.class, MediumTests.class})
+//TODO : Remove this in 3.0
 public class TestImportExport {
 
   private static final Log LOG = LogFactory.getLog(TestImportExport.class);

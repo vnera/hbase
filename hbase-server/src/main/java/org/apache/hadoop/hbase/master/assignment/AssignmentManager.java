@@ -76,21 +76,18 @@ import org.apache.hadoop.hbase.procedure2.ProcedureEvent;
 import org.apache.hadoop.hbase.procedure2.ProcedureExecutor;
 import org.apache.hadoop.hbase.procedure2.ProcedureInMemoryChore;
 import org.apache.hadoop.hbase.procedure2.util.StringUtils;
-import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
-import org.apache.hadoop.hbase.util.Pair;
-import org.apache.hadoop.hbase.util.Threads;
-import org.apache.hadoop.hbase.util.VersionInfo;
-import org.apache.yetus.audience.InterfaceAudience;
-
 import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionStateTransition;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionStateTransition.TransitionCode;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionResponse;
-
-// TODO: why are they here?
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
+import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.util.Threads;
+import org.apache.hadoop.hbase.util.VersionInfo;
+import org.apache.yetus.audience.InterfaceAudience;
 
 /**
  * The AssignmentManager is the coordinator for region assign/unassign operations.
@@ -522,7 +519,7 @@ public class AssignmentManager implements ServerListener {
     }
     return regions.stream()
         .map(RegionStateNode::getRegionInfo)
-        .filter(RegionInfo::isSystemTable)
+        .filter(r -> r.getTable().isSystemTable())
         .collect(Collectors.toList());
   }
 
@@ -549,6 +546,14 @@ public class AssignmentManager implements ServerListener {
     }
     assert destinationServer != null; node.toString();
     UnassignProcedure proc = createUnassignProcedure(regionInfo, destinationServer, forceNewPlan);
+    ProcedureSyncWait.submitAndWaitProcedure(master.getMasterProcedureExecutor(), proc);
+  }
+
+  public void move(final RegionInfo regionInfo) throws IOException {
+    RegionStateNode node = this.regionStates.getRegionNode(regionInfo);
+    ServerName sourceServer = node.getRegionLocation();
+    RegionPlan plan = new RegionPlan(regionInfo, sourceServer, null);
+    MoveRegionProcedure proc = createMoveRegionProcedure(plan);
     ProcedureSyncWait.submitAndWaitProcedure(master.getMasterProcedureExecutor(), proc);
   }
 
@@ -590,7 +595,7 @@ public class AssignmentManager implements ServerListener {
     }
 
     ProcedureSyncWait.waitForProcedureToCompleteIOE(
-      master.getMasterProcedureExecutor(), proc.getProcId(), timeout);
+      master.getMasterProcedureExecutor(), proc, timeout);
     return true;
   }
 
@@ -691,7 +696,7 @@ public class AssignmentManager implements ServerListener {
   }
 
   public MoveRegionProcedure createMoveRegionProcedure(final RegionPlan plan) {
-    if (plan.getRegionInfo().isSystemTable()) {
+    if (plan.getRegionInfo().getTable().isSystemTable()) {
       List<ServerName> exclude = getExcludedServersForSystemTable();
       if (plan.getDestination() != null && exclude.contains(plan.getDestination())) {
         try {
@@ -1365,7 +1370,7 @@ public class AssignmentManager implements ServerListener {
     List<RegionInfo> systemList = new ArrayList<>();
     List<RegionInfo> userList = new ArrayList<>();
     for (RegionInfo hri : regions) {
-      if (hri.isSystemTable()) systemList.add(hri);
+      if (hri.getTable().isSystemTable()) systemList.add(hri);
       else userList.add(hri);
     }
     // Append userList to systemList

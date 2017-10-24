@@ -22,13 +22,11 @@ package org.apache.hadoop.hbase.coprocessor;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableSet;
 
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CompareOperator;
-import org.apache.hadoop.hbase.Coprocessor;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.Delete;
@@ -45,7 +43,6 @@ import org.apache.hadoop.hbase.io.FSDataInputStreamWrapper;
 import org.apache.hadoop.hbase.io.Reference;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
-import org.apache.hadoop.hbase.regionserver.KeyValueScanner;
 import org.apache.hadoop.hbase.regionserver.MiniBatchOperationInProgress;
 import org.apache.hadoop.hbase.regionserver.OperationStatus;
 import org.apache.hadoop.hbase.regionserver.Region;
@@ -58,7 +55,6 @@ import org.apache.hadoop.hbase.regionserver.StoreFileReader;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionLifeCycleTracker;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest;
 import org.apache.hadoop.hbase.regionserver.querymatcher.DeleteTracker;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableList;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.wal.WALKey;
@@ -125,27 +121,6 @@ public interface RegionObserver {
   default void postLogReplay(ObserverContext<RegionCoprocessorEnvironment> c) {}
 
   /**
-   * Called before a memstore is flushed to disk and prior to creating the scanner to read from
-   * the memstore.  To override or modify how a memstore is flushed,
-   * implementing classes can return a new scanner to provide the KeyValues to be
-   * stored into the new {@code StoreFile} or null to perform the default processing.
-   * Calling {@link org.apache.hadoop.hbase.coprocessor.ObserverContext#bypass()} has no
-   * effect in this hook.
-   * @param c the environment provided by the region server
-   * @param store the store being flushed
-   * @param scanners the scanners for the memstore that is flushed
-   * @param s the base scanner, if not {@code null}, from previous RegionObserver in the chain
-   * @param readPoint the readpoint to create scanner
-   * @return the scanner to use during the flush.  {@code null} if the default implementation
-   * is to be used.
-   */
-  default InternalScanner preFlushScannerOpen(ObserverContext<RegionCoprocessorEnvironment> c,
-      Store store, List<KeyValueScanner> scanners, InternalScanner s, long readPoint)
-      throws IOException {
-    return s;
-  }
-
-  /**
    * Called before the memstore is flushed to disk.
    * @param c the environment provided by the region server
    */
@@ -183,16 +158,15 @@ public interface RegionObserver {
   /**
    * Called prior to selecting the {@link StoreFile StoreFiles} to compact from the list of
    * available candidates. To alter the files used for compaction, you may mutate the passed in list
-   * of candidates.
+   * of candidates. If you remove all the candidates then the compaction will be canceled.
    * @param c the environment provided by the region server
    * @param store the store where compaction is being requested
    * @param candidates the store files currently available for compaction
    * @param tracker tracker used to track the life cycle of a compaction
-   * @param request the requested compaction
    */
   default void preCompactSelection(ObserverContext<RegionCoprocessorEnvironment> c, Store store,
-      List<? extends StoreFile> candidates, CompactionLifeCycleTracker tracker,
-      CompactionRequest request) throws IOException {}
+      List<? extends StoreFile> candidates, CompactionLifeCycleTracker tracker)
+      throws IOException {}
 
   /**
    * Called after the {@link StoreFile}s to compact have been selected from the available
@@ -204,23 +178,17 @@ public interface RegionObserver {
    * @param request the requested compaction
    */
   default void postCompactSelection(ObserverContext<RegionCoprocessorEnvironment> c, Store store,
-      ImmutableList<? extends StoreFile> selected, CompactionLifeCycleTracker tracker,
+      List<? extends StoreFile> selected, CompactionLifeCycleTracker tracker,
       CompactionRequest request) {}
 
   /**
    * Called prior to writing the {@link StoreFile}s selected for compaction into a new
-   * {@code StoreFile}. To override or modify the compaction process, implementing classes have two
-   * options:
-   * <ul>
-   * <li>Wrap the provided {@link InternalScanner} with a custom implementation that is returned
-   * from this method. The custom scanner can then inspect
-   *  {@link org.apache.hadoop.hbase.KeyValue}s from the wrapped scanner, applying its own
-   *   policy to what gets written.</li>
-   * <li>Call {@link org.apache.hadoop.hbase.coprocessor.ObserverContext#bypass()} and provide a
-   * custom implementation for writing of new {@link StoreFile}s. <strong>Note: any implementations
-   * bypassing core compaction using this approach must write out new store files themselves or the
-   * existing data will no longer be available after compaction.</strong></li>
-   * </ul>
+   * {@code StoreFile}.
+   * <p>
+   * To override or modify the compaction process, implementing classes can wrap the provided
+   * {@link InternalScanner} with a custom implementation that is returned from this method. The
+   * custom scanner can then inspect {@link org.apache.hadoop.hbase.Cell}s from the wrapped scanner,
+   * applying its own policy to what gets written.
    * @param c the environment provided by the region server
    * @param store the store being compacted
    * @param scanner the scanner over existing data used in the store file rewriting
@@ -232,36 +200,8 @@ public interface RegionObserver {
    */
   default InternalScanner preCompact(ObserverContext<RegionCoprocessorEnvironment> c, Store store,
       InternalScanner scanner, ScanType scanType, CompactionLifeCycleTracker tracker,
-      CompactionRequest request)
-      throws IOException {
+      CompactionRequest request) throws IOException {
     return scanner;
-  }
-
-  /**
-   * Called prior to writing the {@link StoreFile}s selected for compaction into a new
-   * {@code StoreFile} and prior to creating the scanner used to read the input files. To override
-   * or modify the compaction process, implementing classes can return a new scanner to provide the
-   * KeyValues to be stored into the new {@code StoreFile} or null to perform the default
-   * processing. Calling {@link org.apache.hadoop.hbase.coprocessor.ObserverContext#bypass()} has no
-   * effect in this hook.
-   * @param c the environment provided by the region server
-   * @param store the store being compacted
-   * @param scanners the list of store file scanners to be read from
-   * @param scanType the {@link ScanType} indicating whether this is a major or minor compaction
-   * @param earliestPutTs timestamp of the earliest put that was found in any of the involved store
-   *          files
-   * @param s the base scanner, if not {@code null}, from previous RegionObserver in the chain
-   * @param tracker used to track the life cycle of a compaction
-   * @param request the requested compaction
-   * @param readPoint the readpoint to create scanner
-   * @return the scanner to use during compaction. {@code null} if the default implementation is to
-   *          be used.
-   */
-  default InternalScanner preCompactScannerOpen(ObserverContext<RegionCoprocessorEnvironment> c,
-      Store store, List<? extends KeyValueScanner> scanners, ScanType scanType, long earliestPutTs,
-      InternalScanner s, CompactionLifeCycleTracker tracker, CompactionRequest request,
-      long readPoint) throws IOException {
-    return s;
   }
 
   /**
@@ -805,35 +745,6 @@ public interface RegionObserver {
   }
 
   /**
-   * Called before a store opens a new scanner.
-   * This hook is called when a "user" scanner is opened.
-   * <p>
-   * See {@link #preFlushScannerOpen(ObserverContext, Store, List, InternalScanner, long)}
-   * and {@link #preCompactScannerOpen(ObserverContext, Store, List, ScanType, long,
-   * InternalScanner, CompactionLifeCycleTracker, CompactionRequest, long)} to override scanners
-   * created for flushes or compactions, resp.
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained coprocessors.
-   * Calling {@link org.apache.hadoop.hbase.coprocessor.ObserverContext#bypass()} has no
-   * effect in this hook.
-   * <p>
-   * Note: Do not retain references to any Cells returned by scanner, beyond the life of this
-   * invocation. If need a Cell reference for later use, copy the cell and use that.
-   * @param c the environment provided by the region server
-   * @param store the store being scanned
-   * @param scan the Scan specification
-   * @param targetCols columns to be used in the scanner
-   * @param s the base scanner, if not {@code null}, from previous RegionObserver in the chain
-   * @param readPt the read point
-   * @return a KeyValueScanner instance to use or {@code null} to use the default implementation
-   */
-  default KeyValueScanner preStoreScannerOpen(ObserverContext<RegionCoprocessorEnvironment> c,
-      Store store, Scan scan, NavigableSet<byte[]> targetCols, KeyValueScanner s, long readPt)
-      throws IOException {
-    return s;
-  }
-
-  /**
    * Called after the client opens a new scanner.
    * <p>
    * Call CoprocessorEnvironment#complete to skip any subsequent chained
@@ -969,7 +880,10 @@ public interface RegionObserver {
    * Called before a {@link WALEdit}
    * replayed for this region.
    * @param ctx the environment provided by the region server
+   * @deprecated Since hbase-2.0.0. No replacement. To be removed in hbase-3.0.0 and replaced
+   * with something that doesn't expose IntefaceAudience.Private classes.
    */
+  @Deprecated
   default void preWALRestore(ObserverContext<? extends RegionCoprocessorEnvironment> ctx,
     RegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {}
 
@@ -977,7 +891,10 @@ public interface RegionObserver {
    * Called after a {@link WALEdit}
    * replayed for this region.
    * @param ctx the environment provided by the region server
+   * @deprecated Since hbase-2.0.0. No replacement. To be removed in hbase-3.0.0 and replaced
+   * with something that doesn't expose IntefaceAudience.Private classes.
    */
+  @Deprecated
   default void postWALRestore(ObserverContext<? extends RegionCoprocessorEnvironment> ctx,
     RegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {}
 
@@ -1047,6 +964,8 @@ public interface RegionObserver {
    * @deprecated For Phoenix only, StoreFileReader is not a stable interface.
    */
   @Deprecated
+  // Passing InterfaceAudience.Private args FSDataInputStreamWrapper, CacheConfig and Reference.
+  // This is fine as the hook is deprecated any way.
   default StoreFileReader preStoreFileReaderOpen(ObserverContext<RegionCoprocessorEnvironment> ctx,
       FileSystem fs, Path p, FSDataInputStreamWrapper in, long size, CacheConfig cacheConf,
       Reference r, StoreFileReader reader) throws IOException {
@@ -1068,6 +987,8 @@ public interface RegionObserver {
    * @deprecated For Phoenix only, StoreFileReader is not a stable interface.
    */
   @Deprecated
+  // Passing InterfaceAudience.Private args FSDataInputStreamWrapper, CacheConfig and Reference.
+  // This is fine as the hook is deprecated any way.
   default StoreFileReader postStoreFileReaderOpen(ObserverContext<RegionCoprocessorEnvironment> ctx,
       FileSystem fs, Path p, FSDataInputStreamWrapper in, long size, CacheConfig cacheConf,
       Reference r, StoreFileReader reader) throws IOException {
@@ -1095,11 +1016,14 @@ public interface RegionObserver {
    * Called after the ScanQueryMatcher creates ScanDeleteTracker. Implementing
    * this hook would help in creating customised DeleteTracker and returning
    * the newly created DeleteTracker
-   *
+   * <p>
+   * Warn: This is used by internal coprocessors. Should not be implemented by user coprocessors
    * @param ctx the environment provided by the region server
    * @param delTracker the deleteTracker that is created by the QueryMatcher
    * @return the Delete Tracker
+   * @deprecated Since 2.0 with out any replacement and will be removed in 3.0
    */
+  @Deprecated
   default DeleteTracker postInstantiateDeleteTracker(
       ObserverContext<RegionCoprocessorEnvironment> ctx, DeleteTracker delTracker)
       throws IOException {

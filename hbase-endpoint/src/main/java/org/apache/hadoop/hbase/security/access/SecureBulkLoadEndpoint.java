@@ -27,6 +27,8 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
+import org.apache.hadoop.hbase.coprocessor.CoreCoprocessor;
+import org.apache.hadoop.hbase.coprocessor.HasRegionServerServices;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
 import org.apache.hadoop.hbase.ipc.CoprocessorRpcUtils;
@@ -41,6 +43,7 @@ import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.RegionSpecifier.Re
 import org.apache.hadoop.hbase.protobuf.generated.SecureBulkLoadProtos.SecureBulkLoadHFilesRequest;
 import org.apache.hadoop.hbase.protobuf.generated.SecureBulkLoadProtos.SecureBulkLoadHFilesResponse;
 import org.apache.hadoop.hbase.protobuf.generated.SecureBulkLoadProtos.SecureBulkLoadService;
+import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 import org.apache.hadoop.hbase.regionserver.SecureBulkLoadManager;
 
@@ -53,6 +56,7 @@ import org.apache.yetus.audience.InterfaceAudience;
  * Coprocessor service for bulk loads in secure mode.
  * @deprecated As of release 2.0.0, this will be removed in HBase 3.0.0
  */
+@CoreCoprocessor
 @InterfaceAudience.Private
 @Deprecated
 public class SecureBulkLoadEndpoint extends SecureBulkLoadService implements RegionCoprocessor {
@@ -67,8 +71,7 @@ public class SecureBulkLoadEndpoint extends SecureBulkLoadService implements Reg
   @Override
   public void start(CoprocessorEnvironment env) {
     this.env = (RegionCoprocessorEnvironment)env;
-    assert this.env.getCoprocessorRegionServerServices() instanceof RegionServerServices;
-    rsServices = (RegionServerServices) this.env.getCoprocessorRegionServerServices();
+    rsServices = ((HasRegionServerServices)this.env).getRegionServerServices();
     LOG.warn("SecureBulkLoadEndpoint is deprecated. It will be removed in future releases.");
     LOG.warn("Secure bulk load has been integrated into HBase core.");
   }
@@ -83,7 +86,7 @@ public class SecureBulkLoadEndpoint extends SecureBulkLoadService implements Reg
     try {
       SecureBulkLoadManager secureBulkLoadManager = this.rsServices.getSecureBulkLoadManager();
 
-      String bulkToken = secureBulkLoadManager.prepareBulkLoad(this.env.getRegion(),
+      String bulkToken = secureBulkLoadManager.prepareBulkLoad((HRegion) this.env.getRegion(),
           convert(request));
       done.run(PrepareBulkLoadResponse.newBuilder().setBulkToken(bulkToken).build());
     } catch (IOException e) {
@@ -109,7 +112,7 @@ public class SecureBulkLoadEndpoint extends SecureBulkLoadService implements Reg
       RpcCallback<CleanupBulkLoadResponse> done) {
     try {
       SecureBulkLoadManager secureBulkLoadManager = this.rsServices.getSecureBulkLoadManager();
-      secureBulkLoadManager.cleanupBulkLoad(this.env.getRegion(), convert(request));
+      secureBulkLoadManager.cleanupBulkLoad((HRegion) this.env.getRegion(), convert(request));
       done.run(CleanupBulkLoadResponse.newBuilder().build());
     } catch (IOException e) {
       CoprocessorRpcUtils.setControllerException(controller, e);
@@ -141,7 +144,7 @@ public class SecureBulkLoadEndpoint extends SecureBulkLoadService implements Reg
     try {
       SecureBulkLoadManager secureBulkLoadManager = this.rsServices.getSecureBulkLoadManager();
       BulkLoadHFileRequest bulkLoadHFileRequest = ConvertSecureBulkLoadHFilesRequest(request);
-      map = secureBulkLoadManager.secureBulkLoadHFiles(this.env.getRegion(),
+      map = secureBulkLoadManager.secureBulkLoadHFiles((HRegion) this.env.getRegion(),
           convert(bulkLoadHFileRequest));
       loaded = map != null && !map.isEmpty();
     } catch (IOException e) {

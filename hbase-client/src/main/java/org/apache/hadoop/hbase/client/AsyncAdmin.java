@@ -143,17 +143,6 @@ public interface AsyncAdmin {
   CompletableFuture<Void> deleteTable(TableName tableName);
 
   /**
-   * Delete tables matching the passed in pattern and wait on completion. Warning: Use this method
-   * carefully, there is no prompting and the effect is immediate. Consider using
-   * {@link #listTableNames(Optional, boolean) } and
-   * {@link #deleteTable(org.apache.hadoop.hbase.TableName)}
-   * @param pattern The pattern to match table names against
-   * @return Table descriptors for tables that couldn't be deleted. The return value will be wrapped
-   *         by a {@link CompletableFuture}. The return HTDs are read-only.
-   */
-  CompletableFuture<List<TableDescriptor>> deleteTables(Pattern pattern);
-
-  /**
    * Truncate a table.
    * @param tableName name of table to truncate
    * @param preserveSplits True if the splits should be preserved
@@ -167,30 +156,10 @@ public interface AsyncAdmin {
   CompletableFuture<Void> enableTable(TableName tableName);
 
   /**
-   * Enable tables matching the passed in pattern. Warning: Use this method carefully, there is no
-   * prompting and the effect is immediate. Consider using {@link #listTables(Optional, boolean)} and
-   * {@link #enableTable(TableName)}
-   * @param pattern The pattern to match table names against
-   * @return Table descriptors for tables that couldn't be enabled. The return value will be wrapped
-   *         by a {@link CompletableFuture}. The return HTDs are read-only.
-   */
-  CompletableFuture<List<TableDescriptor>> enableTables(Pattern pattern);
-
-  /**
    * Disable a table. The table has to be in enabled state for it to be disabled.
    * @param tableName
    */
   CompletableFuture<Void> disableTable(TableName tableName);
-
-  /**
-   * Disable tables matching the passed in pattern. Warning: Use this method carefully, there is no
-   * prompting and the effect is immediate. Consider using {@link #listTables(Optional, boolean)} and
-   * {@link #disableTable(TableName)}
-   * @param pattern The pattern to match table names against
-   * @return Table descriptors for tables that couldn't be disabled. The return value will be wrapped by a
-   *         {@link CompletableFuture}. The return HTDs are read-only.
-   */
-  CompletableFuture<List<TableDescriptor>> disableTables(Pattern pattern);
 
   /**
    * @param tableName name of table to check
@@ -224,16 +193,6 @@ public interface AsyncAdmin {
    * @param splitKeys keys to check if the table has been created with all split keys
    */
   CompletableFuture<Boolean> isTableAvailable(TableName tableName, byte[][] splitKeys);
-
-  /**
-   * Get the status of alter command - indicates how many regions have received the updated schema
-   * Asynchronous operation.
-   * @param tableName TableName instance
-   * @return Pair indicating the number of regions updated Pair.getFirst() is the regions that are
-   *         yet to be updated Pair.getSecond() is the total number of regions of the table. The
-   *         return value will be wrapped by a {@link CompletableFuture}.
-   */
-  CompletableFuture<Pair<Integer, Integer>> getAlterStatus(TableName tableName);
 
   /**
    * Add a column family to an existing table.
@@ -288,19 +247,6 @@ public interface AsyncAdmin {
    * @return List of descriptors wrapped by a {@link CompletableFuture}.
    */
   CompletableFuture<List<NamespaceDescriptor>> listNamespaceDescriptors();
-
-  /**
-   * Close a region. For expert-admins Runs close on the regionserver. The master will not be
-   * informed of the close.
-   * @param regionName region name to close
-   * @param serverName Deprecated. Not used anymore after deprecation.
-   * @return Deprecated. Always returns true now.
-   * @deprecated As of release 2.0.0, this will be removed in HBase 3.0.0
-   *             (<a href="https://issues.apache.org/jira/browse/HBASE-18231">HBASE-18231</a>).
-   *             Use {@link #unassign(byte[], boolean)}.
-   */
-  @Deprecated
-  CompletableFuture<Boolean> closeRegion(byte[] regionName, Optional<ServerName> serverName);
 
   /**
    * Get all the online regions on a region server.
@@ -813,22 +759,29 @@ public interface AsyncAdmin {
   CompletableFuture<String> getLocks();
 
   /**
-   * Mark a region server as draining to prevent additional regions from getting assigned to it.
-   * @param servers
+   * Mark region server(s) as decommissioned to prevent additional regions from getting
+   * assigned to them. Optionally unload the regions on the servers. If there are multiple servers
+   * to be decommissioned, decommissioning them at the same time can prevent wasteful region
+   * movements. Region unloading is asynchronous.
+   * @param servers The list of servers to decommission.
+   * @param offload True to offload the regions from the decommissioned servers
    */
-  CompletableFuture<Void> drainRegionServers(List<ServerName> servers);
+  CompletableFuture<Void> decommissionRegionServers(List<ServerName> servers, boolean offload);
 
   /**
-   * List region servers marked as draining to not get additional regions assigned to them.
-   * @return List of draining region servers wrapped by {@link CompletableFuture}
+   * List region servers marked as decommissioned, which can not be assigned regions.
+   * @return List of decommissioned region servers wrapped by {@link CompletableFuture}
    */
-  CompletableFuture<List<ServerName>> listDrainingRegionServers();
+  CompletableFuture<List<ServerName>> listDecommissionedRegionServers();
 
   /**
-   * Remove drain from a region server to allow additional regions assignments.
-   * @param servers List of region servers to remove drain from.
+   * Remove decommission marker from a region server to allow regions assignments. Load regions onto
+   * the server if a list of regions is given. Region loading is asynchronous.
+   * @param server The server to recommission.
+   * @param encodedRegionNames Regions to load onto the server.
    */
-  CompletableFuture<Void> removeDrainFromRegionServers(List<ServerName> servers);
+  CompletableFuture<Void> recommissionRegionServer(ServerName server,
+      List<byte[]> encodedRegionNames);
 
   /**
    * @return cluster status wrapped by {@link CompletableFuture}
@@ -859,6 +812,15 @@ public interface AsyncAdmin {
    */
   default CompletableFuture<Collection<ServerName>> getRegionServers() {
     return getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).thenApply(ClusterStatus::getServers);
+  }
+
+  /**
+   * Get the info port of the current master if one is available.
+   * @return master info port
+   */
+  default CompletableFuture<Integer> getMasterInfoPort() {
+    return getClusterStatus(EnumSet.of(Option.MASTER_INFO_PORT)).thenApply(
+      ClusterStatus::getMasterInfoPort);
   }
 
   /**

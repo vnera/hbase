@@ -81,6 +81,8 @@ public class TestClientClusterStatus {
     Assert.assertTrue(origin.getDeadServersSize() == defaults.getDeadServersSize());
     Assert.assertTrue(origin.getRegionsCount() == defaults.getRegionsCount());
     Assert.assertTrue(origin.getServersSize() == defaults.getServersSize());
+    Assert.assertTrue(origin.getMasterInfoPort() == defaults.getMasterInfoPort());
+    Assert.assertTrue(origin.equals(defaults));
   }
 
   @Test
@@ -96,11 +98,12 @@ public class TestClientClusterStatus {
     Assert.assertTrue(status.getDeadServerNames().isEmpty());
     Assert.assertNull(status.getMaster());
     Assert.assertTrue(status.getBackupMasters().isEmpty());
+    Assert.assertEquals(-1, status.getMasterInfoPort());
     // No npe thrown is expected
     Assert.assertNotNull(status.hashCode());
     ClusterStatus nullEqualsCheck =
         ADMIN.getClusterStatus(EnumSet.noneOf(Option.class));
-    Assert.assertNotNull(status.equals(nullEqualsCheck));
+    Assert.assertTrue(status.equals(nullEqualsCheck));
   }
 
   @Test

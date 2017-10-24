@@ -49,7 +49,7 @@ pipeline {
     // output from surefire; sadly the archive function in yetus only works on file names.
     ARCHIVE_PATTERN_LIST = 'TEST-*.xml,org.apache.h*.txt'
     // These tests currently have known failures. Once they burn down to 0, remove from here so that new problems will cause a failure.
-    TESTS_FILTER = 'cc,checkstyle,javac,javadoc,pylint,shellcheck,whitespace,perlcritic,ruby-lint,rubocop'
+    TESTS_FILTER = 'cc,checkstyle,javac,javadoc,pylint,shellcheck,whitespace,perlcritic,ruby-lint,rubocop,mvnsite'
     BRANCH_SPECIFIC_DOCKERFILE = "${env.BASEDIR}/dev-support/docker/Dockerfile"
     EXCLUDE_TESTS_URL = 'https://builds.apache.org/job/HBase-Find-Flaky-Tests/lastSuccessfulBuild/artifact/excludes/'
   }
@@ -121,7 +121,7 @@ curl -L  -o personality.sh "${env.PROJET_PERSONALITY}"
         TESTS = 'all,-unit,-findbugs'
         // on branches that don't support jdk7, this will already be JAVA_HOME, so we'll end up not
         // doing multijdk there.
-        MULTIJDK = '/usr/lib/jvm/java-8-oracle'
+        MULTIJDK = '/usr/lib/jvm/java-8-openjdk-amd64'
         OUTPUT_RELATIVE = "${env.OUTPUT_RELATIVE_GENERAL}"
         OUTPUTDIR = "${env.OUTPUTDIR_GENERAL}"
       }
@@ -211,7 +211,7 @@ curl -L  -o personality.sh "${env.PROJET_PERSONALITY}"
         OUTPUTDIR = "${env.OUTPUTDIR_JDK8}"
         // This isn't strictly needed on branches that only support jdk8, but doesn't hurt
         // and is needed on branches that do both jdk7 and jdk8
-        SET_JAVA_HOME = '/usr/lib/jvm/java-8-oracle'
+        SET_JAVA_HOME = '/usr/lib/jvm/java-8-openjdk-amd64'
       }
       steps {
         unstash 'yetus'

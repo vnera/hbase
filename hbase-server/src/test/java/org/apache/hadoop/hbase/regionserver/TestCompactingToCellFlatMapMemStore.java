@@ -76,7 +76,7 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
         String.valueOf(MemoryCompactionPolicy.EAGER));
 
     this.memstore =
-        new CompactingMemStore(conf, CellComparator.COMPARATOR, store,
+        new CompactingMemStore(conf, CellComparatorImpl.COMPARATOR, store,
             regionServicesForStores, MemoryCompactionPolicy.EAGER);
   }
 
@@ -351,6 +351,89 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
   }
 
   @Test
+  public void testTimeRangeAfterCompaction() throws IOException {
+    if (toCellChunkMap) {
+      // set memstore to flat into CellChunkMap
+      conf.set(CompactingMemStore.COMPACTING_MEMSTORE_INDEX_KEY,
+          String.valueOf(CompactingMemStore.IndexType.CHUNK_MAP));
+      ((CompactingMemStore)memstore).setIndexType();
+    }
+    testTimeRange(true);
+  }
+
+  @Test
+  public void testTimeRangeAfterMerge() throws IOException {
+    if (toCellChunkMap) {
+      // set memstore to flat into CellChunkMap
+      conf.set(CompactingMemStore.COMPACTING_MEMSTORE_INDEX_KEY,
+          String.valueOf(CompactingMemStore.IndexType.CHUNK_MAP));
+      ((CompactingMemStore)memstore).setIndexType();
+    }
+    MemoryCompactionPolicy compactionType = MemoryCompactionPolicy.BASIC;
+    memstore.getConfiguration().set(CompactingMemStore.COMPACTING_MEMSTORE_TYPE_KEY,
+        String.valueOf(compactionType));
+    ((CompactingMemStore)memstore).initiateType(compactionType);
+    testTimeRange(false);
+  }
+
+  private void testTimeRange(boolean isCompaction) throws IOException {
+    final long initTs = 100;
+    long currentTs = initTs;
+    byte[] row = Bytes.toBytes("row");
+    byte[] family = Bytes.toBytes("family");
+    byte[] qf1 = Bytes.toBytes("qf1");
+
+    // first segment in pipeline
+    this.memstore.add(new KeyValue(row, family, qf1, ++currentTs, (byte[])null), null);
+    long minTs = currentTs;
+    this.memstore.add(new KeyValue(row, family, qf1, ++currentTs, (byte[])null), null);
+
+    long numberOfCell = 2;
+    assertEquals(numberOfCell, memstore.getSegments().stream().mapToInt(Segment::getCellsCount).sum());
+    assertEquals(minTs, memstore.getSegments().stream().mapToLong(
+        m -> m.getTimeRangeTracker().getMin()).min().getAsLong());
+    assertEquals(currentTs, memstore.getSegments().stream().mapToLong(
+        m -> m.getTimeRangeTracker().getMax()).max().getAsLong());
+
+    ((CompactingMemStore) memstore).flushInMemory();
+
+    while (((CompactingMemStore) memstore).isMemStoreFlushingInMemory()) {
+      Threads.sleep(10);
+    }
+    if (isCompaction) {
+      // max version = 1, so one cell will be dropped.
+      numberOfCell = 1;
+      minTs = currentTs;
+    }
+    // second segment in pipeline
+    this.memstore.add(new KeyValue(row, family, qf1, ++currentTs, (byte[])null), null);
+    this.memstore.add(new KeyValue(row, family, qf1, ++currentTs, (byte[])null), null);
+    numberOfCell += 2;
+    assertEquals(numberOfCell, memstore.getSegments().stream().mapToInt(Segment::getCellsCount).sum());
+    assertEquals(minTs, memstore.getSegments().stream().mapToLong(
+        m -> m.getTimeRangeTracker().getMin()).min().getAsLong());
+    assertEquals(currentTs, memstore.getSegments().stream().mapToLong(
+        m -> m.getTimeRangeTracker().getMax()).max().getAsLong());
+
+    ((CompactingMemStore) memstore).flushInMemory(); // trigger the merge
+
+    while (((CompactingMemStore) memstore).isMemStoreFlushingInMemory()) {
+      Threads.sleep(10);
+    }
+    if (isCompaction) {
+      // max version = 1, so one cell will be dropped.
+      numberOfCell = 1;
+      minTs = currentTs;
+    }
+
+    assertEquals(numberOfCell, memstore.getSegments().stream().mapToInt(Segment::getCellsCount).sum());
+    assertEquals(minTs, memstore.getSegments().stream().mapToLong(
+        m -> m.getTimeRangeTracker().getMin()).min().getAsLong());
+    assertEquals(currentTs, memstore.getSegments().stream().mapToLong(
+        m -> m.getTimeRangeTracker().getMax()).max().getAsLong());
+  }
+
+  @Test
   public void testCountOfCellsAfterFlatteningByScan() throws IOException {
     String[] keys1 = { "A", "B", "C" }; // A, B, C
     addRowsByKeysWith50Cols(memstore, keys1);
@@ -386,7 +469,7 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
     // Just doing the cnt operation here
     MemStoreSegmentsIterator itr = new MemStoreMergerSegmentsIterator(
         ((CompactingMemStore) memstore).getImmutableSegments().getStoreSegments(),
-        CellComparator.COMPARATOR, 10);
+        CellComparatorImpl.COMPARATOR, 10);
     int cnt = 0;
     try {
       while (itr.next() != null) {
@@ -524,18 +607,18 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
   private long addRowsByKeys(final AbstractMemStore hmc, String[] keys) {
     byte[] fam = Bytes.toBytes("testfamily");
     byte[] qf = Bytes.toBytes("testqualifier");
-    MemStoreSize memstoreSize = new MemStoreSize();
+    MemStoreSizing memstoreSizing = new MemStoreSizing();
     for (int i = 0; i < keys.length; i++) {
       long timestamp = System.currentTimeMillis();
       Threads.sleep(1); // to make sure each kv gets a different ts
       byte[] row = Bytes.toBytes(keys[i]);
       byte[] val = Bytes.toBytes(keys[i] + i);
       KeyValue kv = new KeyValue(row, fam, qf, timestamp, val);
-      hmc.add(kv, memstoreSize);
+      hmc.add(kv, memstoreSizing);
       LOG.debug("added kv: " + kv.getKeyString() + ", timestamp" + kv.getTimestamp());
     }
-    regionServicesForStores.addMemStoreSize(memstoreSize);
-    return memstoreSize.getDataSize();
+    regionServicesForStores.addMemStoreSize(memstoreSizing);
+    return memstoreSizing.getDataSize();
   }
 
   private long cellBeforeFlushSize() {

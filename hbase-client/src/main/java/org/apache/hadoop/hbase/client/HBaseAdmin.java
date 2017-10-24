@@ -1,4 +1,4 @@
-/**
+/*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -171,7 +171,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsProcedur
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsSnapshotDoneRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsSnapshotDoneResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListDeadServersRequest;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListDrainingRegionServersRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListDecommissionedRegionServersRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListNamespaceDescriptorsRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListTableDescriptorsByNamespaceRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListTableNamesByNamespaceRequest;
@@ -319,11 +319,6 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public List<TableDescriptor> listTableDescriptors(String regex) throws IOException {
-    return listTableDescriptors(Pattern.compile(regex), false);
-  }
-
-  @Override
   public List<TableDescriptor> listTableDescriptors(Pattern pattern, boolean includeSysTables) throws IOException {
     return executeCallable(new MasterCallable<List<TableDescriptor>>(getConnection(),
         getRpcControllerFactory()) {
@@ -335,11 +330,6 @@ public class HBaseAdmin implements Admin {
             req));
       }
     });
-  }
-
-  @Override
-  public List<TableDescriptor> listTableDescriptors(String regex, boolean includeSysTables) throws IOException {
-    return listTableDescriptors(Pattern.compile(regex), includeSysTables);
   }
 
   @Override
@@ -3195,18 +3185,6 @@ public class HBaseAdmin implements Admin {
     }
   }
 
-  @Override
-  public int getMasterInfoPort() throws IOException {
-    // TODO: Fix!  Reaching into internal implementation!!!!
-    ConnectionImplementation connection = (ConnectionImplementation)this.connection;
-    ZooKeeperKeepAliveConnection zkw = connection.getKeepAliveZooKeeperWatcher();
-    try {
-      return MasterAddressTracker.getMasterInfoPort(zkw);
-    } catch (KeeperException e) {
-      throw new IOException("Failed to get master info port from MasterAddressTracker", e);
-    }
-  }
-
   private ServerName getMasterAddress() throws IOException {
     // TODO: Fix!  Reaching into internal implementation!!!!
     ConnectionImplementation connection = (ConnectionImplementation)this.connection;
@@ -4040,27 +4018,28 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public void drainRegionServers(List<ServerName> servers) throws IOException {
+  public void decommissionRegionServers(List<ServerName> servers, boolean offload)
+      throws IOException {
     executeCallable(new MasterCallable<Void>(getConnection(), getRpcControllerFactory()) {
       @Override
       public Void rpcCall() throws ServiceException {
-        master.drainRegionServers(getRpcController(),
-          RequestConverter.buildDrainRegionServersRequest(servers));
+        master.decommissionRegionServers(getRpcController(),
+          RequestConverter.buildDecommissionRegionServersRequest(servers, offload));
         return null;
       }
     });
   }
 
   @Override
-  public List<ServerName> listDrainingRegionServers() throws IOException {
+  public List<ServerName> listDecommissionedRegionServers() throws IOException {
     return executeCallable(new MasterCallable<List<ServerName>>(getConnection(),
               getRpcControllerFactory()) {
       @Override
       public List<ServerName> rpcCall() throws ServiceException {
-        ListDrainingRegionServersRequest req = ListDrainingRegionServersRequest.newBuilder().build();
+        ListDecommissionedRegionServersRequest req = ListDecommissionedRegionServersRequest.newBuilder().build();
         List<ServerName> servers = new ArrayList<>();
-        for (HBaseProtos.ServerName server : master.listDrainingRegionServers(null, req)
-            .getServerNameList()) {
+        for (HBaseProtos.ServerName server : master
+            .listDecommissionedRegionServers(getRpcController(), req).getServerNameList()) {
           servers.add(ProtobufUtil.toServerName(server));
         }
         return servers;
@@ -4069,11 +4048,13 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public void removeDrainFromRegionServers(List<ServerName> servers) throws IOException {
+  public void recommissionRegionServer(ServerName server, List<byte[]> encodedRegionNames)
+      throws IOException {
     executeCallable(new MasterCallable<Void>(getConnection(), getRpcControllerFactory()) {
       @Override
       public Void rpcCall() throws ServiceException {
-        master.removeDrainFromRegionServers(getRpcController(), RequestConverter.buildRemoveDrainFromRegionServersRequest(servers));
+        master.recommissionRegionServer(getRpcController(),
+          RequestConverter.buildRecommissionRegionServerRequest(server, encodedRegionNames));
         return null;
       }
     });

@@ -29,7 +29,13 @@ import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.io.serializer.Deserializer;
 import org.apache.hadoop.io.serializer.Serialization;
 import org.apache.hadoop.io.serializer.Serializer;
-
+/**
+ * Use to specify the type of serialization for the mappers
+ * and reducers
+ * @deprecated Use {@link CellSerialization}. Will be
+ * removed from 3.0 onwards
+ */
+@Deprecated
 @InterfaceAudience.Public
 public class KeyValueSerialization implements Serialization<KeyValue> {
   @Override

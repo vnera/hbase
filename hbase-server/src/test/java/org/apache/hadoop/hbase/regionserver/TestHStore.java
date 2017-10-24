@@ -59,9 +59,11 @@ import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.CellBuilder;
 import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellComparator;
+import org.apache.hadoop.hbase.CellComparatorImpl;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
@@ -228,7 +230,7 @@ public class TestHStore {
    * @throws Exception
    */
   @Test
-  public void testFlushSizeAccounting() throws Exception {
+  public void testFlushSizeSizing() throws Exception {
     LOG.info("Setting up a faulty file system that cannot write in " +
       this.name.getMethodName());
     final Configuration conf = HBaseConfiguration.create();
@@ -252,7 +254,7 @@ public class TestHStore {
         MemStoreSize size = store.memstore.getFlushableSize();
         assertEquals(0, size.getDataSize());
         LOG.info("Adding some data");
-        MemStoreSize kvSize = new MemStoreSize();
+        MemStoreSizing kvSize = new MemStoreSizing();
         store.add(new KeyValue(row, family, qf1, 1, (byte[]) null), kvSize);
         // add the heap size of active (mutable) segment
         kvSize.incMemStoreSize(0, MutableSegment.DEEP_OVERHEAD);
@@ -271,7 +273,7 @@ public class TestHStore {
             CSLMImmutableSegment.DEEP_OVERHEAD_CSLM-MutableSegment.DEEP_OVERHEAD);
         size = store.memstore.getFlushableSize();
         assertEquals(kvSize, size);
-        MemStoreSize kvSize2 = new MemStoreSize();
+        MemStoreSizing kvSize2 = new MemStoreSizing();
         store.add(new KeyValue(row, family, qf2, 2, (byte[])null), kvSize2);
         kvSize2.incMemStoreSize(0, MutableSegment.DEEP_OVERHEAD);
         // Even though we add a new kv, we expect the flushable size to be 'same' since we have
@@ -514,6 +516,37 @@ public class TestHStore {
     assertCheck();
   }
 
+  @Test
+  public void testTimeRangeIfSomeCellsAreDroppedInFlush() throws IOException {
+    testTimeRangeIfSomeCellsAreDroppedInFlush(1);
+    testTimeRangeIfSomeCellsAreDroppedInFlush(3);
+    testTimeRangeIfSomeCellsAreDroppedInFlush(5);
+  }
+
+  private void testTimeRangeIfSomeCellsAreDroppedInFlush(int maxVersion) throws IOException {
+    init(this.name.getMethodName(), TEST_UTIL.getConfiguration(),
+    ColumnFamilyDescriptorBuilder.newBuilder(family).setMaxVersions(maxVersion).build());
+    long currentTs = 100;
+    long minTs = currentTs;
+    // the extra cell won't be flushed to disk,
+    // so the min of timerange will be different between memStore and hfile.
+    for (int i = 0; i != (maxVersion + 1); ++i) {
+      this.store.add(new KeyValue(row, family, qf1, ++currentTs, (byte[])null), null);
+      if (i == 1) {
+        minTs = currentTs;
+      }
+    }
+    flushStore(store, id++);
+
+    Collection<HStoreFile> files = store.getStorefiles();
+    assertEquals(1, files.size());
+    HStoreFile f = files.iterator().next();
+    f.initReader();
+    StoreFileReader reader = f.getReader();
+    assertEquals(minTs, reader.timeRange.getMin());
+    assertEquals(currentTs, reader.timeRange.getMax());
+  }
+
   /**
    * Getting data from files only
    * @throws IOException
@@ -547,7 +580,7 @@ public class TestHStore {
     //this.store.get(get, qualifiers, result);
 
     //Need to sort the result since multiple files
-    Collections.sort(result, CellComparator.COMPARATOR);
+    Collections.sort(result, CellComparatorImpl.COMPARATOR);
 
     //Compare
     assertCheck();
@@ -582,7 +615,7 @@ public class TestHStore {
         get.getRow(), qualifiers);
 
     //Need to sort the result since multiple files
-    Collections.sort(result, CellComparator.COMPARATOR);
+    Collections.sort(result, CellComparatorImpl.COMPARATOR);
 
     //Compare
     assertCheck();
@@ -1014,13 +1047,13 @@ public class TestHStore {
     long seqId = 100;
     long timestamp = System.currentTimeMillis();
     Cell cell0 = CellBuilderFactory.create(CellBuilderType.DEEP_COPY).setRow(row).setFamily(family)
-        .setQualifier(qf1).setTimestamp(timestamp).setType(KeyValue.Type.Put.getCode())
+        .setQualifier(qf1).setTimestamp(timestamp).setType(CellBuilder.DataType.Put)
         .setValue(qf1).build();
     CellUtil.setSequenceId(cell0, seqId);
     testNumberOfMemStoreScannersAfterFlush(Arrays.asList(cell0), Collections.emptyList());
 
     Cell cell1 = CellBuilderFactory.create(CellBuilderType.DEEP_COPY).setRow(row).setFamily(family)
-        .setQualifier(qf2).setTimestamp(timestamp).setType(KeyValue.Type.Put.getCode())
+        .setQualifier(qf2).setTimestamp(timestamp).setType(CellBuilder.DataType.Put)
         .setValue(qf1).build();
     CellUtil.setSequenceId(cell1, seqId);
     testNumberOfMemStoreScannersAfterFlush(Arrays.asList(cell0), Arrays.asList(cell1));
@@ -1028,7 +1061,7 @@ public class TestHStore {
     seqId = 101;
     timestamp = System.currentTimeMillis();
     Cell cell2 = CellBuilderFactory.create(CellBuilderType.DEEP_COPY).setRow(row2).setFamily(family)
-        .setQualifier(qf2).setTimestamp(timestamp).setType(KeyValue.Type.Put.getCode())
+        .setQualifier(qf2).setTimestamp(timestamp).setType(CellBuilder.DataType.Put)
         .setValue(qf1).build();
      CellUtil.setSequenceId(cell2, seqId);
     testNumberOfMemStoreScannersAfterFlush(Arrays.asList(cell0), Arrays.asList(cell1, cell2));
@@ -1051,19 +1084,21 @@ public class TestHStore {
     StoreFlushContext storeFlushCtx = store.createFlushContext(id++);
     storeFlushCtx.prepare();
     inputCellsAfterSnapshot.forEach(c -> store.add(c, null));
-    int numberOfMemScannersWhenScaning = inputCellsAfterSnapshot.isEmpty() ? 1 : 2;
+    int numberOfMemScannersBeforeFlush = inputCellsAfterSnapshot.isEmpty() ? 1 : 2;
     try (StoreScanner s = (StoreScanner) store.getScanner(new Scan(), quals, seqId)) {
-      // snaptshot + active (if it isn't empty)
-      assertEquals(numberOfMemScannersWhenScaning, countMemStoreScanner(s));
+      // snapshot + active (if inputCellsAfterSnapshot isn't empty)
+      assertEquals(numberOfMemScannersBeforeFlush, countMemStoreScanner(s));
       storeFlushCtx.flushCache(Mockito.mock(MonitoredTask.class));
       storeFlushCtx.commit(Mockito.mock(MonitoredTask.class));
+      // snapshot has no data after flush
+      int numberOfMemScannersAfterFlush = inputCellsAfterSnapshot.isEmpty() ? 0 : 1;
       boolean more;
       int cellCount = 0;
       do {
         List<Cell> cells = new ArrayList<>();
         more = s.next(cells);
         cellCount += cells.size();
-        assertEquals(more ? numberOfMemScannersWhenScaning : 0, countMemStoreScanner(s));
+        assertEquals(more ? numberOfMemScannersAfterFlush : 0, countMemStoreScanner(s));
       } while (more);
       assertEquals("The number of cells added before snapshot is " + inputCellsBeforeSnapshot.size()
           + ", The number of cells added after snapshot is " + inputCellsAfterSnapshot.size(),
@@ -1081,7 +1116,7 @@ public class TestHStore {
   private Cell createCell(byte[] row, byte[] qualifier, long ts, long sequenceId, byte[] value)
       throws IOException {
     Cell c = CellBuilderFactory.create(CellBuilderType.DEEP_COPY).setRow(row).setFamily(family)
-        .setQualifier(qualifier).setTimestamp(ts).setType(KeyValue.Type.Put.getCode())
+        .setQualifier(qualifier).setTimestamp(ts).setType(CellBuilder.DataType.Put)
         .setValue(value).build();
     CellUtil.setSequenceId(c, sequenceId);
     return c;
@@ -1182,7 +1217,7 @@ public class TestHStore {
     byte[] value0 = Bytes.toBytes("value0");
     byte[] value1 = Bytes.toBytes("value1");
     byte[] value2 = Bytes.toBytes("value2");
-    MemStoreSize memStoreSize = new MemStoreSize();
+    MemStoreSizing memStoreSizing = new MemStoreSizing();
     long ts = EnvironmentEdgeManager.currentTime();
     long seqId = 100;
     init(name.getMethodName(), conf, TableDescriptorBuilder.newBuilder(TableName.valueOf(table)),
@@ -1194,18 +1229,18 @@ public class TestHStore {
         }
       });
     // The cells having the value0 won't be flushed to disk because the value of max version is 1
-    store.add(createCell(r0, qf1, ts, seqId, value0), memStoreSize);
-    store.add(createCell(r0, qf2, ts, seqId, value0), memStoreSize);
-    store.add(createCell(r0, qf3, ts, seqId, value0), memStoreSize);
-    store.add(createCell(r1, qf1, ts + 1, seqId + 1, value1), memStoreSize);
-    store.add(createCell(r1, qf2, ts + 1, seqId + 1, value1), memStoreSize);
-    store.add(createCell(r1, qf3, ts + 1, seqId + 1, value1), memStoreSize);
-    store.add(createCell(r2, qf1, ts + 2, seqId + 2, value2), memStoreSize);
-    store.add(createCell(r2, qf2, ts + 2, seqId + 2, value2), memStoreSize);
-    store.add(createCell(r2, qf3, ts + 2, seqId + 2, value2), memStoreSize);
-    store.add(createCell(r1, qf1, ts + 3, seqId + 3, value1), memStoreSize);
-    store.add(createCell(r1, qf2, ts + 3, seqId + 3, value1), memStoreSize);
-    store.add(createCell(r1, qf3, ts + 3, seqId + 3, value1), memStoreSize);
+    store.add(createCell(r0, qf1, ts, seqId, value0), memStoreSizing);
+    store.add(createCell(r0, qf2, ts, seqId, value0), memStoreSizing);
+    store.add(createCell(r0, qf3, ts, seqId, value0), memStoreSizing);
+    store.add(createCell(r1, qf1, ts + 1, seqId + 1, value1), memStoreSizing);
+    store.add(createCell(r1, qf2, ts + 1, seqId + 1, value1), memStoreSizing);
+    store.add(createCell(r1, qf3, ts + 1, seqId + 1, value1), memStoreSizing);
+    store.add(createCell(r2, qf1, ts + 2, seqId + 2, value2), memStoreSizing);
+    store.add(createCell(r2, qf2, ts + 2, seqId + 2, value2), memStoreSizing);
+    store.add(createCell(r2, qf3, ts + 2, seqId + 2, value2), memStoreSizing);
+    store.add(createCell(r1, qf1, ts + 3, seqId + 3, value1), memStoreSizing);
+    store.add(createCell(r1, qf2, ts + 3, seqId + 3, value1), memStoreSizing);
+    store.add(createCell(r1, qf3, ts + 3, seqId + 3, value1), memStoreSizing);
     List<Cell> myList = new MyList<>(hook);
     Scan scan = new Scan()
             .withStartRow(r1)
@@ -1241,13 +1276,13 @@ public class TestHStore {
     init(name.getMethodName(), conf, ColumnFamilyDescriptorBuilder.newBuilder(family)
         .setInMemoryCompaction(MemoryCompactionPolicy.BASIC).build());
     byte[] value = Bytes.toBytes("value");
-    MemStoreSize memStoreSize = new MemStoreSize();
+    MemStoreSizing memStoreSizing = new MemStoreSizing();
     long ts = EnvironmentEdgeManager.currentTime();
     long seqId = 100;
     // older data whihc shouldn't be "seen" by client
-    store.add(createCell(qf1, ts, seqId, value), memStoreSize);
-    store.add(createCell(qf2, ts, seqId, value), memStoreSize);
-    store.add(createCell(qf3, ts, seqId, value), memStoreSize);
+    store.add(createCell(qf1, ts, seqId, value), memStoreSizing);
+    store.add(createCell(qf2, ts, seqId, value), memStoreSizing);
+    store.add(createCell(qf3, ts, seqId, value), memStoreSizing);
     TreeSet<byte[]> quals = new TreeSet<>(Bytes.BYTES_COMPARATOR);
     quals.add(qf1);
     quals.add(qf2);
@@ -1319,22 +1354,22 @@ public class TestHStore {
     });
     byte[] oldValue = Bytes.toBytes("oldValue");
     byte[] currentValue = Bytes.toBytes("currentValue");
-    MemStoreSize memStoreSize = new MemStoreSize();
+    MemStoreSizing memStoreSizing = new MemStoreSizing();
     long ts = EnvironmentEdgeManager.currentTime();
     long seqId = 100;
     // older data whihc shouldn't be "seen" by client
-    myStore.add(createCell(qf1, ts, seqId, oldValue), memStoreSize);
-    myStore.add(createCell(qf2, ts, seqId, oldValue), memStoreSize);
-    myStore.add(createCell(qf3, ts, seqId, oldValue), memStoreSize);
+    myStore.add(createCell(qf1, ts, seqId, oldValue), memStoreSizing);
+    myStore.add(createCell(qf2, ts, seqId, oldValue), memStoreSizing);
+    myStore.add(createCell(qf3, ts, seqId, oldValue), memStoreSizing);
     long snapshotId = id++;
     // push older data into snapshot -- phase (1/4)
     StoreFlushContext storeFlushCtx = store.createFlushContext(snapshotId);
     storeFlushCtx.prepare();
 
     // insert current data into active -- phase (2/4)
-    myStore.add(createCell(qf1, ts + 1, seqId + 1, currentValue), memStoreSize);
-    myStore.add(createCell(qf2, ts + 1, seqId + 1, currentValue), memStoreSize);
-    myStore.add(createCell(qf3, ts + 1, seqId + 1, currentValue), memStoreSize);
+    myStore.add(createCell(qf1, ts + 1, seqId + 1, currentValue), memStoreSizing);
+    myStore.add(createCell(qf2, ts + 1, seqId + 1, currentValue), memStoreSizing);
+    myStore.add(createCell(qf3, ts + 1, seqId + 1, currentValue), memStoreSizing);
     TreeSet<byte[]> quals = new TreeSet<>(Bytes.BYTES_COMPARATOR);
     quals.add(qf1);
     quals.add(qf2);
@@ -1432,21 +1467,21 @@ public class TestHStore {
     init(name.getMethodName(), conf, ColumnFamilyDescriptorBuilder.newBuilder(family)
         .setInMemoryCompaction(MemoryCompactionPolicy.BASIC).build());
     byte[] value = Bytes.toBytes("thisisavarylargevalue");
-    MemStoreSize memStoreSize = new MemStoreSize();
+    MemStoreSizing memStoreSizing = new MemStoreSizing();
     long ts = EnvironmentEdgeManager.currentTime();
     long seqId = 100;
     // older data whihc shouldn't be "seen" by client
-    store.add(createCell(qf1, ts, seqId, value), memStoreSize);
-    store.add(createCell(qf2, ts, seqId, value), memStoreSize);
-    store.add(createCell(qf3, ts, seqId, value), memStoreSize);
+    store.add(createCell(qf1, ts, seqId, value), memStoreSizing);
+    store.add(createCell(qf2, ts, seqId, value), memStoreSizing);
+    store.add(createCell(qf3, ts, seqId, value), memStoreSizing);
     assertEquals(1, MyCompactingMemStoreWithCustomCompactor.RUNNER_COUNT.get());
     StoreFlushContext storeFlushCtx = store.createFlushContext(id++);
     storeFlushCtx.prepare();
     // This shouldn't invoke another in-memory flush because the first compactor thread
     // hasn't accomplished the in-memory compaction.
-    store.add(createCell(qf1, ts + 1, seqId + 1, value), memStoreSize);
-    store.add(createCell(qf1, ts + 1, seqId + 1, value), memStoreSize);
-    store.add(createCell(qf1, ts + 1, seqId + 1, value), memStoreSize);
+    store.add(createCell(qf1, ts + 1, seqId + 1, value), memStoreSizing);
+    store.add(createCell(qf1, ts + 1, seqId + 1, value), memStoreSizing);
+    store.add(createCell(qf1, ts + 1, seqId + 1, value), memStoreSizing);
     assertEquals(1, MyCompactingMemStoreWithCustomCompactor.RUNNER_COUNT.get());
     //okay. Let the compaction be completed
     MyMemStoreCompactor.START_COMPACTOR_LATCH.countDown();
@@ -1455,9 +1490,9 @@ public class TestHStore {
       TimeUnit.SECONDS.sleep(1);
     }
     // This should invoke another in-memory flush.
-    store.add(createCell(qf1, ts + 2, seqId + 2, value), memStoreSize);
-    store.add(createCell(qf1, ts + 2, seqId + 2, value), memStoreSize);
-    store.add(createCell(qf1, ts + 2, seqId + 2, value), memStoreSize);
+    store.add(createCell(qf1, ts + 2, seqId + 2, value), memStoreSizing);
+    store.add(createCell(qf1, ts + 2, seqId + 2, value), memStoreSizing);
+    store.add(createCell(qf1, ts + 2, seqId + 2, value), memStoreSizing);
     assertEquals(2, MyCompactingMemStoreWithCustomCompactor.RUNNER_COUNT.get());
     conf.set(HConstants.HREGION_MEMSTORE_FLUSH_SIZE,
       String.valueOf(TableDescriptorBuilder.DEFAULT_MEMSTORE_FLUSH_SIZE));
@@ -1554,25 +1589,25 @@ public class TestHStore {
     conf.setLong(StoreScanner.STORESCANNER_PREAD_MAX_BYTES, 0);
     // Set the lower threshold to invoke the "MERGE" policy
     MyStore store = initMyStore(name.getMethodName(), conf, new MyStoreHook() {});
-    MemStoreSize memStoreSize = new MemStoreSize();
+    MemStoreSizing memStoreSizing = new MemStoreSizing();
     long ts = System.currentTimeMillis();
     long seqID = 1l;
     // Add some data to the region and do some flushes
     for (int i = 1; i < 10; i++) {
       store.add(createCell(Bytes.toBytes("row" + i), qf1, ts, seqID++, Bytes.toBytes("")),
-        memStoreSize);
+        memStoreSizing);
     }
     // flush them
     flushStore(store, seqID);
     for (int i = 11; i < 20; i++) {
       store.add(createCell(Bytes.toBytes("row" + i), qf1, ts, seqID++, Bytes.toBytes("")),
-        memStoreSize);
+        memStoreSizing);
     }
     // flush them
     flushStore(store, seqID);
     for (int i = 21; i < 30; i++) {
       store.add(createCell(Bytes.toBytes("row" + i), qf1, ts, seqID++, Bytes.toBytes("")),
-        memStoreSize);
+        memStoreSizing);
     }
     // flush them
     flushStore(store, seqID);
@@ -1589,14 +1624,14 @@ public class TestHStore {
     // create more store files
     for (int i = 31; i < 40; i++) {
       store.add(createCell(Bytes.toBytes("row" + i), qf1, ts, seqID++, Bytes.toBytes("")),
-        memStoreSize);
+        memStoreSizing);
     }
     // flush them
     flushStore(store, seqID);
 
     for (int i = 41; i < 50; i++) {
       store.add(createCell(Bytes.toBytes("row" + i), qf1, ts, seqID++, Bytes.toBytes("")),
-        memStoreSize);
+        memStoreSizing);
     }
     // flush them
     flushStore(store, seqID);
@@ -1654,7 +1689,7 @@ public class TestHStore {
 
   public static class MyCompactingMemStoreWithCustomCompactor extends CompactingMemStore {
     private static final AtomicInteger RUNNER_COUNT = new AtomicInteger(0);
-    public MyCompactingMemStoreWithCustomCompactor(Configuration conf, CellComparator c,
+    public MyCompactingMemStoreWithCustomCompactor(Configuration conf, CellComparatorImpl c,
         HStore store, RegionServicesForStores regionServices,
         MemoryCompactionPolicy compactionPolicy) throws IOException {
       super(conf, c, store, regionServices, compactionPolicy);
@@ -1679,7 +1714,7 @@ public class TestHStore {
     private static final AtomicBoolean START_TEST = new AtomicBoolean(false);
     private final CountDownLatch getScannerLatch = new CountDownLatch(1);
     private final CountDownLatch snapshotLatch = new CountDownLatch(1);
-    public MyCompactingMemStore(Configuration conf, CellComparator c,
+    public MyCompactingMemStore(Configuration conf, CellComparatorImpl c,
         HStore store, RegionServicesForStores regionServices,
         MemoryCompactionPolicy compactionPolicy) throws IOException {
       super(conf, c, store, regionServices, compactionPolicy);

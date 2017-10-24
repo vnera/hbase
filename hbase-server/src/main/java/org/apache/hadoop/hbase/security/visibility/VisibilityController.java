@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -22,6 +22,11 @@ import static org.apache.hadoop.hbase.HConstants.OperationStatusCode.SANITY_CHEC
 import static org.apache.hadoop.hbase.HConstants.OperationStatusCode.SUCCESS;
 import static org.apache.hadoop.hbase.security.visibility.VisibilityConstants.LABELS_TABLE_FAMILY;
 import static org.apache.hadoop.hbase.security.visibility.VisibilityConstants.LABELS_TABLE_NAME;
+
+import com.google.protobuf.ByteString;
+import com.google.protobuf.RpcCallback;
+import com.google.protobuf.RpcController;
+import com.google.protobuf.Service;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -51,7 +56,7 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.TagType;
 import org.apache.hadoop.hbase.TagUtil;
-import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.Delete;
@@ -66,6 +71,7 @@ import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.constraint.ConstraintException;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorException;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
+import org.apache.hadoop.hbase.coprocessor.CoreCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.MasterObserver;
@@ -81,9 +87,8 @@ import org.apache.hadoop.hbase.filter.FilterList;
 import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.ipc.CoprocessorRpcUtils;
 import org.apache.hadoop.hbase.ipc.RpcServer;
-import org.apache.hadoop.hbase.master.MasterServices;
-import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.NameBytesPair;
 import org.apache.hadoop.hbase.protobuf.generated.ClientProtos.RegionActionResult;
+import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.NameBytesPair;
 import org.apache.hadoop.hbase.protobuf.generated.VisibilityLabelsProtos;
 import org.apache.hadoop.hbase.protobuf.generated.VisibilityLabelsProtos.GetAuthsRequest;
 import org.apache.hadoop.hbase.protobuf.generated.VisibilityLabelsProtos.GetAuthsResponse;
@@ -109,18 +114,16 @@ import org.apache.hadoop.hbase.security.access.AccessController;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.util.StringUtils;
+import org.apache.yetus.audience.InterfaceAudience;
 
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.MapMaker;
-import com.google.protobuf.ByteString;
-import com.google.protobuf.RpcCallback;
-import com.google.protobuf.RpcController;
-import com.google.protobuf.Service;
 
 /**
  * Coprocessor that has both the MasterObserver and RegionObserver implemented that supports in
  * visibility labels
  */
+@CoreCoprocessor
 @InterfaceAudience.LimitedPrivate(HBaseInterfaceAudience.CONFIG)
 // TODO: break out Observer functions into separate class/sub-class.
 public class VisibilityController implements MasterCoprocessor, RegionCoprocessor,
@@ -211,8 +214,7 @@ public class VisibilityController implements MasterCoprocessor, RegionCoprocesso
   @Override
   public void postStartMaster(ObserverContext<MasterCoprocessorEnvironment> ctx) throws IOException {
     // Need to create the new system table for labels here
-    MasterServices master = ctx.getEnvironment().getMasterServices();
-    if (!MetaTableAccessor.tableExists(master.getConnection(), LABELS_TABLE_NAME)) {
+    if (!MetaTableAccessor.tableExists(ctx.getEnvironment().getConnection(), LABELS_TABLE_NAME)) {
       HTableDescriptor labelsTable = new HTableDescriptor(LABELS_TABLE_NAME);
       HColumnDescriptor labelsColumn = new HColumnDescriptor(LABELS_TABLE_FAMILY);
       labelsColumn.setBloomFilterType(BloomType.NONE);
@@ -225,47 +227,15 @@ public class VisibilityController implements MasterCoprocessor, RegionCoprocesso
           DisabledRegionSplitPolicy.class.getName());
       labelsTable.setValue(Bytes.toBytes(HConstants.DISALLOW_WRITES_IN_RECOVERING),
           Bytes.toBytes(true));
-      master.createSystemTable(labelsTable);
+      try (Admin admin = ctx.getEnvironment().getConnection().getAdmin()) {
+        admin.createTable(labelsTable);
+      }
     }
   }
 
   @Override
   public void preModifyTable(ObserverContext<MasterCoprocessorEnvironment> ctx,
       TableName tableName, TableDescriptor htd) throws IOException {
-    if (!authorizationEnabled) {
-      return;
-    }
-    if (LABELS_TABLE_NAME.equals(tableName)) {
-      throw new ConstraintException("Cannot alter " + LABELS_TABLE_NAME);
-    }
-  }
-
-  @Override
-  public void preAddColumnFamily(ObserverContext<MasterCoprocessorEnvironment> ctx,
-                                 TableName tableName, ColumnFamilyDescriptor columnFamily)
-      throws IOException {
-    if (!authorizationEnabled) {
-      return;
-    }
-    if (LABELS_TABLE_NAME.equals(tableName)) {
-      throw new ConstraintException("Cannot alter " + LABELS_TABLE_NAME);
-    }
-  }
-
-  @Override
-  public void preModifyColumnFamily(ObserverContext<MasterCoprocessorEnvironment> ctx,
-      TableName tableName, ColumnFamilyDescriptor columnFamily) throws IOException {
-    if (!authorizationEnabled) {
-      return;
-    }
-    if (LABELS_TABLE_NAME.equals(tableName)) {
-      throw new ConstraintException("Cannot alter " + LABELS_TABLE_NAME);
-    }
-  }
-
-  @Override
-  public void preDeleteColumnFamily(ObserverContext<MasterCoprocessorEnvironment> ctx,
-      TableName tableName, byte[] columnFamily) throws IOException {
     if (!authorizationEnabled) {
       return;
     }
@@ -622,7 +592,7 @@ public class VisibilityController implements MasterCoprocessor, RegionCoprocesso
     // visibility tags per cell. The covering cells are determined not only
     // based on the delete type and ts
     // but also on the visibility expression matching.
-    return new VisibilityScanDeleteTracker();
+    return new VisibilityScanDeleteTracker(delTracker.getCellComparator());
   }
 
   @Override
@@ -663,7 +633,7 @@ public class VisibilityController implements MasterCoprocessor, RegionCoprocesso
   private void requireScannerOwner(InternalScanner s) throws AccessDeniedException {
     if (!RpcServer.isInRpcCallContext())
       return;
-    String requestUName = RpcServer.getRequestUserName();
+    String requestUName = RpcServer.getRequestUserName().orElse(null);
     String owner = scannerOwners.get(s);
     if (authorizationEnabled && owner != null && !owner.equals(requestUName)) {
       throw new AccessDeniedException("User '" + requestUName + "' is not the scanner owner!");
@@ -892,7 +862,6 @@ public class VisibilityController implements MasterCoprocessor, RegionCoprocesso
       List<byte[]> labelAuths, String regex) {
     if (AUDITLOG.isTraceEnabled()) {
       // This is more duplicated code!
-      InetAddress remoteAddr = RpcServer.getRemoteAddress();
       List<String> labelAuthsStr = new ArrayList<>();
       if (labelAuths != null) {
         int labelAuthsSize = labelAuths.size();
@@ -909,11 +878,12 @@ public class VisibilityController implements MasterCoprocessor, RegionCoprocesso
         LOG.warn("Failed to get active system user.");
         LOG.debug("Details on failure to get active system user.", e);
       }
-      AUDITLOG.trace("Access " + (isAllowed ? "allowed" : "denied") + " for user "
-          + (requestingUser != null ? requestingUser.getShortName() : "UNKNOWN") + "; reason: "
-          + reason + "; remote address: " + (remoteAddr != null ? remoteAddr : "") + "; request: "
-          + request + "; user: " + (user != null ? Bytes.toShort(user) : "null") + "; labels: "
-          + labelAuthsStr + "; regex: " + regex);
+      AUDITLOG.trace("Access " + (isAllowed ? "allowed" : "denied") + " for user " +
+          (requestingUser != null ? requestingUser.getShortName() : "UNKNOWN") + "; reason: " +
+          reason + "; remote address: " +
+          RpcServer.getRemoteAddress().map(InetAddress::toString).orElse("") + "; request: " +
+          request + "; user: " + (user != null ? Bytes.toShort(user) : "null") + "; labels: " +
+          labelAuthsStr + "; regex: " + regex);
     }
   }
 

@@ -1,4 +1,4 @@
-/**
+/*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -19,18 +19,18 @@
 
 package org.apache.hadoop.hbase.regionserver;
 
+import com.google.protobuf.Message;
+import com.google.protobuf.Service;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Matcher;
 
-import com.google.protobuf.Message;
-import com.google.protobuf.Service;
 import org.apache.commons.collections4.map.AbstractReferenceMap;
 import org.apache.commons.collections4.map.ReferenceMap;
 import org.apache.commons.logging.Log;
@@ -42,9 +42,10 @@ import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CompareOperator;
 import org.apache.hadoop.hbase.Coprocessor;
 import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.Append;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Durability;
 import org.apache.hadoop.hbase.client.Get;
@@ -60,7 +61,9 @@ import org.apache.hadoop.hbase.coprocessor.BulkLoadObserver;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorService;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorServiceBackwardCompatiblity;
+import org.apache.hadoop.hbase.coprocessor.CoreCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.EndpointObserver;
+import org.apache.hadoop.hbase.coprocessor.HasRegionServerServices;
 import org.apache.hadoop.hbase.coprocessor.MetricsCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessor;
@@ -77,22 +80,20 @@ import org.apache.hadoop.hbase.regionserver.compactions.CompactionLifeCycleTrack
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest;
 import org.apache.hadoop.hbase.regionserver.querymatcher.DeleteTracker;
 import org.apache.hadoop.hbase.security.User;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableList;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CoprocessorClassLoader;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.wal.WALKey;
 import org.apache.yetus.audience.InterfaceAudience;
-import org.apache.yetus.audience.InterfaceStability;
+
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 
 /**
  * Implements the coprocessor environment and runtime support for coprocessors
  * loaded within a {@link Region}.
  */
-@InterfaceAudience.LimitedPrivate(HBaseInterfaceAudience.COPROC)
-@InterfaceStability.Evolving
+@InterfaceAudience.Private
 public class RegionCoprocessorHost
     extends CoprocessorHost<RegionCoprocessor, RegionCoprocessorEnvironment> {
 
@@ -109,13 +110,13 @@ public class RegionCoprocessorHost
    *
    * Encapsulation of the environment of each coprocessor
    */
-  static class RegionEnvironment extends BaseEnvironment<RegionCoprocessor>
+  private static class RegionEnvironment extends BaseEnvironment<RegionCoprocessor>
       implements RegionCoprocessorEnvironment {
-
     private Region region;
-    private RegionServerServices rsServices;
     ConcurrentMap<String, Object> sharedData;
     private final MetricRegistry metricRegistry;
+    private final Connection connection;
+    private final ServerName serverName;
 
     /**
      * Constructor
@@ -127,7 +128,9 @@ public class RegionCoprocessorHost
         final RegionServerServices services, final ConcurrentMap<String, Object> sharedData) {
       super(impl, priority, seq, conf);
       this.region = region;
-      this.rsServices = services;
+      // Mocks may have services as null at test time.
+      this.connection = services != null? services.getConnection(): null;
+      this.serverName = services != null? services.getServerName(): null;
       this.sharedData = sharedData;
       this.metricRegistry =
           MetricsCoprocessor.createRegistryForRegionCoprocessor(impl.getClass().getName());
@@ -139,10 +142,14 @@ public class RegionCoprocessorHost
       return region;
     }
 
-    /** @return reference to the region server services */
     @Override
-    public CoprocessorRegionServerServices getCoprocessorRegionServerServices() {
-      return rsServices;
+    public Connection getConnection() {
+      return this.connection;
+    }
+
+    @Override
+    public ServerName getServerName() {
+      return this.serverName;
     }
 
     @Override
@@ -164,6 +171,30 @@ public class RegionCoprocessorHost
     @Override
     public MetricRegistry getMetricRegistryForRegionServer() {
       return metricRegistry;
+    }
+  }
+
+  /**
+   * Special version of RegionEnvironment that exposes RegionServerServices for Core
+   * Coprocessors only. Temporary hack until Core Coprocessors are integrated into Core.
+   */
+  private static class RegionEnvironmentForCoreCoprocessors extends
+      RegionEnvironment implements HasRegionServerServices {
+    private final RegionServerServices rsServices;
+
+    public RegionEnvironmentForCoreCoprocessors(final RegionCoprocessor impl, final int priority,
+      final int seq, final Configuration conf, final Region region,
+      final RegionServerServices services, final ConcurrentMap<String, Object> sharedData) {
+      super(impl, priority, seq, conf, region, services, sharedData);
+      this.rsServices = services;
+    }
+
+    /**
+     * @return An instance of RegionServerServices, an object NOT for general user-space Coprocessor
+     * consumption.
+     */
+    public RegionServerServices getRegionServerServices() {
+      return this.rsServices;
     }
   }
 
@@ -201,7 +232,7 @@ public class RegionCoprocessorHost
   /** The region server services */
   RegionServerServices rsServices;
   /** The region */
-  Region region;
+  HRegion region;
 
   /**
    * Constructor
@@ -209,7 +240,7 @@ public class RegionCoprocessorHost
    * @param rsServices interface to available region server functionality
    * @param conf the configuration
    */
-  public RegionCoprocessorHost(final Region region,
+  public RegionCoprocessorHost(final HRegion region,
       final RegionServerServices rsServices, final Configuration conf) {
     super(rsServices);
     this.conf = conf;
@@ -407,8 +438,11 @@ public class RegionCoprocessorHost
           SHARED_DATA_MAP.computeIfAbsent(instance.getClass().getName(),
               k -> new ConcurrentHashMap<>());
     }
-    return new RegionEnvironment(instance, priority, seq, conf, region,
-        rsServices, classData);
+    // If a CoreCoprocessor, return a 'richer' environment, one laden with RegionServerServices.
+    return instance.getClass().isAnnotationPresent(CoreCoprocessor.class)?
+        new RegionEnvironmentForCoreCoprocessors(instance, priority, seq, conf, region,
+            rsServices, classData):
+        new RegionEnvironment(instance, priority, seq, conf, region, rsServices, classData);
   }
 
   @Override
@@ -543,44 +577,21 @@ public class RegionCoprocessorHost
   }
 
   /**
-   * See
-   * {@link RegionObserver#preCompactScannerOpen(ObserverContext, Store, List, ScanType, long,
-   *   InternalScanner, CompactionLifeCycleTracker, CompactionRequest, long)}
-   */
-  public InternalScanner preCompactScannerOpen(final HStore store,
-      final List<StoreFileScanner> scanners, final ScanType scanType, final long earliestPutTs,
-      final CompactionLifeCycleTracker tracker, final CompactionRequest request, final User user,
-      final long readPoint)
-      throws IOException {
-    return execOperationWithResult(null, coprocEnvironments.isEmpty() ? null :
-        new ObserverOperationWithResult<RegionObserver, InternalScanner>(
-            regionObserverGetter, user) {
-          @Override
-          public InternalScanner call(RegionObserver observer) throws IOException {
-            return observer.preCompactScannerOpen(this, store, scanners, scanType,
-                earliestPutTs, getResult(), tracker, request, readPoint);
-          }
-        });
-  }
-
-  /**
    * Called prior to selecting the {@link HStoreFile}s for compaction from the list of currently
    * available candidates.
    * @param store The store where compaction is being requested
    * @param candidates The currently available store files
    * @param tracker used to track the life cycle of a compaction
-   * @param request the compaction request
    * @param user the user
    * @return If {@code true}, skip the normal selection process and use the current list
    * @throws IOException
    */
   public boolean preCompactSelection(final HStore store, final List<HStoreFile> candidates,
-      final CompactionLifeCycleTracker tracker, final CompactionRequest request,
-      final User user) throws IOException {
+      final CompactionLifeCycleTracker tracker, final User user) throws IOException {
     return execOperation(coprocEnvironments.isEmpty() ? null : new RegionObserverOperation(user) {
       @Override
       public void call(RegionObserver observer) throws IOException {
-        observer.preCompactSelection(this, store, candidates, tracker, request);
+        observer.preCompactSelection(this, store, candidates, tracker);
       }
     });
   }
@@ -594,7 +605,7 @@ public class RegionCoprocessorHost
    * @param request the compaction request
    * @param user the user
    */
-  public void postCompactSelection(final HStore store, final ImmutableList<HStoreFile> selected,
+  public void postCompactSelection(final HStore store, final List<HStoreFile> selected,
       final CompactionLifeCycleTracker tracker, final CompactionRequest request,
       final User user) throws IOException {
     execOperation(coprocEnvironments.isEmpty() ? null : new RegionObserverOperation(user) {
@@ -674,21 +685,6 @@ public class RegionCoprocessorHost
         observer.preFlush(this);
       }
     });
-  }
-
-  /**
-   * See
-   * {@link RegionObserver#preFlushScannerOpen(ObserverContext, Store, List, InternalScanner, long)}
-   */
-  public InternalScanner preFlushScannerOpen(final HStore store,
-      final List<KeyValueScanner> scanners, final long readPoint) throws IOException {
-    return execOperationWithResult(null, coprocEnvironments.isEmpty() ? null :
-        new ObserverOperationWithResult<RegionObserver, InternalScanner>(regionObserverGetter) {
-          @Override
-          public InternalScanner call(RegionObserver observer) throws IOException {
-            return observer.preFlushScannerOpen(this, store, scanners, getResult(), readPoint);
-          }
-        });
   }
 
   /**
@@ -1157,21 +1153,6 @@ public class RegionCoprocessorHost
           @Override
           public RegionScanner call(RegionObserver observer) throws IOException {
             return observer.preScannerOpen(this, scan, getResult());
-          }
-        });
-  }
-
-  /**
-   * See
-   * {@link RegionObserver#preStoreScannerOpen(ObserverContext, Store, Scan, NavigableSet, KeyValueScanner, long)}
-   */
-  public KeyValueScanner preStoreScannerOpen(final HStore store, final Scan scan,
-      final NavigableSet<byte[]> targetCols, final long readPt) throws IOException {
-    return execOperationWithResult(null, coprocEnvironments.isEmpty() ? null :
-        new ObserverOperationWithResult<RegionObserver, KeyValueScanner>(regionObserverGetter) {
-          @Override
-          public KeyValueScanner call(RegionObserver observer) throws IOException {
-            return observer.preStoreScannerOpen(this, store, scan, targetCols, getResult(), readPt);
           }
         });
   }

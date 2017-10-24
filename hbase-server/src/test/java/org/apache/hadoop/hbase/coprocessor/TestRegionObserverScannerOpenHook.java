@@ -58,6 +58,7 @@ import org.apache.hadoop.hbase.regionserver.KeyValueScanner;
 import org.apache.hadoop.hbase.regionserver.MemStoreLABImpl;
 import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.regionserver.RegionCoprocessorHost;
+import org.apache.hadoop.hbase.regionserver.RegionScanner;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 import org.apache.hadoop.hbase.regionserver.ScanType;
 import org.apache.hadoop.hbase.regionserver.ScannerContext;
@@ -123,12 +124,15 @@ public class TestRegionObserverScannerOpenHook {
     }
 
     @Override
-    public KeyValueScanner preStoreScannerOpen(ObserverContext<RegionCoprocessorEnvironment> c,
-        Store store, Scan scan, NavigableSet<byte[]> targetCols, KeyValueScanner s, long readPt)
-        throws IOException {
-      scan.setFilter(new NoDataFilter());
-      HStore hs = (HStore) store;
-      return new StoreScanner(hs, hs.getScanInfo(), scan, targetCols, readPt);
+    public void preGetOp(ObserverContext<RegionCoprocessorEnvironment> c, Get get,
+        List<Cell> result) throws IOException {
+      c.bypass();
+    }
+
+    @Override
+    public RegionScanner preScannerOpen(ObserverContext<RegionCoprocessorEnvironment> c, Scan scan,
+        RegionScanner s) throws IOException {
+      return c.getEnvironment().getRegion().getScanner(scan.setFilter(new NoDataFilter()));
     }
   }
 
@@ -136,11 +140,6 @@ public class TestRegionObserverScannerOpenHook {
 
     @Override
     public boolean next(List<Cell> result, ScannerContext scannerContext) throws IOException {
-      return false;
-    }
-
-    @Override
-    public boolean next(List<Cell> results) throws IOException {
       return false;
     }
 
@@ -157,10 +156,8 @@ public class TestRegionObserverScannerOpenHook {
     }
 
     @Override
-    public InternalScanner preFlushScannerOpen(ObserverContext<RegionCoprocessorEnvironment> c,
-        Store store, List<KeyValueScanner> scanners, InternalScanner s, long readPoint)
-        throws IOException {
-      scanners.forEach(KeyValueScanner::close);
+    public InternalScanner preFlush(ObserverContext<RegionCoprocessorEnvironment> c, Store store,
+        InternalScanner scanner) throws IOException {
       return NO_DATA;
     }
   }
@@ -176,17 +173,14 @@ public class TestRegionObserverScannerOpenHook {
     }
 
     @Override
-    public InternalScanner preCompactScannerOpen(ObserverContext<RegionCoprocessorEnvironment> c,
-        Store store, List<? extends KeyValueScanner> scanners, ScanType scanType,
-        long earliestPutTs, InternalScanner s, CompactionLifeCycleTracker tracker,
-        CompactionRequest request, long readPoint)
-        throws IOException {
-      scanners.forEach(KeyValueScanner::close);
+    public InternalScanner preCompact(ObserverContext<RegionCoprocessorEnvironment> c, Store store,
+        InternalScanner scanner, ScanType scanType, CompactionLifeCycleTracker tracker,
+        CompactionRequest request) throws IOException {
       return NO_DATA;
     }
   }
 
-  Region initHRegion(byte[] tableName, String callingMethod, Configuration conf,
+  HRegion initHRegion(byte[] tableName, String callingMethod, Configuration conf,
       byte[]... families) throws IOException {
     HTableDescriptor htd = new HTableDescriptor(TableName.valueOf(tableName));
     for (byte[] family : families) {
@@ -214,7 +208,7 @@ public class TestRegionObserverScannerOpenHook {
     byte[][] FAMILIES = new byte[][] { A };
 
     Configuration conf = HBaseConfiguration.create();
-    Region region = initHRegion(TABLE, getClass().getName(), conf, FAMILIES);
+    HRegion region = initHRegion(TABLE, getClass().getName(), conf, FAMILIES);
     RegionCoprocessorHost h = region.getCoprocessorHost();
     h.load(NoDataFromScan.class, Coprocessor.PRIORITY_HIGHEST, conf);
     h.load(EmptyRegionObsever.class, Coprocessor.PRIORITY_USER, conf);
@@ -239,7 +233,7 @@ public class TestRegionObserverScannerOpenHook {
     byte[][] FAMILIES = new byte[][] { A };
 
     Configuration conf = HBaseConfiguration.create();
-    Region region = initHRegion(TABLE, getClass().getName(), conf, FAMILIES);
+    HRegion region = initHRegion(TABLE, getClass().getName(), conf, FAMILIES);
     RegionCoprocessorHost h = region.getCoprocessorHost();
     h.load(NoDataFromFlush.class, Coprocessor.PRIORITY_HIGHEST, conf);
     h.load(EmptyRegionObsever.class, Coprocessor.PRIORITY_USER, conf);
@@ -323,7 +317,7 @@ public class TestRegionObserverScannerOpenHook {
     table.put(put);
 
     HRegionServer rs = UTIL.getRSForFirstRegionInTable(desc.getTableName());
-    List<Region> regions = rs.getRegions(desc.getTableName());
+    List<HRegion> regions = rs.getRegions(desc.getTableName());
     assertEquals("More than 1 region serving test table with 1 row", 1, regions.size());
     Region region = regions.get(0);
     admin.flushRegion(region.getRegionInfo().getRegionName());

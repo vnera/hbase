@@ -1,4 +1,4 @@
-/**
+/*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -21,6 +21,7 @@ package org.apache.hadoop.hbase.master;
 import java.io.IOException;
 import java.util.List;
 
+import org.apache.hadoop.hbase.HBaseIOException;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableDescriptors;
@@ -54,7 +55,10 @@ import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTe
 import com.google.protobuf.Service;
 
 /**
- * Services Master supplies
+ * A curated subset of services provided by {@link HMaster}.
+ * For use internally only. Passed to Managers, Services and Chores so can pass less-than-a
+ * full-on HMaster at test-time. Be judicious adding API. Changes cause ripples through
+ * the code base.
  */
 @InterfaceAudience.Private
 public interface MasterServices extends Server {
@@ -413,11 +417,6 @@ public interface MasterServices extends Server {
    */
   public LoadBalancer getLoadBalancer();
 
-  /**
-   * @return True if this master is stopping.
-   */
-  boolean isStopping();
-
   boolean isSplitOrMergeEnabled(MasterSwitchType switchType);
 
   /**
@@ -474,24 +473,6 @@ public interface MasterServices extends Server {
    */
   List<ReplicationPeerDescription> listReplicationPeers(String regex) throws ReplicationException,
       IOException;
-
-  /**
-   * Mark a region server as draining to prevent additional regions from getting assigned to it.
-   * @param server Region servers to drain.
-   */
-  void drainRegionServer(final ServerName server);
-
-  /**
-   * List region servers marked as draining to not get additional regions assigned to them.
-   * @return List of draining servers.
-   */
-  List<ServerName> listDrainingRegionServers();
-
-  /**
-   * Remove drain from a region server to allow additional regions assignments.
-   * @param server Region server to remove drain from.
-   */
-  void removeDrainFromRegionServer(final ServerName server);
 
   /**
    * @return {@link LockManager} to lock namespaces/tables/regions.

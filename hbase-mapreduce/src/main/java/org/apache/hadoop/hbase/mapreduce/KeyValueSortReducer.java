@@ -21,7 +21,7 @@ package org.apache.hadoop.hbase.mapreduce;
 import java.util.TreeSet;
 
 import org.apache.yetus.audience.InterfaceAudience;
-import org.apache.hadoop.hbase.CellComparator;
+import org.apache.hadoop.hbase.CellComparatorImpl;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -32,14 +32,17 @@ import org.apache.hadoop.mapreduce.Reducer;
  * KeyValues in sorted order.  If lots of columns per row, it will use lots of
  * memory sorting.
  * @see HFileOutputFormat2
+ * @deprecated Use {@link CellSortReducer}. Will be removed from
+ * 3.0 onwards
  */
+@Deprecated
 @InterfaceAudience.Public
 public class KeyValueSortReducer
     extends Reducer<ImmutableBytesWritable, KeyValue, ImmutableBytesWritable, KeyValue> {
   protected void reduce(ImmutableBytesWritable row, Iterable<KeyValue> kvs,
       Reducer<ImmutableBytesWritable, KeyValue, ImmutableBytesWritable, KeyValue>.Context context)
   throws java.io.IOException, InterruptedException {
-    TreeSet<KeyValue> map = new TreeSet<>(CellComparator.COMPARATOR);
+    TreeSet<KeyValue> map = new TreeSet<>(CellComparatorImpl.COMPARATOR);
     for (KeyValue kv: kvs) {
       try {
         map.add(kv.clone());

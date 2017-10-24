@@ -1,4 +1,4 @@
-/**
+/*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -77,8 +77,8 @@ import org.apache.hadoop.hbase.regionserver.FlushRequester;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.regionserver.HStore;
+import org.apache.hadoop.hbase.regionserver.MemStoreSizing;
 import org.apache.hadoop.hbase.regionserver.MemStoreSnapshot;
-import org.apache.hadoop.hbase.regionserver.MemStoreSize;
 import org.apache.hadoop.hbase.regionserver.MultiVersionConcurrencyControl;
 import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.regionserver.RegionScanner;
@@ -350,7 +350,7 @@ public abstract class AbstractTestWALReplay {
     Region region2 = HBaseTestingUtility.createRegionAndWAL(hri, hbaseRootDir, this.conf, htd);
     HBaseTestingUtility.closeRegionAndWAL(region2);
     WAL wal = createWAL(this.conf, hbaseRootDir, logName);
-    Region region = HRegion.openHRegion(hri, htd, wal, this.conf);
+    HRegion region = HRegion.openHRegion(hri, htd, wal, this.conf);
 
     byte [] family = htd.getFamilies().iterator().next().getName();
     Path f =  new Path(basedir, "hfile");
@@ -543,8 +543,8 @@ public abstract class AbstractTestWALReplay {
         final AtomicInteger countOfRestoredEdits = new AtomicInteger(0);
         HRegion region3 = new HRegion(basedir, wal3, newFS, newConf, hri, htd, null) {
           @Override
-          protected void restoreEdit(HStore s, Cell cell, MemStoreSize memstoreSize) {
-            super.restoreEdit(s, cell, memstoreSize);
+          protected void restoreEdit(HStore s, Cell cell, MemStoreSizing memstoreSizing) {
+            super.restoreEdit(s, cell, memstoreSizing);
             countOfRestoredEdits.incrementAndGet();
           }
         };
@@ -1117,7 +1117,7 @@ public abstract class AbstractTestWALReplay {
     private HRegion r;
 
     @Override
-    public void requestFlush(Region region, boolean force) {
+    public void requestFlush(HRegion region, boolean force) {
       try {
         r.flush(force);
       } catch (IOException e) {
@@ -1126,7 +1126,7 @@ public abstract class AbstractTestWALReplay {
     }
 
     @Override
-    public void requestDelayedFlush(Region region, long when, boolean forceFlushAllStores) {
+    public void requestDelayedFlush(HRegion region, long when, boolean forceFlushAllStores) {
       // TODO Auto-generated method stub
 
     }

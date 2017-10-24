@@ -56,6 +56,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellComparator;
+import org.apache.hadoop.hbase.CellComparatorImpl;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.CompoundConfiguration;
 import org.apache.hadoop.hbase.HConstants;
@@ -281,9 +282,9 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
         break;
       case NONE :
       default:
-        className = DefaultMemStore.class.getName();
-        this.memstore = ReflectionUtils.instantiateWithCustomCtor(className, new Class[] {
-        Configuration.class, CellComparator.class }, new Object[] { conf, this.comparator });
+      className = DefaultMemStore.class.getName();
+      this.memstore = ReflectionUtils.newInstance(DefaultMemStore.class,
+        new Object[] { conf, this.comparator });
     }
     LOG.info("Memstore class name is " + className);
     this.offPeakHours = OffPeakHours.getInstance(conf);
@@ -681,13 +682,11 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
 
   /**
    * Adds a value to the memstore
-   * @param cell
-   * @param memstoreSize
    */
-  public void add(final Cell cell, MemStoreSize memstoreSize) {
+  public void add(final Cell cell, MemStoreSizing memstoreSizing) {
     lock.readLock().lock();
     try {
-       this.memstore.add(cell, memstoreSize);
+       this.memstore.add(cell, memstoreSizing);
     } finally {
       lock.readLock().unlock();
     }
@@ -695,13 +694,11 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
 
   /**
    * Adds the specified value to the memstore
-   * @param cells
-   * @param memstoreSize
    */
-  public void add(final Iterable<Cell> cells, MemStoreSize memstoreSize) {
+  public void add(final Iterable<Cell> cells, MemStoreSizing memstoreSizing) {
     lock.readLock().lock();
     try {
-      memstore.add(cells, memstoreSize);
+      memstore.add(cells, memstoreSizing);
     } finally {
       lock.readLock().unlock();
     }
@@ -777,7 +774,7 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
                   + CellUtil.getCellKeyAsString(prevCell) + " current="
                   + CellUtil.getCellKeyAsString(cell));
             }
-            if (CellComparator.compareFamilies(prevCell, cell) != 0) {
+            if (CellComparatorImpl.COMPARATOR.compareFamilies(prevCell, cell) != 0) {
               throw new InvalidHFileException("Previous key had different"
                   + " family compared to current key: path=" + srcPath
                   + " previous="
@@ -1034,26 +1031,11 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
    * @param includesTag - includesTag or not
    * @return Writer for a new StoreFile in the tmp dir.
    */
-  public StoreFileWriter createWriterInTmp(long maxKeyCount, Compression.Algorithm compression,
-      boolean isCompaction, boolean includeMVCCReadpoint, boolean includesTag,
-      boolean shouldDropBehind) throws IOException {
-    return createWriterInTmp(maxKeyCount, compression, isCompaction, includeMVCCReadpoint,
-      includesTag, shouldDropBehind, null);
-  }
-
-  /**
-   * @param maxKeyCount
-   * @param compression Compression algorithm to use
-   * @param isCompaction whether we are creating a new file in a compaction
-   * @param includeMVCCReadpoint - whether to include MVCC or not
-   * @param includesTag - includesTag or not
-   * @return Writer for a new StoreFile in the tmp dir.
-   */
   // TODO : allow the Writer factory to create Writers of ShipperListener type only in case of
   // compaction
   public StoreFileWriter createWriterInTmp(long maxKeyCount, Compression.Algorithm compression,
       boolean isCompaction, boolean includeMVCCReadpoint, boolean includesTag,
-      boolean shouldDropBehind, TimeRangeTracker trt) throws IOException {
+      boolean shouldDropBehind) throws IOException {
     final CacheConfig writerCacheConf;
     if (isCompaction) {
       // Don't cache data on write on compactions.
@@ -1079,9 +1061,6 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
             .withFavoredNodes(favoredNodes)
             .withFileContext(hFileContext)
             .withShouldDropCacheBehind(shouldDropBehind);
-    if (trt != null) {
-      builder.withTimeRangeTracker(trt);
-    }
     return builder.build();
   }
 
@@ -1642,7 +1621,10 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
     return StoreUtils.hasReferences(this.storeEngine.getStoreFileManager().getStorefiles());
   }
 
-  @Override
+  /**
+   * getter for CompactionProgress object
+   * @return CompactionProgress object; can be null
+   */
   public CompactionProgress getCompactionProgress() {
     return this.storeEngine.getCompactor().getProgress();
   }
@@ -1684,7 +1666,7 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
           boolean override = false;
           //TODO: is it correct way to get CompactionRequest?
           override = getCoprocessorHost().preCompactSelection(this, candidatesForCoproc,
-            tracker, null, user);
+            tracker, user);
           if (override) {
             // Coprocessor is overriding normal file selection.
             compaction.forceSelect(new CompactionRequestImpl(candidatesForCoproc));
@@ -1937,25 +1919,17 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
       final NavigableSet<byte []> targetCols, long readPt) throws IOException {
     lock.readLock().lock();
     try {
-      KeyValueScanner scanner = null;
-      if (this.getCoprocessorHost() != null) {
-        scanner = this.getCoprocessorHost().preStoreScannerOpen(this, scan, targetCols, readPt);
-      }
-      scanner = createScanner(scan, targetCols, readPt, scanner);
-      return scanner;
+      return createScanner(scan, targetCols, readPt);
     } finally {
       lock.readLock().unlock();
     }
   }
 
   protected KeyValueScanner createScanner(Scan scan, final NavigableSet<byte[]> targetCols,
-      long readPt, KeyValueScanner scanner) throws IOException {
-    if (scanner == null) {
-      scanner = scan.isReversed() ? new ReversedStoreScanner(this,
-          getScanInfo(), scan, targetCols, readPt) : new StoreScanner(this,
-          getScanInfo(), scan, targetCols, readPt);
-    }
-    return scanner;
+      long readPt) throws IOException {
+    return scan.isReversed() ? new ReversedStoreScanner(this,
+      getScanInfo(), scan, targetCols, readPt) : new StoreScanner(this,
+      getScanInfo(), scan, targetCols, readPt);
   }
 
   /**
@@ -2138,7 +2112,6 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
     return this.region;
   }
 
-  @Override
   public RegionCoprocessorHost getCoprocessorHost() {
     return this.region.getCoprocessorHost();
   }
@@ -2166,16 +2139,14 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
    * <p>
    * This operation is atomic on each KeyValue (row/family/qualifier) but not necessarily atomic
    * across all of them.
-   * @param cells
    * @param readpoint readpoint below which we can safely remove duplicate KVs
-   * @param memstoreSize
    * @throws IOException
    */
-  public void upsert(Iterable<Cell> cells, long readpoint, MemStoreSize memstoreSize)
+  public void upsert(Iterable<Cell> cells, long readpoint, MemStoreSizing memstoreSizing)
       throws IOException {
     this.lock.readLock().lock();
     try {
-      this.memstore.upsert(cells, readpoint, memstoreSize);
+      this.memstore.upsert(cells, readpoint, memstoreSizing);
     } finally {
       this.lock.readLock().unlock();
     }

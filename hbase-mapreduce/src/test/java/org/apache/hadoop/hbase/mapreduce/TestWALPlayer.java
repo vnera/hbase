@@ -70,6 +70,7 @@ import org.mockito.stubbing.Answer;
  * Basic test for the WALPlayer M/R tool
  */
 @Category({MapReduceTests.class, LargeTests.class})
+//TODO : Remove this in 3.0
 public class TestWALPlayer {
   private static final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private static MiniHBaseCluster cluster;

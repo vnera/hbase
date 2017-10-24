@@ -31,7 +31,7 @@ import java.util.List;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellComparator;
+import org.apache.hadoop.hbase.CellComparatorImpl;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.CompareOperator;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
@@ -71,7 +71,7 @@ import org.junit.rules.TestName;
 @Category({FilterTests.class, SmallTests.class})
 public class TestFilter {
   private final static Log LOG = LogFactory.getLog(TestFilter.class);
-  private Region region;
+  private HRegion region;
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
 
   @Rule
@@ -1499,7 +1499,7 @@ public class TestFilter {
     HTableDescriptor htd = new HTableDescriptor(TableName.valueOf(name.getMethodName()));
     htd.addFamily(new HColumnDescriptor(family));
     HRegionInfo info = new HRegionInfo(htd.getTableName(), null, null, false);
-    Region testRegion = HBaseTestingUtility.createRegionAndWAL(info, TEST_UTIL.getDataTestDir(),
+    HRegion testRegion = HBaseTestingUtility.createRegionAndWAL(info, TEST_UTIL.getDataTestDir(),
         TEST_UTIL.getConfiguration(), htd);
 
     for(int i=0; i<5; i++) {
@@ -1667,7 +1667,7 @@ public class TestFilter {
     for (boolean done = true; done; i++) {
       done = scanner.next(results);
       Arrays.sort(results.toArray(new Cell[results.size()]),
-          CellComparator.COMPARATOR);
+          CellComparatorImpl.COMPARATOR);
       LOG.info("counter=" + i + ", " + results);
       if (results.isEmpty()) break;
       assertTrue("Scanned too many rows! Only expected " + expectedRows +
@@ -1689,7 +1689,7 @@ public class TestFilter {
     for (boolean done = true; done; i++) {
       done = scanner.next(results);
       Arrays.sort(results.toArray(new Cell[results.size()]),
-          CellComparator.COMPARATOR);
+          CellComparatorImpl.COMPARATOR);
       LOG.info("counter=" + i + ", " + results);
       if(results.isEmpty()) break;
       assertTrue("Scanned too many rows! Only expected " + expectedRows +
@@ -1711,7 +1711,7 @@ public class TestFilter {
     for (boolean done = true; done; row++) {
       done = scanner.next(results);
       Arrays.sort(results.toArray(new Cell[results.size()]),
-          CellComparator.COMPARATOR);
+          CellComparatorImpl.COMPARATOR);
       if(results.isEmpty()) break;
       assertTrue("Scanned too many keys! Only expected " + kvs.length +
           " total but already scanned " + (results.size() + idx) +
@@ -1742,7 +1742,7 @@ public class TestFilter {
     for (boolean more = true; more; row++) {
       more = scanner.next(results);
       Arrays.sort(results.toArray(new Cell[results.size()]),
-          CellComparator.COMPARATOR);
+          CellComparatorImpl.COMPARATOR);
       if(results.isEmpty()) break;
       assertTrue("Scanned too many keys! Only expected " + kvs.length +
           " total but already scanned " + (results.size() + idx) +
@@ -2060,7 +2060,7 @@ public class TestFilter {
     HTableDescriptor htd = new HTableDescriptor(TableName.valueOf(name.getMethodName()));
     htd.addFamily(new HColumnDescriptor(FAMILIES[0]));
     HRegionInfo info = new HRegionInfo(htd.getTableName(), null, null, false);
-    Region testRegion = HBaseTestingUtility.createRegionAndWAL(info, TEST_UTIL.getDataTestDir(),
+    HRegion testRegion = HBaseTestingUtility.createRegionAndWAL(info, TEST_UTIL.getDataTestDir(),
         TEST_UTIL.getConfiguration(), htd);
     for(int i=0; i<10; i++) {
       Put p = new Put(Bytes.toBytes("row" + i));

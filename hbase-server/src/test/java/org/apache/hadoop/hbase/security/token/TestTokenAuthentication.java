@@ -31,27 +31,23 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorService;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.ChoreService;
 import org.apache.hadoop.hbase.ClusterId;
 import org.apache.hadoop.hbase.CoordinatedStateManager;
-import org.apache.hadoop.hbase.Coprocessor;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.ClusterConnection;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
-import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
-import org.apache.hadoop.hbase.coprocessor.RegionObserver;
 import org.apache.hadoop.hbase.ipc.FifoRpcScheduler;
 import org.apache.hadoop.hbase.ipc.NettyRpcServer;
 import org.apache.hadoop.hbase.ipc.RpcServer;
@@ -62,7 +58,6 @@ import org.apache.hadoop.hbase.ipc.ServerRpcController;
 import org.apache.hadoop.hbase.ipc.SimpleRpcServer;
 import org.apache.hadoop.hbase.metrics.MetricRegistry;
 import org.apache.hadoop.hbase.protobuf.generated.AuthenticationProtos;
-import org.apache.hadoop.hbase.regionserver.CoprocessorRegionServerServices;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 import org.apache.hadoop.hbase.security.SecurityInfo;
@@ -244,6 +239,16 @@ public class TestTokenAuthentication {
     }
 
     @Override
+    public FileSystem getFileSystem() {
+      return null;
+    }
+
+    @Override
+    public boolean isStopping() {
+      return this.stopped;
+    }
+
+    @Override
     public void abort(String reason, Throwable error) {
       LOG.fatal("Aborting on: "+reason, error);
       this.aborted = true;
@@ -273,10 +278,6 @@ public class TestTokenAuthentication {
         @Override
         public void shutdown() {}
 
-        public CoprocessorRegionServerServices getCoprocessorRegionServerServices() {
-          return mockServices;
-        }
-
         @Override
         public ConcurrentMap<String, Object> getSharedData() { return null; }
 
@@ -304,22 +305,22 @@ public class TestTokenAuthentication {
         public Configuration getConfiguration() { return conf; }
 
         @Override
-        public Table getTable(TableName tableName) throws IOException
-          { return null; }
-
-        @Override
-        public Table getTable(TableName tableName, ExecutorService service)
-            throws IOException {
-          return null;
-        }
-
-        @Override
         public ClassLoader getClassLoader() {
           return Thread.currentThread().getContextClassLoader();
         }
 
         @Override
         public HRegionInfo getRegionInfo() {
+          return null;
+        }
+
+        @Override
+        public ServerName getServerName() {
+          return null;
+        }
+
+        @Override
+        public Connection getConnection() {
           return null;
         }
       });

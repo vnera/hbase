@@ -1493,7 +1493,7 @@ public final class ProtobufUtil {
     }
 
     List<Cell> cells = new ArrayList<>(values.size());
-    CellBuilder builder = CellBuilderFactory.create(CellBuilderType.SHALLOW_COPY);
+    ExtendedCellBuilder builder = ExtendedCellBuilderFactory.create(CellBuilderType.SHALLOW_COPY);
     for (CellProtos.Cell c : values) {
       cells.add(toCell(builder, c));
     }
@@ -1536,7 +1536,7 @@ public final class ProtobufUtil {
 
     if (!values.isEmpty()){
       if (cells == null) cells = new ArrayList<>(values.size());
-      CellBuilder builder = CellBuilderFactory.create(CellBuilderType.SHALLOW_COPY);
+      ExtendedCellBuilder builder = ExtendedCellBuilderFactory.create(CellBuilderType.SHALLOW_COPY);
       for (CellProtos.Cell c: values) {
         cells.add(toCell(builder, c));
       }
@@ -2043,7 +2043,7 @@ public final class ProtobufUtil {
     return UnsafeByteOperations.unsafeWrap(dup);
   }
 
-  public static Cell toCell(CellBuilder cellBuilder, final CellProtos.Cell cell) {
+  public static Cell toCell(ExtendedCellBuilder cellBuilder, final CellProtos.Cell cell) {
     return cellBuilder.clear()
             .setRow(cell.getRow().toByteArray())
             .setFamily(cell.getFamily().toByteArray())
@@ -2476,8 +2476,8 @@ public final class ProtobufUtil {
     switch (type) {
       case THROTTLE: return QuotaProtos.QuotaType.THROTTLE;
       case SPACE: return QuotaProtos.QuotaType.SPACE;
+      default: throw new RuntimeException("Invalid QuotaType " + type);
     }
-    throw new RuntimeException("Invalid QuotaType " + type);
   }
 
   /**
@@ -2863,6 +2863,10 @@ public final class ProtobufUtil {
     return CompactionState.valueOf(state.toString());
   }
 
+  public static GetRegionInfoResponse.CompactionState createCompactionState(CompactionState state) {
+    return GetRegionInfoResponse.CompactionState.valueOf(state.toString());
+  }
+
   public static Optional<Long> toOptionalTimestamp(MajorCompactionTimestampResponse resp) {
     long timestamp = resp.getCompactionTimestamp();
     return timestamp == 0 ? Optional.empty() : Optional.of(timestamp);
@@ -3005,6 +3009,7 @@ public final class ProtobufUtil {
     if (proto.hasBalancerOn()) {
       balancerOn = proto.getBalancerOn();
     }
+
     builder.setHBaseVersion(hbaseVersion)
            .setClusterId(clusterId)
            .setLiveServers(servers)
@@ -3014,6 +3019,9 @@ public final class ProtobufUtil {
            .setRegionState(rit)
            .setMasterCoprocessors(masterCoprocessors)
            .setBalancerOn(balancerOn);
+    if (proto.hasMasterInfoPort()) {
+      builder.setMasterInfoPort(proto.getMasterInfoPort());
+    }
     return builder.build();
   }
 
@@ -3033,6 +3041,7 @@ public final class ProtobufUtil {
       case MASTER: return ClusterStatus.Option.MASTER;
       case BACKUP_MASTERS: return ClusterStatus.Option.BACKUP_MASTERS;
       case BALANCER_ON: return ClusterStatus.Option.BALANCER_ON;
+      case MASTER_INFO_PORT: return ClusterStatus.Option.MASTER_INFO_PORT;
       // should not reach here
       default: throw new IllegalArgumentException("Invalid option: " + option);
     }
@@ -3054,6 +3063,7 @@ public final class ProtobufUtil {
       case MASTER: return ClusterStatusProtos.Option.MASTER;
       case BACKUP_MASTERS: return ClusterStatusProtos.Option.BACKUP_MASTERS;
       case BALANCER_ON: return ClusterStatusProtos.Option.BALANCER_ON;
+      case MASTER_INFO_PORT: return ClusterStatusProtos.Option.MASTER_INFO_PORT;
       // should not reach here
       default: throw new IllegalArgumentException("Invalid option: " + option);
     }
@@ -3151,6 +3161,7 @@ public final class ProtobufUtil {
       builder.setBalancerOn(status.getBalancerOn());
     }
 
+    builder.setMasterInfoPort(status.getMasterInfoPort());
     return builder.build();
   }
 

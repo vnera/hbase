@@ -54,7 +54,7 @@ public class CellArrayImmutableSegment extends ImmutableSegment {
    * of CSLMImmutableSegment
    * The given iterator returns the Cells that "survived" the compaction.
    */
-  protected CellArrayImmutableSegment(CSLMImmutableSegment segment, MemStoreSize memstoreSize) {
+  protected CellArrayImmutableSegment(CSLMImmutableSegment segment, MemStoreSizing memstoreSizing) {
     super(segment); // initiailize the upper class
     incSize(0, DEEP_OVERHEAD_CAM - CSLMImmutableSegment.DEEP_OVERHEAD_CSLM);
     int numOfCells = segment.getCellsCount();
@@ -64,7 +64,7 @@ public class CellArrayImmutableSegment extends ImmutableSegment {
     // add sizes of CellArrayMap entry (reinitializeCellSet doesn't take the care for the sizes)
     long newSegmentSizeDelta = numOfCells*(indexEntrySize()-ClassSize.CONCURRENT_SKIPLISTMAP_ENTRY);
     incSize(0, newSegmentSizeDelta);
-    memstoreSize.incMemStoreSize(0, newSegmentSizeDelta);
+    memstoreSizing.incMemStoreSize(0, newSegmentSizeDelta);
   }
 
   @Override
@@ -125,7 +125,7 @@ public class CellArrayImmutableSegment extends ImmutableSegment {
       segmentScanner.close();
     }
     // build the immutable CellSet
-    CellArrayMap cam = new CellArrayMap(CellComparator.COMPARATOR, cells, 0, idx, false);
+    CellArrayMap cam = new CellArrayMap(getComparator(), cells, 0, idx, false);
     this.setCellSet(oldCellSet, new CellSet(cam));   // update the CellSet of this Segment
   }
 

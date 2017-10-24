@@ -503,11 +503,6 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
     return this.heap.seek(key);
   }
 
-  @Override
-  public boolean next(List<Cell> outResult) throws IOException {
-    return next(outResult, NoLimitScannerContext.getInstance());
-  }
-
   /**
    * Get the next row of values from this Store.
    * @param outResult
@@ -554,7 +549,8 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
     }
 
     // Only do a sanity-check if store and comparator are available.
-    CellComparator comparator = store.map(s -> s.getComparator()).orElse(null);
+    CellComparator comparator =
+        store.map(s -> s.getComparator()).orElse(null);
 
     int count = 0;
     long totalBytesRead = 0;

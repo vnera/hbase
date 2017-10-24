@@ -42,17 +42,11 @@ import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTe
 public class CompositeImmutableSegment extends ImmutableSegment {
 
   private final List<ImmutableSegment> segments;
-  // CompositeImmutableSegment is used for snapshots and snapshot should
-  // support getTimeRangeTracker() interface.
-  // Thus we hold a constant TRT build in the construction time from TRT of the given segments.
-  private final TimeRangeTracker timeRangeTracker;
-
   private long keySize = 0;
 
   public CompositeImmutableSegment(CellComparator comparator, List<ImmutableSegment> segments) {
     super(comparator);
     this.segments = segments;
-    this.timeRangeTracker = TimeRangeTracker.create(TimeRangeTracker.Type.SYNC);
     for (ImmutableSegment s : segments) {
       this.timeRangeTracker.includeTimestamp(s.getTimeRangeTracker().getMax());
       this.timeRangeTracker.includeTimestamp(s.getTimeRangeTracker().getMin());
@@ -124,11 +118,6 @@ public class CompositeImmutableSegment extends ImmutableSegment {
 
   @Override
   public boolean shouldSeek(TimeRange tr, long oldestUnexpiredTS){
-    throw new IllegalStateException("Not supported by CompositeImmutableScanner");
-  }
-
-  @Override
-  public long getMinTimestamp(){
     throw new IllegalStateException("Not supported by CompositeImmutableScanner");
   }
 
@@ -268,13 +257,13 @@ public class CompositeImmutableSegment extends ImmutableSegment {
   }
 
   @Override
-  protected void internalAdd(Cell cell, boolean mslabUsed, MemStoreSize memstoreSize) {
+  protected void internalAdd(Cell cell, boolean mslabUsed, MemStoreSizing memstoreSizing) {
     throw new IllegalStateException("Not supported by CompositeImmutableScanner");
   }
 
   @Override
   protected void updateMetaInfo(Cell cellToAdd, boolean succ, boolean mslabUsed,
-      MemStoreSize memstoreSize) {
+      MemStoreSizing memstoreSizing) {
     throw new IllegalStateException("Not supported by CompositeImmutableScanner");
   }
 

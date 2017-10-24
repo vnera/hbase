@@ -331,7 +331,10 @@ public class HStoreFile implements StoreFile {
         : OptionalLong.of(Bytes.toLong(bulkLoadTimestamp));
   }
 
-  @Override
+  /**
+   * @return the cached value of HDFS blocks distribution. The cached value is calculated when store
+   *         file is opened.
+   */
   public HDFSBlocksDistribution getHDFSBlockDistribution() {
     return this.fileInfo.getHDFSBlockDistribution();
   }
@@ -436,7 +439,8 @@ public class HStoreFile implements StoreFile {
     reader.loadBloomfilter(BlockType.DELETE_FAMILY_BLOOM_META);
 
     try {
-      this.reader.timeRange = TimeRangeTracker.getTimeRange(metadataMap.get(TIMERANGE_KEY));
+      byte[] data = metadataMap.get(TIMERANGE_KEY);
+      this.reader.timeRange = data == null ? null : TimeRangeTracker.parseFrom(data).toTimeRange();
     } catch (IllegalArgumentException e) {
       LOG.error("Error reading timestamp range data from meta -- " +
           "proceeding without", e);

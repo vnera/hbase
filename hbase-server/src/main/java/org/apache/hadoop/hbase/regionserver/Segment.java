@@ -1,4 +1,4 @@
-/**
+/*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -54,7 +54,7 @@ public abstract class Segment {
       + Bytes.SIZEOF_LONG // minSequenceId
       + Bytes.SIZEOF_BOOLEAN); // tagsPresent
   public final static long DEEP_OVERHEAD = FIXED_OVERHEAD + ClassSize.ATOMIC_REFERENCE
-      + ClassSize.CELL_SET + 2 * ClassSize.ATOMIC_LONG + ClassSize.SYNC_TIMERANGE_TRACKER;
+      + ClassSize.CELL_SET + 2 * ClassSize.ATOMIC_LONG;
 
   private AtomicReference<CellSet> cellSet= new AtomicReference<>();
   private final CellComparator comparator;
@@ -69,15 +69,15 @@ public abstract class Segment {
 
   // Empty constructor to be used when Segment is used as interface,
   // and there is no need in true Segments state
-  protected Segment(CellComparator comparator) {
+  protected Segment(CellComparator comparator, TimeRangeTracker trt) {
     this.comparator = comparator;
     this.dataSize = new AtomicLong(0);
     this.heapSize = new AtomicLong(0);
-    this.timeRangeTracker = TimeRangeTracker.create(TimeRangeTracker.Type.SYNC);
+    this.timeRangeTracker = trt;
   }
 
   // This constructor is used to create empty Segments.
-  protected Segment(CellSet cellSet, CellComparator comparator, MemStoreLAB memStoreLAB) {
+  protected Segment(CellSet cellSet, CellComparator comparator, MemStoreLAB memStoreLAB, TimeRangeTracker trt) {
     this.cellSet.set(cellSet);
     this.comparator = comparator;
     this.minSequenceId = Long.MAX_VALUE;
@@ -85,7 +85,7 @@ public abstract class Segment {
     this.dataSize = new AtomicLong(0);
     this.heapSize = new AtomicLong(0);
     this.tagsPresent = false;
-    this.timeRangeTracker = TimeRangeTracker.create(TimeRangeTracker.Type.SYNC);
+    this.timeRangeTracker = trt;
   }
 
   protected Segment(Segment segment) {
@@ -177,9 +177,11 @@ public abstract class Segment {
     return KeyValueUtil.length(cell);
   }
 
-  public abstract boolean shouldSeek(TimeRange tr, long oldestUnexpiredTS);
-
-  public abstract long getMinTimestamp();
+  public boolean shouldSeek(TimeRange tr, long oldestUnexpiredTS) {
+    return !isEmpty()
+        && (tr.isAllTime() || timeRangeTracker.includesTimeRange(tr))
+        && timeRangeTracker.getMax() >= oldestUnexpiredTS;
+  }
 
   public boolean isTagsPresent() {
     return tagsPresent;
@@ -275,13 +277,13 @@ public abstract class Segment {
     return comparator;
   }
 
-  protected void internalAdd(Cell cell, boolean mslabUsed, MemStoreSize memstoreSize) {
+  protected void internalAdd(Cell cell, boolean mslabUsed, MemStoreSizing memstoreSizing) {
     boolean succ = getCellSet().add(cell);
-    updateMetaInfo(cell, succ, mslabUsed, memstoreSize);
+    updateMetaInfo(cell, succ, mslabUsed, memstoreSizing);
   }
 
   protected void updateMetaInfo(Cell cellToAdd, boolean succ, boolean mslabUsed,
-      MemStoreSize memstoreSize) {
+      MemStoreSizing memstoreSizing) {
     long cellSize = 0;
     // If there's already a same cell in the CellSet and we are using MSLAB, we must count in the
     // MSLAB allocation size as well, or else there will be memory leak (occupied heap size larger
@@ -291,8 +293,8 @@ public abstract class Segment {
     }
     long heapSize = heapSizeChange(cellToAdd, succ);
     incSize(cellSize, heapSize);
-    if (memstoreSize != null) {
-      memstoreSize.incMemStoreSize(cellSize, heapSize);
+    if (memstoreSizing != null) {
+      memstoreSizing.incMemStoreSize(cellSize, heapSize);
     }
     getTimeRangeTracker().includeTimestamp(cellToAdd);
     minSequenceId = Math.min(minSequenceId, cellToAdd.getSequenceId());
@@ -305,8 +307,8 @@ public abstract class Segment {
     }
   }
 
-  protected void updateMetaInfo(Cell cellToAdd, boolean succ, MemStoreSize memstoreSize) {
-    updateMetaInfo(cellToAdd, succ, (getMemStoreLAB()!=null), memstoreSize);
+  protected void updateMetaInfo(Cell cellToAdd, boolean succ, MemStoreSizing memstoreSizing) {
+    updateMetaInfo(cellToAdd, succ, (getMemStoreLAB()!=null), memstoreSizing);
   }
 
   /**
@@ -354,7 +356,8 @@ public abstract class Segment {
     res += "cellsCount "+getCellsCount()+"; ";
     res += "cellsSize "+keySize()+"; ";
     res += "totalHeapSize "+heapSize()+"; ";
-    res += "Min ts "+getMinTimestamp()+"; ";
+    res += "Min ts " + timeRangeTracker.getMin() + "; ";
+    res += "Max ts " + timeRangeTracker.getMax() + "; ";
     return res;
   }
 }

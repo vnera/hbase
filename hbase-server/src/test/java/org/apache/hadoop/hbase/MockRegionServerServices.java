@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -40,6 +40,7 @@ import org.apache.hadoop.hbase.ipc.RpcServerInterface;
 import org.apache.hadoop.hbase.quotas.RegionServerRpcQuotaManager;
 import org.apache.hadoop.hbase.quotas.RegionServerSpaceQuotaManager;
 import org.apache.hadoop.hbase.regionserver.FlushRequester;
+import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.HeapMemoryManager;
 import org.apache.hadoop.hbase.regionserver.Leases;
 import org.apache.hadoop.hbase.regionserver.MetricsRegionServer;
@@ -48,6 +49,7 @@ import org.apache.hadoop.hbase.regionserver.RegionServerAccounting;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 import org.apache.hadoop.hbase.regionserver.SecureBulkLoadManager;
 import org.apache.hadoop.hbase.regionserver.ServerNonceManager;
+import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequester;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputController;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.wal.WAL;
@@ -56,7 +58,6 @@ import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.zookeeper.KeeperException;
 
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionStateTransition.TransitionCode;
 
 import com.google.protobuf.Service;
 
@@ -96,7 +97,7 @@ public class MockRegionServerServices implements RegionServerServices {
   }
 
   @Override
-  public boolean removeRegion(Region r, ServerName destination) {
+  public boolean removeRegion(HRegion r, ServerName destination) {
     return this.regions.remove(r.getRegionInfo().getEncodedName()) != null;
   }
 
@@ -111,23 +112,13 @@ public class MockRegionServerServices implements RegionServerServices {
   }
 
   @Override
-  public Set<TableName> getOnlineTables() {
-    return null;
-  }
-
-  @Override
   public List<Region> getRegions() {
     return null;
   }
 
   @Override
-  public void addRegion(Region r) {
+  public void addRegion(HRegion r) {
     this.regions.put(r.getRegionInfo().getEncodedName(), r);
-  }
-
-  @Override
-  public void postOpenDeployTasks(Region r) throws KeeperException, IOException {
-    addRegion(r);
   }
 
   @Override
@@ -157,6 +148,11 @@ public class MockRegionServerServices implements RegionServerServices {
 
   @Override
   public FlushRequester getFlushRequester() {
+    return null;
+  }
+
+  @Override
+  public CompactionRequester getCompactionRequestor() {
     return null;
   }
 
@@ -269,7 +265,7 @@ public class MockRegionServerServices implements RegionServerServices {
   }
 
   @Override
-  public Map<String, Region> getRecoveringRegions() {
+  public Map<String, HRegion> getRecoveringRegions() {
     // TODO Auto-generated method stub
     return null;
   }
@@ -278,18 +274,6 @@ public class MockRegionServerServices implements RegionServerServices {
   public ServerNonceManager getNonceManager() {
     // TODO Auto-generated method stub
     return null;
-  }
-
-  @Override
-  public boolean reportRegionStateTransition(TransitionCode code, long openSeqNum,
-      RegionInfo... hris) {
-    return false;
-  }
-
-  @Override
-  public boolean reportRegionStateTransition(TransitionCode code,
-      RegionInfo... hris) {
-    return false;
   }
 
   @Override

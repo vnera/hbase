@@ -25,10 +25,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.hadoop.hbase.shaded.com.google.common.base.Objects;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.master.RegionState;
-
-import com.google.common.base.Objects;
 
 /**
  * Status information on the HBase cluster.
@@ -82,6 +81,7 @@ public class ClusterStatus {
   private String clusterId;
   private String[] masterCoprocessors;
   private Boolean balancerOn;
+  private int masterInfoPort;
 
   /**
    * Use {@link ClusterStatus.Builder} to construct a ClusterStatus instead.
@@ -96,7 +96,8 @@ public class ClusterStatus {
       final Collection<ServerName> backupMasters,
       final List<RegionState> rit,
       final String[] masterCoprocessors,
-      final Boolean balancerOn) {
+      final Boolean balancerOn,
+      final int masterInfoPort) {
     // TODO: make this constructor private
     this.hbaseVersion = hbaseVersion;
     this.liveServers = servers;
@@ -107,6 +108,7 @@ public class ClusterStatus {
     this.clusterId = clusterid;
     this.masterCoprocessors = masterCoprocessors;
     this.balancerOn = balancerOn;
+    this.masterInfoPort = masterInfoPort;
   }
 
   /**
@@ -198,21 +200,22 @@ public class ClusterStatus {
       return false;
     }
     ClusterStatus other = (ClusterStatus) o;
-    //TODO Override the equals() methods in ServerLoad.
     return Objects.equal(getHBaseVersion(), other.getHBaseVersion()) &&
       Objects.equal(this.liveServers, other.liveServers) &&
       getDeadServerNames().containsAll(other.getDeadServerNames()) &&
       Arrays.equals(getMasterCoprocessors(), other.getMasterCoprocessors()) &&
       Objects.equal(getMaster(), other.getMaster()) &&
-      getBackupMasters().containsAll(other.getBackupMasters());
+      getBackupMasters().containsAll(other.getBackupMasters()) &&
+      Objects.equal(getClusterId(), other.getClusterId()) &&
+      getMasterInfoPort() == other.getMasterInfoPort();
   }
 
   /**
    * @see java.lang.Object#hashCode()
    */
   public int hashCode() {
-    return Objects.hashCode(hbaseVersion, liveServers, deadServers,
-      master, backupMasters);
+    return Objects.hashCode(hbaseVersion, liveServers, deadServers, master, backupMasters,
+      clusterId, masterInfoPort);
   }
 
   /**
@@ -314,6 +317,10 @@ public class ClusterStatus {
     return balancerOn;
   }
 
+  public int getMasterInfoPort() {
+    return masterInfoPort;
+  }
+
   public String toString() {
     StringBuilder sb = new StringBuilder(1024);
     sb.append("Master: " + master);
@@ -374,6 +381,7 @@ public class ClusterStatus {
     private String clusterId = null;
     private String[] masterCoprocessors = null;
     private Boolean balancerOn = null;
+    private int masterInfoPort = -1;
 
     private Builder() {}
 
@@ -422,10 +430,15 @@ public class ClusterStatus {
       return this;
     }
 
+    public Builder setMasterInfoPort(int masterInfoPort) {
+      this.masterInfoPort = masterInfoPort;
+      return this;
+    }
+
     public ClusterStatus build() {
       return new ClusterStatus(hbaseVersion, clusterId, liveServers,
           deadServers, master, backupMasters, intransition, masterCoprocessors,
-          balancerOn);
+          balancerOn, masterInfoPort);
     }
   }
 
@@ -441,6 +454,7 @@ public class ClusterStatus {
     MASTER, /** status about master */
     BACKUP_MASTERS, /** status about backup masters */
     MASTER_COPROCESSORS, /** status about master coprocessors */
-    REGIONS_IN_TRANSITION; /** status about regions in transition */
+    REGIONS_IN_TRANSITION, /** status about regions in transition */
+    MASTER_INFO_PORT; /** master info port **/
   }
 }

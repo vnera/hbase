@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -20,13 +20,10 @@ package org.apache.hadoop.hbase.ipc;
 
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.ArrayList;
@@ -35,8 +32,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.LongAdder;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -46,8 +45,6 @@ import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.Server;
-import org.apache.yetus.audience.InterfaceAudience;
-import org.apache.yetus.audience.InterfaceStability;
 import org.apache.hadoop.hbase.conf.ConfigurationObserver;
 import org.apache.hadoop.hbase.exceptions.RequestTooBigException;
 import org.apache.hadoop.hbase.io.ByteBufferPool;
@@ -62,6 +59,17 @@ import org.apache.hadoop.hbase.security.SaslUtil.QualityOfProtection;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.security.token.AuthenticationTokenSecretManager;
+import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hadoop.security.authorize.AuthorizationException;
+import org.apache.hadoop.security.authorize.PolicyProvider;
+import org.apache.hadoop.security.authorize.ServiceAuthorizationManager;
+import org.apache.hadoop.security.token.SecretManager;
+import org.apache.hadoop.security.token.TokenIdentifier;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.yetus.audience.InterfaceStability;
+
+import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.BlockingService;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.Descriptors.MethodDescriptor;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.Message;
@@ -70,14 +78,6 @@ import org.apache.hadoop.hbase.shaded.com.google.protobuf.TextFormat;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RPCProtos.ConnectionHeader;
-import org.apache.hadoop.hbase.util.Pair;
-import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.hadoop.security.authorize.AuthorizationException;
-import org.apache.hadoop.security.authorize.PolicyProvider;
-import org.apache.hadoop.security.authorize.ServiceAuthorizationManager;
-import org.apache.hadoop.security.token.SecretManager;
-import org.apache.hadoop.security.token.TokenIdentifier;
-import org.codehaus.jackson.map.ObjectMapper;
 
 /**
  * An RPC server that hosts protobuf described Services.
@@ -583,9 +583,8 @@ public abstract class RpcServer implements RpcServerInterface,
   }
 
   /**
-   * Helper for {@link #channelRead(java.nio.channels.ReadableByteChannel, java.nio.ByteBuffer)}
-   * and {@link #channelWrite(GatheringByteChannel, BufferChain)}. Only
-   * one of readCh or writeCh should be non-null.
+   * Helper for {@link #channelRead(java.nio.channels.ReadableByteChannel, java.nio.ByteBuffer).
+   * Only one of readCh or writeCh should be non-null.
    *
    * @param readCh read channel
    * @param writeCh write channel
@@ -593,7 +592,6 @@ public abstract class RpcServer implements RpcServerInterface,
    * @return bytes written
    * @throws java.io.IOException e
    * @see #channelRead(java.nio.channels.ReadableByteChannel, java.nio.ByteBuffer)
-   * @see #channelWrite(GatheringByteChannel, BufferChain)
    */
   private static int channelIO(ReadableByteChannel readCh,
                                WritableByteChannel writeCh,
@@ -678,8 +676,8 @@ public abstract class RpcServer implements RpcServerInterface,
    * call.
    * @return An RpcCallContext backed by the currently ongoing call (gotten from a thread local)
    */
-  public static RpcCall getCurrentCall() {
-    return CurCall.get();
+  public static Optional<RpcCall> getCurrentCall() {
+    return Optional.ofNullable(CurCall.get());
   }
 
   public static boolean isInRpcCallContext() {
@@ -687,13 +685,13 @@ public abstract class RpcServer implements RpcServerInterface,
   }
 
   /**
-   * Returns the user credentials associated with the current RPC request or
-   * <code>null</code> if no credentials were provided.
+   * Returns the user credentials associated with the current RPC request or not present if no
+   * credentials were provided.
    * @return A User
    */
-  public static User getRequestUser() {
-    RpcCallContext ctx = getCurrentCall();
-    return ctx == null? null: ctx.getRequestUser();
+  public static Optional<User> getRequestUser() {
+    Optional<RpcCall> ctx = getCurrentCall();
+    return ctx.isPresent() ? ctx.get().getRequestUser() : Optional.empty();
   }
 
   /**
@@ -704,19 +702,17 @@ public abstract class RpcServer implements RpcServerInterface,
 
   /**
    * Returns the username for any user associated with the current RPC
-   * request or <code>null</code> if no user is set.
+   * request or not present if no user is set.
    */
-  public static String getRequestUserName() {
-    User user = getRequestUser();
-    return user == null? null: user.getShortName();
+  public static Optional<String> getRequestUserName() {
+    return getRequestUser().map(User::getShortName);
   }
 
   /**
    * @return Address of remote client if a request is ongoing, else null
    */
-  public static InetAddress getRemoteAddress() {
-    RpcCallContext ctx = getCurrentCall();
-    return ctx == null? null: ctx.getRemoteAddress();
+  public static Optional<InetAddress> getRemoteAddress() {
+    return getCurrentCall().map(RpcCall::getRemoteAddress);
   }
 
   /**

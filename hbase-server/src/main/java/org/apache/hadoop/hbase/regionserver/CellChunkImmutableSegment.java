@@ -60,9 +60,10 @@ public class CellChunkImmutableSegment extends ImmutableSegment {
    * of CSLMImmutableSegment
    * The given iterator returns the Cells that "survived" the compaction.
    */
-  protected CellChunkImmutableSegment(CSLMImmutableSegment segment, MemStoreSize memstoreSize) {
+  protected CellChunkImmutableSegment(CSLMImmutableSegment segment,
+      MemStoreSizing memstoreSizing) {
     super(segment); // initiailize the upper class
-    incSize(0,-CSLMImmutableSegment.DEEP_OVERHEAD_CSLM+ CellChunkImmutableSegment.DEEP_OVERHEAD_CCM);
+    incSize(0,-CSLMImmutableSegment.DEEP_OVERHEAD_CSLM + CellChunkImmutableSegment.DEEP_OVERHEAD_CCM);
     int numOfCells = segment.getCellsCount();
     // build the new CellSet based on CellChunkMap
     reinitializeCellSet(numOfCells, segment.getScanner(Long.MAX_VALUE), segment.getCellSet());
@@ -72,7 +73,7 @@ public class CellChunkImmutableSegment extends ImmutableSegment {
     long newSegmentSizeDelta = numOfCells*(indexEntrySize()-ClassSize.CONCURRENT_SKIPLISTMAP_ENTRY);
 
     incSize(0, newSegmentSizeDelta);
-    memstoreSize.incMemStoreSize(0, newSegmentSizeDelta);
+    memstoreSizing.incMemStoreSize(0, newSegmentSizeDelta);
   }
 
   @Override
@@ -124,7 +125,7 @@ public class CellChunkImmutableSegment extends ImmutableSegment {
     }
     // build the immutable CellSet
     CellChunkMap ccm =
-        new CellChunkMap(CellComparator.COMPARATOR,chunks,0,numOfCellsAfterCompaction,false);
+        new CellChunkMap(getComparator(), chunks, 0, numOfCellsAfterCompaction, false);
     this.setCellSet(null, new CellSet(ccm));  // update the CellSet of this Segment
   }
 
@@ -167,7 +168,7 @@ public class CellChunkImmutableSegment extends ImmutableSegment {
       segmentScanner.close();
     }
 
-    CellChunkMap ccm = new CellChunkMap(CellComparator.COMPARATOR,chunks,0,numOfCells,false);
+    CellChunkMap ccm = new CellChunkMap(getComparator(), chunks, 0, numOfCells, false);
     this.setCellSet(oldCellSet, new CellSet(ccm)); // update the CellSet of this Segment
   }
 

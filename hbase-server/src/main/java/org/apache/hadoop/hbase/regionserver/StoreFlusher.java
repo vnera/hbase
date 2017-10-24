@@ -79,15 +79,9 @@ abstract class StoreFlusher {
    */
   protected InternalScanner createScanner(List<KeyValueScanner> snapshotScanners,
       long smallestReadPoint) throws IOException {
-    InternalScanner scanner = null;
-    if (store.getCoprocessorHost() != null) {
-      scanner = store.getCoprocessorHost().preFlushScannerOpen(store, snapshotScanners,
-          smallestReadPoint);
-    }
-    if (scanner == null) {
-      scanner = new StoreScanner(store, store.getScanInfo(), OptionalInt.empty(), snapshotScanners,
-          ScanType.COMPACT_RETAIN_DELETES, smallestReadPoint, HConstants.OLDEST_TIMESTAMP);
-    }
+    InternalScanner scanner =
+        new StoreScanner(store, store.getScanInfo(), OptionalInt.empty(), snapshotScanners,
+            ScanType.COMPACT_RETAIN_DELETES, smallestReadPoint, HConstants.OLDEST_TIMESTAMP);
     assert scanner != null;
     if (store.getCoprocessorHost() != null) {
       try {
@@ -119,7 +113,7 @@ abstract class StoreFlusher {
     boolean hasMore;
     String flushName = ThroughputControlUtil.getNameForThrottling(store, "flush");
     // no control on system table (such as meta, namespace, etc) flush
-    boolean control = throughputController != null && !store.getRegionInfo().isSystemTable();
+    boolean control = throughputController != null && !store.getRegionInfo().getTable().isSystemTable();
     if (control) {
       throughputController.start(flushName);
     }

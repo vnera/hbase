@@ -27,7 +27,7 @@ import java.util.TreeSet;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ArrayBackedTag;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellComparator;
+import org.apache.hadoop.hbase.CellComparatorImpl;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValueUtil;
 import org.apache.hadoop.hbase.Tag;
@@ -48,7 +48,7 @@ import org.apache.hadoop.util.StringUtils;
  * Puts in sorted order.  If lots of columns per row, it will use lots of
  * memory sorting.
  * @see HFileOutputFormat2
- * @see KeyValueSortReducer
+ * @see CellSortReducer
  */
 @InterfaceAudience.Public
 public class PutSortReducer extends
@@ -77,7 +77,7 @@ public class PutSortReducer extends
         "putsortreducer.row.threshold", 1L * (1<<30));
     Iterator<Put> iter = puts.iterator();
     while (iter.hasNext()) {
-      TreeSet<KeyValue> map = new TreeSet<>(CellComparator.COMPARATOR);
+      TreeSet<KeyValue> map = new TreeSet<>(CellComparatorImpl.COMPARATOR);
       long curSize = 0;
       // stop at the end or the RAM threshold
       List<Tag> tags = new ArrayList<>();

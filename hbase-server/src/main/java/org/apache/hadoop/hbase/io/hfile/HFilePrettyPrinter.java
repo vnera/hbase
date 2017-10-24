@@ -53,16 +53,18 @@ import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellComparator;
+import org.apache.hadoop.hbase.CellComparatorImpl;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValueUtil;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.TagUtil;
+import org.apache.hadoop.hbase.regionserver.HStoreFile;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.yetus.audience.InterfaceStability;
 import org.apache.hadoop.hbase.io.FSDataInputStreamWrapper;
@@ -377,7 +379,7 @@ public class HFilePrettyPrinter extends Configured implements Tool {
     do {
       Cell cell = scanner.getCell();
       if (row != null && row.length != 0) {
-        int result = CellComparator.COMPARATOR.compareRows(cell, row, 0, row.length);
+        int result = CellComparatorImpl.COMPARATOR.compareRows(cell, row, 0, row.length);
         if (result > 0) {
           break;
         } else if (result < 0) {
@@ -406,7 +408,7 @@ public class HFilePrettyPrinter extends Configured implements Tool {
       }
       // check if rows are in order
       if (checkRow && pCell != null) {
-        if (CellComparator.COMPARATOR.compareRows(pCell, cell) > 0) {
+        if (CellComparatorImpl.COMPARATOR.compareRows(pCell, cell) > 0) {
           err.println("WARNING, previous row is greater then"
               + " current row\n\tfilename -> " + file + "\n\tprevious -> "
               + CellUtil.getCellKeyAsString(pCell) + "\n\tcurrent  -> "
@@ -422,7 +424,7 @@ public class HFilePrettyPrinter extends Configured implements Tool {
               + "\n\tfilename -> " + file + "\n\tkeyvalue -> "
               + CellUtil.getCellKeyAsString(cell));
         }
-        if (pCell != null && CellComparator.compareFamilies(pCell, cell) != 0) {
+        if (pCell != null && CellComparatorImpl.COMPARATOR.compareFamilies(pCell, cell) != 0) {
           err.println("WARNING, previous kv has different family"
               + " compared to current key\n\tfilename -> " + file
               + "\n\tprevious -> " + CellUtil.getCellKeyAsString(pCell)
@@ -529,15 +531,27 @@ public class HFilePrettyPrinter extends Configured implements Tool {
     out.println("Fileinfo:");
     for (Map.Entry<byte[], byte[]> e : fileInfo.entrySet()) {
       out.print(FOUR_SPACES + Bytes.toString(e.getKey()) + " = ");
-      if (Bytes.compareTo(e.getKey(), Bytes.toBytes("MAX_SEQ_ID_KEY")) == 0) {
-        long seqid = Bytes.toLong(e.getValue());
-        out.println(seqid);
-      } else if (Bytes.compareTo(e.getKey(), Bytes.toBytes("TIMERANGE")) == 0) {
-        TimeRangeTracker timeRangeTracker = TimeRangeTracker.getTimeRangeTracker(e.getValue());
+      if (Bytes.equals(e.getKey(), HStoreFile.MAX_SEQ_ID_KEY)
+          || Bytes.equals(e.getKey(), HStoreFile.DELETE_FAMILY_COUNT)
+          || Bytes.equals(e.getKey(), HStoreFile.EARLIEST_PUT_TS)
+          || Bytes.equals(e.getKey(), HFileWriterImpl.MAX_MEMSTORE_TS_KEY)
+          || Bytes.equals(e.getKey(), FileInfo.CREATE_TIME_TS)
+          || Bytes.equals(e.getKey(), HStoreFile.BULKLOAD_TIME_KEY)) {
+        out.println(Bytes.toLong(e.getValue()));
+      } else if (Bytes.equals(e.getKey(), HStoreFile.TIMERANGE_KEY)) {
+        TimeRangeTracker timeRangeTracker = TimeRangeTracker.parseFrom(e.getValue());
         out.println(timeRangeTracker.getMin() + "...." + timeRangeTracker.getMax());
-      } else if (Bytes.compareTo(e.getKey(), FileInfo.AVG_KEY_LEN) == 0
-          || Bytes.compareTo(e.getKey(), FileInfo.AVG_VALUE_LEN) == 0) {
+      } else if (Bytes.equals(e.getKey(), FileInfo.AVG_KEY_LEN)
+          || Bytes.equals(e.getKey(), FileInfo.AVG_VALUE_LEN)
+          || Bytes.equals(e.getKey(), HFileWriterImpl.KEY_VALUE_VERSION)
+          || Bytes.equals(e.getKey(), FileInfo.MAX_TAGS_LEN)) {
         out.println(Bytes.toInt(e.getValue()));
+      } else if (Bytes.equals(e.getKey(), HStoreFile.MAJOR_COMPACTION_KEY)
+          || Bytes.equals(e.getKey(), FileInfo.TAGS_COMPRESSED)
+          || Bytes.equals(e.getKey(), HStoreFile.EXCLUDE_FROM_MINOR_COMPACTION_KEY)) {
+        out.println(Bytes.toBoolean(e.getValue()));
+      } else if (Bytes.equals(e.getKey(), FileInfo.LASTKEY)) {
+        out.println(new KeyValue.KeyOnlyKeyValue(e.getValue()).toString());
       } else {
         out.println(Bytes.toStringBinary(e.getValue()));
       }
@@ -604,7 +618,7 @@ public class HFilePrettyPrinter extends Configured implements Tool {
     public void collect(Cell cell) {
       valLen.update(cell.getValueLength());
       if (prevCell != null &&
-          CellComparator.COMPARATOR.compareRows(prevCell, cell) != 0) {
+          CellComparatorImpl.COMPARATOR.compareRows(prevCell, cell) != 0) {
         // new row
         collectRow();
       }

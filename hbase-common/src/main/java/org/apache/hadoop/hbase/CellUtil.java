@@ -24,6 +24,7 @@ import static org.apache.hadoop.hbase.KeyValue.COLUMN_FAMILY_DELIMITER;
 import static org.apache.hadoop.hbase.KeyValue.getDelimiter;
 import static org.apache.hadoop.hbase.KeyValue.COLUMN_FAMILY_DELIM_ARRAY;
 
+import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -37,8 +38,12 @@ import java.util.Map.Entry;
 import java.util.NavigableMap;
 
 import org.apache.hadoop.hbase.KeyValue.Type;
+import org.apache.hadoop.hbase.filter.ByteArrayComparable;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.yetus.audience.InterfaceAudience.Private;
+
+import com.google.common.annotations.VisibleForTesting;
+
 import org.apache.hadoop.hbase.io.HeapSize;
 import org.apache.hadoop.hbase.io.TagCompressionContext;
 import org.apache.hadoop.hbase.io.util.Dictionary;
@@ -371,7 +376,7 @@ public final class CellUtil {
   @Deprecated
   public static Cell createCell(final byte [] row, final byte [] family, final byte [] qualifier,
       final long timestamp, final byte type, final byte [] value) {
-    return CellBuilderFactory.create(CellBuilderType.DEEP_COPY)
+    return ExtendedCellBuilderFactory.create(CellBuilderType.DEEP_COPY)
             .setRow(row)
             .setFamily(family)
             .setQualifier(qualifier)
@@ -391,7 +396,7 @@ public final class CellUtil {
       final byte [] familyArray, final int familyOffset, final int familyLength,
       final byte [] qualifierArray, final int qualifierOffset, final int qualifierLength) {
     // See createCell(final byte [] row, final byte [] value) for why we default Maximum type.
-    return CellBuilderFactory.create(CellBuilderType.DEEP_COPY)
+    return ExtendedCellBuilderFactory.create(CellBuilderType.DEEP_COPY)
             .setRow(rowArray, rowOffset, rowLength)
             .setFamily(familyArray, familyOffset, familyLength)
             .setQualifier(qualifierArray, qualifierOffset, qualifierLength)
@@ -1465,9 +1470,12 @@ public final class CellUtil {
   }
 
   /**
-   * Estimate based on keyvalue's serialization format.
+   * Estimate based on keyvalue's serialization format in the RPC layer. Note that there is an extra
+   * SIZEOF_INT added to the size here that indicates the actual length of the cell for cases where
+   * cell's are serialized in a contiguous format (For eg in RPCs).
    * @param cell
-   * @return Estimate of the <code>cell</code> size in bytes.
+   * @return Estimate of the <code>cell</code> size in bytes plus an extra SIZEOF_INT indicating the
+   *         actual cell length.
    */
   public static int estimatedSerializedSizeOf(final Cell cell) {
     if (cell instanceof ExtendedCell) {
@@ -1762,9 +1770,48 @@ public final class CellUtil {
    * timestamp&gt;&lt;1 byte type&gt;
    * @param cell
    * @param out
+   * @deprecated Use {@link #writeFlatKey(Cell, DataOutput)}
    * @throws IOException
    */
+  @Deprecated
   public static void writeFlatKey(Cell cell, DataOutputStream out) throws IOException {
+    short rowLen = cell.getRowLength();
+    byte fLen = cell.getFamilyLength();
+    int qLen = cell.getQualifierLength();
+    // Using just one if/else loop instead of every time checking before writing every
+    // component of cell
+    if (cell instanceof ByteBufferCell) {
+      out.writeShort(rowLen);
+      ByteBufferUtils.copyBufferToStream((DataOutput) out,
+        ((ByteBufferCell) cell).getRowByteBuffer(), ((ByteBufferCell) cell).getRowPosition(),
+        rowLen);
+      out.writeByte(fLen);
+      ByteBufferUtils.copyBufferToStream((DataOutput) out,
+        ((ByteBufferCell) cell).getFamilyByteBuffer(), ((ByteBufferCell) cell).getFamilyPosition(),
+        fLen);
+      ByteBufferUtils.copyBufferToStream((DataOutput) out,
+        ((ByteBufferCell) cell).getQualifierByteBuffer(),
+        ((ByteBufferCell) cell).getQualifierPosition(), qLen);
+    } else {
+      out.writeShort(rowLen);
+      out.write(cell.getRowArray(), cell.getRowOffset(), rowLen);
+      out.writeByte(fLen);
+      out.write(cell.getFamilyArray(), cell.getFamilyOffset(), fLen);
+      out.write(cell.getQualifierArray(), cell.getQualifierOffset(), qLen);
+    }
+    out.writeLong(cell.getTimestamp());
+    out.writeByte(cell.getTypeByte());
+  }
+
+  /**
+   * Writes the Cell's key part as it would have serialized in a KeyValue. The format is &lt;2 bytes
+   * rk len&gt;&lt;rk&gt;&lt;1 byte cf len&gt;&lt;cf&gt;&lt;qualifier&gt;&lt;8 bytes
+   * timestamp&gt;&lt;1 byte type&gt;
+   * @param cell
+   * @param out
+   * @throws IOException
+   */
+  public static void writeFlatKey(Cell cell, DataOutput out) throws IOException {
     short rowLen = cell.getRowLength();
     byte fLen = cell.getFamilyLength();
     int qLen = cell.getQualifierLength();
@@ -1788,6 +1835,69 @@ public final class CellUtil {
     }
     out.writeLong(cell.getTimestamp());
     out.writeByte(cell.getTypeByte());
+  }
+
+  /**
+   * Deep clones the given cell if the cell supports deep cloning
+   * @param cell the cell to be cloned
+   * @return the cloned cell
+   * @throws CloneNotSupportedException
+   */
+  public static Cell deepClone(Cell cell) throws CloneNotSupportedException {
+    if (cell instanceof ExtendedCell) {
+      return ((ExtendedCell) cell).deepClone();
+    }
+    throw new CloneNotSupportedException();
+  }
+
+  /**
+   * Writes the cell to the given OutputStream
+   * @param cell the cell to be written
+   * @param out the outputstream
+   * @param withTags if tags are to be written or not
+   * @return the total bytes written
+   * @throws IOException
+   */
+  public static int writeCell(Cell cell, OutputStream out, boolean withTags) throws IOException {
+    if (cell instanceof ExtendedCell) {
+      return ((ExtendedCell) cell).write(out, withTags);
+    } else {
+      ByteBufferUtils.putInt(out, CellUtil.estimatedSerializedSizeOfKey(cell));
+      ByteBufferUtils.putInt(out, cell.getValueLength());
+      CellUtil.writeFlatKey(cell, out);
+      CellUtil.writeValue(out, cell, cell.getValueLength());
+      int tagsLength = cell.getTagsLength();
+      if (withTags) {
+        byte[] len = new byte[Bytes.SIZEOF_SHORT];
+        Bytes.putAsShort(len, 0, tagsLength);
+        out.write(len);
+        if (tagsLength > 0) {
+          CellUtil.writeTags(out, cell, tagsLength);
+        }
+      }
+      int lenWritten = (2 * Bytes.SIZEOF_INT) + CellUtil.estimatedSerializedSizeOfKey(cell)
+          + cell.getValueLength();
+      if (withTags) {
+        lenWritten += Bytes.SIZEOF_SHORT + tagsLength;
+      }
+      return lenWritten;
+    }
+  }
+
+  /**
+   * Writes a cell to the buffer at the given offset
+   * @param cell the cell to be written
+   * @param buf the buffer to which the cell has to be wrriten
+   * @param offset the offset at which the cell should be written
+   */
+  public static void writeCellToBuffer(Cell cell, ByteBuffer buf, int offset) {
+    if (cell instanceof ExtendedCell) {
+      ((ExtendedCell) cell).write(buf, offset);
+    } else {
+      // Using the KVUtil
+      byte[] bytes = KeyValueUtil.copyToNewByteArray(cell);
+      ByteBufferUtils.copyFromArrayToBuffer(buf, offset, bytes, 0, bytes.length);
+    }
   }
 
   public static int writeFlatKey(Cell cell, OutputStream out) throws IOException {
@@ -1844,7 +1954,7 @@ public final class CellUtil {
   public static void writeRowSkippingBytes(DataOutputStream out, Cell cell, short rlength,
       int commonPrefix) throws IOException {
     if (cell instanceof ByteBufferCell) {
-      ByteBufferUtils.copyBufferToStream(out, ((ByteBufferCell) cell).getRowByteBuffer(),
+      ByteBufferUtils.copyBufferToStream((DataOutput)out, ((ByteBufferCell) cell).getRowByteBuffer(),
         ((ByteBufferCell) cell).getRowPosition() + commonPrefix, rlength - commonPrefix);
     } else {
       out.write(cell.getRowArray(), cell.getRowOffset() + commonPrefix, rlength - commonPrefix);
@@ -1894,7 +2004,7 @@ public final class CellUtil {
   public static void writeQualifierSkippingBytes(DataOutputStream out, Cell cell,
       int qlength, int commonPrefix) throws IOException {
     if (cell instanceof ByteBufferCell) {
-      ByteBufferUtils.copyBufferToStream(out, ((ByteBufferCell) cell).getQualifierByteBuffer(),
+      ByteBufferUtils.copyBufferToStream((DataOutput)out, ((ByteBufferCell) cell).getQualifierByteBuffer(),
         ((ByteBufferCell) cell).getQualifierPosition() + commonPrefix, qlength - commonPrefix);
     } else {
       out.write(cell.getQualifierArray(), cell.getQualifierOffset() + commonPrefix,
@@ -2174,7 +2284,7 @@ public final class CellUtil {
   }
 
   public static boolean matchingTimestamp(Cell a, Cell b) {
-    return CellComparator.compareTimestamps(a.getTimestamp(), b.getTimestamp()) == 0;
+    return CellComparatorImpl.COMPARATOR.compareTimestamps(a.getTimestamp(), b.getTimestamp()) == 0;
   }
 
   public static boolean matchingType(Cell a, Cell b) {
@@ -2314,7 +2424,7 @@ public final class CellUtil {
     }
     return new FirstOnRowCell(cell.getRowArray(), cell.getRowOffset(), cell.getRowLength());
   }
-  
+
   public static Cell createFirstOnRow(final byte [] row, int roffset, short rlength) {
     return new FirstOnRowCell(row, roffset, rlength);
   }
@@ -2530,6 +2640,306 @@ public final class CellUtil {
       Dictionary.write(out, cell.getQualifierArray(), cell.getQualifierOffset(),
         cell.getQualifierLength(), dict);
     }
+  }
+
+  /**
+   * Compares only the key portion of a cell. It does not include the sequence id/mvcc of the cell
+   * @param left
+   * @param right
+   * @return an int greater than 0 if left &gt; than right lesser than 0 if left &lt; than right
+   *         equal to 0 if left is equal to right
+   */
+  public static final int compareKeyIgnoresMvcc(CellComparator comparator, Cell left, Cell right) {
+    return ((CellComparatorImpl) comparator).compare(left, right, true);
+  }
+
+  /**
+   * Used to compare two cells based on the column hint provided. This is specifically
+   * used when we need to optimize the seeks based on the next indexed key. This is an
+   * advanced usage API specifically needed for some optimizations.
+   * @param nextIndexedCell the next indexed cell
+   * @param currentCell the cell to be compared
+   * @param foff the family offset of the currentCell
+   * @param flen the family length of the currentCell
+   * @param colHint the column hint provided - could be null
+   * @param coff the offset of the column hint if provided, if not offset of the currentCell's
+   * qualifier
+   * @param clen the length of the column hint if provided, if not length of the currentCell's
+   * qualifier
+   * @param ts the timestamp to be seeked
+   * @param type the type to be seeked
+   * @return an int based on the given column hint
+   * TODO : To be moved out of here because this is a special API used in scan
+   * optimization.
+   */
+  // compare a key against row/fam/qual/ts/type
+  @InterfaceAudience.Private
+  public static final int compareKeyBasedOnColHint(CellComparator comparator, Cell nextIndexedCell,
+      Cell currentCell, int foff, int flen, byte[] colHint, int coff, int clen, long ts,
+      byte type) {
+    int compare = comparator.compareRows(nextIndexedCell, currentCell);
+    if (compare != 0) {
+      return compare;
+    }
+    // If the column is not specified, the "minimum" key type appears the
+    // latest in the sorted order, regardless of the timestamp. This is used
+    // for specifying the last key/value in a given row, because there is no
+    // "lexicographically last column" (it would be infinitely long). The
+    // "maximum" key type does not need this behavior.
+    if (nextIndexedCell.getFamilyLength() + nextIndexedCell.getQualifierLength() == 0
+        && nextIndexedCell.getTypeByte() == Type.Minimum.getCode()) {
+      // left is "bigger", i.e. it appears later in the sorted order
+      return 1;
+    }
+    if (flen + clen == 0 && type == Type.Minimum.getCode()) {
+      return -1;
+    }
+
+    compare = comparator.compareFamilies(nextIndexedCell, currentCell);
+    if (compare != 0) {
+      return compare;
+    }
+    if (colHint == null) {
+      compare = comparator.compareQualifiers(nextIndexedCell, currentCell);
+    } else {
+      compare = compareQualifiers(nextIndexedCell, colHint, coff, clen);
+    }
+    if (compare != 0) {
+      return compare;
+    }
+    // Next compare timestamps.
+    compare = comparator.compareTimestamps(nextIndexedCell.getTimestamp(), ts);
+    if (compare != 0) {
+      return compare;
+    }
+
+    // Compare types. Let the delete types sort ahead of puts; i.e. types
+    // of higher numbers sort before those of lesser numbers. Maximum (255)
+    // appears ahead of everything, and minimum (0) appears after
+    // everything.
+    return (0xff & type) - (0xff & nextIndexedCell.getTypeByte());
+  }
+
+  /**
+   * Compares the cell's qualifier with the given byte[]
+   * @param left the cell for which the qualifier has to be compared
+   * @param right the byte[] having the qualifier
+   * @param rOffset the offset of the qualifier
+   * @param rLength the length of the qualifier
+   * @return greater than 0 if left cell's qualifier is bigger than byte[], lesser than 0 if left
+   *         cell's qualifier is lesser than byte[] and 0 otherwise
+   */
+  public final static int compareQualifiers(Cell left, byte[] right, int rOffset, int rLength) {
+    if (left instanceof ByteBufferCell) {
+      return ByteBufferUtils.compareTo(((ByteBufferCell) left).getQualifierByteBuffer(),
+          ((ByteBufferCell) left).getQualifierPosition(), left.getQualifierLength(),
+          right, rOffset, rLength);
+    }
+    return Bytes.compareTo(left.getQualifierArray(), left.getQualifierOffset(),
+        left.getQualifierLength(), right, rOffset, rLength);
+  }
+
+  /**
+   * Compare cell's row against given comparator
+   * @param cell
+   * @param comparator
+   * @return result comparing cell's row
+   */
+  @InterfaceAudience.Private
+  public static int compareRow(Cell cell, ByteArrayComparable comparator) {
+    if (cell instanceof ByteBufferCell) {
+      return comparator.compareTo(((ByteBufferCell) cell).getRowByteBuffer(),
+        ((ByteBufferCell) cell).getRowPosition(), cell.getRowLength());
+    }
+    return comparator.compareTo(cell.getRowArray(), cell.getRowOffset(), cell.getRowLength());
+  }
+
+  /**
+   * Compare cell's column family against given comparator
+   * @param cell
+   * @param comparator
+   * @return result comparing cell's column family
+   */
+  @InterfaceAudience.Private
+  public static int compareFamily(Cell cell, ByteArrayComparable comparator) {
+    if (cell instanceof ByteBufferCell) {
+      return comparator.compareTo(((ByteBufferCell) cell).getFamilyByteBuffer(),
+        ((ByteBufferCell) cell).getFamilyPosition(), cell.getFamilyLength());
+    }
+    return comparator.compareTo(cell.getFamilyArray(), cell.getFamilyOffset(),
+      cell.getFamilyLength());
+  }
+
+  /**
+   * Compare cell's qualifier against given comparator
+   * @param cell
+   * @param comparator
+   * @return result comparing cell's qualifier
+   */
+  @InterfaceAudience.Private
+  public static int compareQualifier(Cell cell, ByteArrayComparable comparator) {
+    if (cell instanceof ByteBufferCell) {
+      return comparator.compareTo(((ByteBufferCell) cell).getQualifierByteBuffer(),
+        ((ByteBufferCell) cell).getQualifierPosition(), cell.getQualifierLength());
+    }
+    return comparator.compareTo(cell.getQualifierArray(), cell.getQualifierOffset(),
+      cell.getQualifierLength());
+  }
+
+  /**
+   * Compare cell's value against given comparator
+   * @param cell
+   * @param comparator
+   * @return result comparing cell's value
+   */
+  @InterfaceAudience.Private
+  public static int compareValue(Cell cell, ByteArrayComparable comparator) {
+    if (cell instanceof ByteBufferCell) {
+      return comparator.compareTo(((ByteBufferCell) cell).getValueByteBuffer(),
+        ((ByteBufferCell) cell).getValuePosition(), cell.getValueLength());
+    }
+    return comparator.compareTo(cell.getValueArray(), cell.getValueOffset(), cell.getValueLength());
+  }
+
+  /**
+   * Used when a cell needs to be compared with a key byte[] such as cases of
+   * finding the index from the index block, bloom keys from the bloom blocks
+   * This byte[] is expected to be serialized in the KeyValue serialization format
+   * If the KeyValue (Cell's) serialization format changes this method cannot be used.
+   * @param comparator the cell comparator
+   * @param left the cell to be compared
+   * @param key the serialized key part of a KeyValue
+   * @param offset the offset in the key byte[]
+   * @param length the length of the key byte[]
+   * @return an int greater than 0 if left is greater than right
+   *                lesser than 0 if left is lesser than right
+   *                equal to 0 if left is equal to right
+   */
+  @VisibleForTesting
+  public static final int compare(CellComparator comparator, Cell left, byte[] key, int offset,
+      int length) {
+    // row
+    short rrowlength = Bytes.toShort(key, offset);
+    int c = comparator.compareRows(left, key, offset + Bytes.SIZEOF_SHORT, rrowlength);
+    if (c != 0) return c;
+
+    // Compare the rest of the two KVs without making any assumptions about
+    // the common prefix. This function will not compare rows anyway, so we
+    // don't need to tell it that the common prefix includes the row.
+    return compareWithoutRow(comparator, left, key, offset, length, rrowlength);
+  }
+
+  /**
+   * Compare columnFamily, qualifier, timestamp, and key type (everything
+   * except the row). This method is used both in the normal comparator and
+   * the "same-prefix" comparator. Note that we are assuming that row portions
+   * of both KVs have already been parsed and found identical, and we don't
+   * validate that assumption here.
+   * @param commonPrefix
+   *          the length of the common prefix of the two key-values being
+   *          compared, including row length and row
+   */
+  private static final int compareWithoutRow(CellComparator comparator, Cell left,
+      byte[] right, int roffset, int rlength, short rowlength) {
+    /***
+     * KeyValue Format and commonLength:
+     * |_keyLen_|_valLen_|_rowLen_|_rowKey_|_famiLen_|_fami_|_Quali_|....
+     * ------------------|-------commonLength--------|--------------
+     */
+    int commonLength = KeyValue.ROW_LENGTH_SIZE + KeyValue.FAMILY_LENGTH_SIZE + rowlength;
+
+    // commonLength + TIMESTAMP_TYPE_SIZE
+    int commonLengthWithTSAndType = KeyValue.TIMESTAMP_TYPE_SIZE + commonLength;
+    // ColumnFamily + Qualifier length.
+    int lcolumnlength = left.getFamilyLength() + left.getQualifierLength();
+    int rcolumnlength = rlength - commonLengthWithTSAndType;
+
+    byte ltype = left.getTypeByte();
+    byte rtype = right[roffset + (rlength - 1)];
+
+    // If the column is not specified, the "minimum" key type appears the
+    // latest in the sorted order, regardless of the timestamp. This is used
+    // for specifying the last key/value in a given row, because there is no
+    // "lexicographically last column" (it would be infinitely long). The
+    // "maximum" key type does not need this behavior.
+    if (lcolumnlength == 0 && ltype == Type.Minimum.getCode()) {
+      // left is "bigger", i.e. it appears later in the sorted order
+      return 1;
+    }
+    if (rcolumnlength == 0 && rtype == Type.Minimum.getCode()) {
+      return -1;
+    }
+
+    int rfamilyoffset = commonLength + roffset;
+
+    // Column family length.
+    int lfamilylength = left.getFamilyLength();
+    int rfamilylength = right[rfamilyoffset - 1];
+    // If left family size is not equal to right family size, we need not
+    // compare the qualifiers.
+    boolean sameFamilySize = (lfamilylength == rfamilylength);
+    if (!sameFamilySize) {
+      // comparing column family is enough.
+      return compareFamilies(left, right, rfamilyoffset, rfamilylength);
+    }
+    // Compare family & qualifier together.
+    // Families are same. Compare on qualifiers.
+    int comparison = compareColumns(left, right, rfamilyoffset, rfamilylength,
+      rfamilyoffset + rfamilylength, (rcolumnlength - rfamilylength));
+    if (comparison != 0) {
+      return comparison;
+    }
+
+    // //
+    // Next compare timestamps.
+    long rtimestamp = Bytes.toLong(right, roffset + (rlength - KeyValue.TIMESTAMP_TYPE_SIZE));
+    int compare = comparator.compareTimestamps(left.getTimestamp(), rtimestamp);
+    if (compare != 0) {
+      return compare;
+    }
+
+    // Compare types. Let the delete types sort ahead of puts; i.e. types
+    // of higher numbers sort before those of lesser numbers. Maximum (255)
+    // appears ahead of everything, and minimum (0) appears after
+    // everything.
+    return (0xff & rtype) - (0xff & ltype);
+  }
+
+  /**
+   * Compares the cell's family with the given byte[]
+   * @param left the cell for which the family has to be compared
+   * @param right the byte[] having the family
+   * @param roffset the offset of the family
+   * @param rlength the length of the family
+   * @return greater than 0 if left cell's family is bigger than byte[], lesser than 0 if left
+   *         cell's family is lesser than byte[] and 0 otherwise
+   */
+  public final static int compareFamilies(Cell left, byte[] right, int roffset, int rlength) {
+    if (left instanceof ByteBufferCell) {
+      return ByteBufferUtils.compareTo(((ByteBufferCell) left).getFamilyByteBuffer(),
+        ((ByteBufferCell) left).getFamilyPosition(), left.getFamilyLength(), right, roffset,
+        rlength);
+    }
+    return Bytes.compareTo(left.getFamilyArray(), left.getFamilyOffset(), left.getFamilyLength(),
+      right, roffset, rlength);
+  }
+
+  /**
+   * Compares the cell's column (family and qualifier) with the given byte[]
+   * @param left the cell for which the column has to be compared
+   * @param right the byte[] having the column
+   * @param rfoffset the offset of the family
+   * @param rflength the length of the family
+   * @param rqoffset the offset of the qualifier
+   * @param rqlength the length of the qualifier
+   * @return greater than 0 if left cell's column is bigger than byte[], lesser than 0 if left
+   *         cell's column is lesser than byte[] and 0 otherwise
+   */
+  public final static int compareColumns(Cell left, byte[] right, int rfoffset, int rflength,
+      int rqoffset, int rqlength) {
+    int diff = compareFamilies(left, right, rfoffset, rflength);
+    if (diff != 0) return diff;
+    return compareQualifiers(left, right, rqoffset, rqlength);
   }
 
   @InterfaceAudience.Private

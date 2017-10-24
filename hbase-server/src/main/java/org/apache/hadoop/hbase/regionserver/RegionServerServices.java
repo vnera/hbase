@@ -31,6 +31,7 @@ import org.apache.hadoop.hbase.executor.ExecutorService;
 import org.apache.hadoop.hbase.ipc.RpcServerInterface;
 import org.apache.hadoop.hbase.quotas.RegionServerRpcQuotaManager;
 import org.apache.hadoop.hbase.quotas.RegionServerSpaceQuotaManager;
+import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequester;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputController;
 import org.apache.hadoop.hbase.wal.WAL;
 import org.apache.yetus.audience.InterfaceAudience;
@@ -41,11 +42,13 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProto
 import com.google.protobuf.Service;
 
 /**
- * Services provided by {@link HRegionServer}
+ * A curated subset of services provided by {@link HRegionServer}.
+ * For use internally only. Passed to Managers, Services and Chores so can pass less-than-a
+ * full-on HRegionServer at test-time. Be judicious adding API. Changes cause ripples through
+ * the code base.
  */
 @InterfaceAudience.Private
-public interface RegionServerServices
-    extends Server, OnlineRegions, FavoredNodesForRegion, CoprocessorRegionServerServices {
+public interface RegionServerServices extends Server, OnlineRegions, FavoredNodesForRegion {
 
   /** @return the WAL for a particular region. Pass null for getting the
    * default (common) WAL */
@@ -57,9 +60,16 @@ public interface RegionServerServices
   List<WAL> getWALs() throws IOException;
 
   /**
-   * @return Implementation of {@link FlushRequester} or null.
+   * @return Implementation of {@link FlushRequester} or null. Usually it will not be null unless
+   *         during intialization.
    */
   FlushRequester getFlushRequester();
+
+  /**
+   * @return Implementation of {@link CompactionRequester} or null. Usually it will not be null
+   *         unless during intialization.
+   */
+  CompactionRequester getCompactionRequestor();
 
   /**
    * @return the RegionServerAccounting for this Region Server
@@ -85,15 +95,15 @@ public interface RegionServerServices
    * Context for postOpenDeployTasks().
    */
   class PostOpenDeployContext {
-    private final Region region;
+    private final HRegion region;
     private final long masterSystemTime;
 
     @InterfaceAudience.Private
-    public PostOpenDeployContext(Region region, long masterSystemTime) {
+    public PostOpenDeployContext(HRegion region, long masterSystemTime) {
       this.region = region;
       this.masterSystemTime = masterSystemTime;
     }
-    public Region getRegion() {
+    public HRegion getRegion() {
       return region;
     }
     public long getMasterSystemTime() {
@@ -110,18 +120,6 @@ public interface RegionServerServices
    * @throws IOException
    */
   void postOpenDeployTasks(final PostOpenDeployContext context) throws KeeperException, IOException;
-
-  /**
-   * Tasks to perform after region open to complete deploy of region on
-   * regionserver
-   *
-   * @param r Region to open.
-   * @throws KeeperException
-   * @throws IOException
-   * @deprecated use {@link #postOpenDeployTasks(PostOpenDeployContext)}
-   */
-  @Deprecated
-  void postOpenDeployTasks(final Region r) throws KeeperException, IOException;
 
   class RegionStateTransitionContext {
     private final TransitionCode code;
@@ -157,20 +155,6 @@ public interface RegionServerServices
   boolean reportRegionStateTransition(final RegionStateTransitionContext context);
 
   /**
-   * Notify master that a handler requests to change a region state
-   * @deprecated use {@link #reportRegionStateTransition(RegionStateTransitionContext)}
-   */
-  @Deprecated
-  boolean reportRegionStateTransition(TransitionCode code, long openSeqNum, RegionInfo... hris);
-
-  /**
-   * Notify master that a handler requests to change a region state
-   * @deprecated use {@link #reportRegionStateTransition(RegionStateTransitionContext)}
-   */
-  @Deprecated
-  boolean reportRegionStateTransition(TransitionCode code, RegionInfo... hris);
-
-  /**
    * Returns a reference to the region server's RPC server
    */
   RpcServerInterface getRpcServer();
@@ -194,7 +178,7 @@ public interface RegionServerServices
   /**
    * @return set of recovering regions on the hosting region server
    */
-  Map<String, Region> getRecoveringRegions();
+  Map<String, HRegion> getRecoveringRegions();
 
   /**
    * Only required for "old" log replay; if it's removed, remove this.
