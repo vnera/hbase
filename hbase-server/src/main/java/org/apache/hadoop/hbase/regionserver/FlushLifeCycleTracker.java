@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,43 +17,35 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
-import java.io.IOException;
-import java.util.List;
-
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
-import org.apache.hadoop.hbase.TableName;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.yetus.audience.InterfaceStability;
 
 /**
- * Provides read-only access to the Regions presently online on the
- * current RegionServer
+ * Used to track flush execution.
  */
 @InterfaceAudience.LimitedPrivate(HBaseInterfaceAudience.COPROC)
 @InterfaceStability.Evolving
-public interface OnlineRegions {
+public interface FlushLifeCycleTracker {
+
+  static FlushLifeCycleTracker DUMMY = new FlushLifeCycleTracker() {
+  };
 
   /**
-   * Return {@link Region} instance.
-   * Only works if caller is in same context, in same JVM. Region is not
-   * serializable.
-   * @param encodedRegionName
-   * @return Region for the passed encoded <code>encodedRegionName</code> or
-   * null if named region is not member of the online regions.
+   * Called if the flush request fails for some reason.
    */
-  Region getRegion(String encodedRegionName);
+  default void notExecuted(String reason) {
+  }
 
-   /**
-    * Get all online regions of a table in this RS.
-    * @param tableName
-    * @return List of Region
-    * @throws java.io.IOException
-    */
-   List<? extends Region> getRegions(TableName tableName) throws IOException;
+  /**
+   * Called before flush is executed.
+   */
+  default void beforeExecution() {
+  }
 
-   /**
-    * Get all online regions in this RS.
-    * @return List of online Region
-    */
-   List<? extends Region> getRegions();
+  /**
+   * Called after flush is executed.
+   */
+  default void afterExecution() {
+  }
 }

@@ -72,6 +72,7 @@ import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.monitoring.MonitoredTask;
 import org.apache.hadoop.hbase.regionserver.DefaultStoreEngine;
 import org.apache.hadoop.hbase.regionserver.DefaultStoreFlusher;
+import org.apache.hadoop.hbase.regionserver.FlushLifeCycleTracker;
 import org.apache.hadoop.hbase.regionserver.FlushRequestListener;
 import org.apache.hadoop.hbase.regionserver.FlushRequester;
 import org.apache.hadoop.hbase.regionserver.HRegion;
@@ -650,15 +651,16 @@ public abstract class AbstractTestWALReplay {
     public CustomStoreFlusher(Configuration conf, HStore store) {
       super(conf, store);
     }
+
     @Override
     public List<Path> flushSnapshot(MemStoreSnapshot snapshot, long cacheFlushId,
-        MonitoredTask status, ThroughputController throughputController) throws IOException {
+        MonitoredTask status, ThroughputController throughputController,
+        FlushLifeCycleTracker tracker) throws IOException {
       if (throwExceptionWhenFlushing.get()) {
         throw new IOException("Simulated exception by tests");
       }
-      return super.flushSnapshot(snapshot, cacheFlushId, status, throughputController);
+      return super.flushSnapshot(snapshot, cacheFlushId, status, throughputController, tracker);
     }
-
   };
 
   /**
@@ -831,16 +833,14 @@ public abstract class AbstractTestWALReplay {
         WAL newWal = createWAL(newConf, hbaseRootDir, logName);
         final AtomicInteger flushcount = new AtomicInteger(0);
         try {
-          final HRegion region =
-              new HRegion(basedir, newWal, newFS, newConf, hri, htd, null) {
+          final HRegion region = new HRegion(basedir, newWal, newFS, newConf, hri, htd, null) {
             @Override
             protected FlushResultImpl internalFlushcache(final WAL wal, final long myseqid,
                 final Collection<HStore> storesToFlush, MonitoredTask status,
-                boolean writeFlushWalMarker)
-                    throws IOException {
+                boolean writeFlushWalMarker, FlushLifeCycleTracker tracker) throws IOException {
               LOG.info("InternalFlushCache Invoked");
               FlushResultImpl fs = super.internalFlushcache(wal, myseqid, storesToFlush,
-                  Mockito.mock(MonitoredTask.class), writeFlushWalMarker);
+                Mockito.mock(MonitoredTask.class), writeFlushWalMarker, tracker);
               flushcount.incrementAndGet();
               return fs;
             }
@@ -906,7 +906,7 @@ public abstract class AbstractTestWALReplay {
     assertNotNull(listStatus);
     assertTrue(listStatus.length > 0);
     WALSplitter.splitLogFile(hbaseRootDir, listStatus[0],
-        this.fs, this.conf, null, null, null, mode, wals);
+        this.fs, this.conf, null, null, null, null, mode, wals);
     FileStatus[] listStatus1 = this.fs.listStatus(
       new Path(FSUtils.getTableDir(hbaseRootDir, tableName), new Path(hri.getEncodedName(),
           "recovered.edits")), new PathFilter() {
@@ -1059,9 +1059,9 @@ public abstract class AbstractTestWALReplay {
       first = fs.getFileStatus(smallFile);
       second = fs.getFileStatus(largeFile);
     }
-    WALSplitter.splitLogFile(hbaseRootDir, first, fs, conf, null, null, null,
+    WALSplitter.splitLogFile(hbaseRootDir, first, fs, conf, null, null, null, null,
       RecoveryMode.LOG_SPLITTING, wals);
-    WALSplitter.splitLogFile(hbaseRootDir, second, fs, conf, null, null, null,
+    WALSplitter.splitLogFile(hbaseRootDir, second, fs, conf, null, null, null, null,
       RecoveryMode.LOG_SPLITTING, wals);
     WAL wal = createWAL(this.conf, hbaseRootDir, logName);
     region = HRegion.openHRegion(conf, this.fs, hbaseRootDir, hri, htd, wal);
@@ -1117,7 +1117,7 @@ public abstract class AbstractTestWALReplay {
     private HRegion r;
 
     @Override
-    public void requestFlush(HRegion region, boolean force) {
+    public void requestFlush(HRegion region, boolean force, FlushLifeCycleTracker tracker) {
       try {
         r.flush(force);
       } catch (IOException e) {
@@ -1127,8 +1127,6 @@ public abstract class AbstractTestWALReplay {
 
     @Override
     public void requestDelayedFlush(HRegion region, long when, boolean forceFlushAllStores) {
-      // TODO Auto-generated method stub
-
     }
 
     @Override

@@ -117,6 +117,7 @@ public class RegionCoprocessorHost
     private final MetricRegistry metricRegistry;
     private final Connection connection;
     private final ServerName serverName;
+    private final OnlineRegions onlineRegions;
 
     /**
      * Constructor
@@ -132,6 +133,7 @@ public class RegionCoprocessorHost
       this.connection = services != null? services.getConnection(): null;
       this.serverName = services != null? services.getServerName(): null;
       this.sharedData = sharedData;
+      this.onlineRegions = services;
       this.metricRegistry =
           MetricsCoprocessor.createRegistryForRegionCoprocessor(impl.getClass().getName());
     }
@@ -140,6 +142,10 @@ public class RegionCoprocessorHost
     @Override
     public Region getRegion() {
       return region;
+    }
+
+    public OnlineRegions getOnlineRegions() {
+      return this.onlineRegions;
     }
 
     @Override
@@ -663,13 +669,13 @@ public class RegionCoprocessorHost
    * Invoked before a memstore flush
    * @throws IOException
    */
-  public InternalScanner preFlush(HStore store, final InternalScanner scanner)
-      throws IOException {
-    return execOperationWithResult(false, scanner, coprocEnvironments.isEmpty() ? null :
-        new ObserverOperationWithResult<RegionObserver, InternalScanner>(regionObserverGetter) {
+  public InternalScanner preFlush(HStore store, InternalScanner scanner,
+      FlushLifeCycleTracker tracker) throws IOException {
+    return execOperationWithResult(false, scanner, coprocEnvironments.isEmpty() ? null
+        : new ObserverOperationWithResult<RegionObserver, InternalScanner>(regionObserverGetter) {
           @Override
           public InternalScanner call(RegionObserver observer) throws IOException {
-            return observer.preFlush(this, store, getResult());
+            return observer.preFlush(this, store, getResult(), tracker);
           }
         });
   }
@@ -678,11 +684,11 @@ public class RegionCoprocessorHost
    * Invoked before a memstore flush
    * @throws IOException
    */
-  public void preFlush() throws IOException {
+  public void preFlush(FlushLifeCycleTracker tracker) throws IOException {
     execOperation(coprocEnvironments.isEmpty() ? null : new RegionObserverOperation() {
       @Override
       public void call(RegionObserver observer) throws IOException {
-        observer.preFlush(this);
+        observer.preFlush(this, tracker);
       }
     });
   }
@@ -691,11 +697,11 @@ public class RegionCoprocessorHost
    * Invoked after a memstore flush
    * @throws IOException
    */
-  public void postFlush() throws IOException {
+  public void postFlush(FlushLifeCycleTracker tracker) throws IOException {
     execOperation(coprocEnvironments.isEmpty() ? null : new RegionObserverOperation() {
       @Override
       public void call(RegionObserver observer) throws IOException {
-        observer.postFlush(this);
+        observer.postFlush(this, tracker);
       }
     });
   }
@@ -704,11 +710,12 @@ public class RegionCoprocessorHost
    * Invoked after a memstore flush
    * @throws IOException
    */
-  public void postFlush(final HStore store, final HStoreFile storeFile) throws IOException {
+  public void postFlush(HStore store, HStoreFile storeFile, FlushLifeCycleTracker tracker)
+      throws IOException {
     execOperation(coprocEnvironments.isEmpty() ? null : new RegionObserverOperation() {
       @Override
       public void call(RegionObserver observer) throws IOException {
-        observer.postFlush(this, store, storeFile);
+        observer.postFlush(this, store, storeFile, tracker);
       }
     });
   }
