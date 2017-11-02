@@ -16,26 +16,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.mapred;
+package org.apache.hadoop.hbase.regionserver;
 
-import org.apache.hadoop.hbase.testclassification.MapReduceTests;
-import org.apache.hadoop.hbase.testclassification.SmallTests;
-import org.apache.hadoop.util.ProgramDriver;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.mockito.Mockito;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.yetus.audience.InterfaceAudience;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+@InterfaceAudience.Private
+public class EagerMemStoreCompactionStrategy extends MemStoreCompactionStrategy{
 
-@Category({MapReduceTests.class, SmallTests.class})
-public class TestDriver {
+  private static final String name = "EAGER";
+  public EagerMemStoreCompactionStrategy(Configuration conf, String cfName) {
+    super(conf, cfName);
+  }
 
-  @Test
-  public void testDriverMainMethod() throws Throwable {
-    ProgramDriver programDriverMock = mock(ProgramDriver.class);
-    Driver.setProgramDriver(programDriverMock);
-    Driver.main(new String[]{});
-    verify(programDriverMock).driver(Mockito.any());
+  @Override
+  public Action getAction(VersionedSegmentsList versionedList) {
+    return compact(versionedList, name);
   }
 }

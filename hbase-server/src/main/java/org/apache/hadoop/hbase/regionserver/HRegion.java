@@ -1759,6 +1759,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
             // essentially ignore and propagate the interrupt back up
             LOG.warn("Interrupted while waiting");
             interrupted = true;
+            break;
           }
         }
       } finally {
@@ -5735,6 +5736,10 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
           seqId = ((FlushResultImpl)fs).flushSequenceId;
         } else if (fs.getResult() == FlushResult.Result.CANNOT_FLUSH_MEMSTORE_EMPTY) {
           seqId = ((FlushResultImpl)fs).flushSequenceId;
+        } else if (fs.getResult() == FlushResult.Result.CANNOT_FLUSH) {
+          // CANNOT_FLUSH may mean that a flush is already on-going
+          // we need to wait for that flush to complete
+          waitForFlushes();
         } else {
           throw new IOException("Could not bulk load with an assigned sequential ID because the "+
             "flush didn't run. Reason for not flushing: " + ((FlushResultImpl)fs).failureReason);
