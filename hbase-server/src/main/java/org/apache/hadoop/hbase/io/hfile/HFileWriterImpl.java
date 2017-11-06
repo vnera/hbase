@@ -36,7 +36,6 @@ import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hbase.ByteBufferCell;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellComparator;
-import org.apache.hadoop.hbase.CellComparatorImpl;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.PrivateCellUtil;
@@ -178,7 +177,7 @@ public class HFileWriterImpl implements HFile.Writer {
     } else {
       this.blockEncoder = NoOpDataBlockEncoder.INSTANCE;
     }
-    this.comparator = comparator != null? comparator: CellComparatorImpl.COMPARATOR;
+    this.comparator = comparator != null ? comparator : CellComparator.getInstance();
 
     closeOutputStream = path != null;
     this.cacheConf = cacheConf;
@@ -792,11 +791,7 @@ public class HFileWriterImpl implements HFile.Writer {
     int avgValueLen =
         entryCount == 0 ? 0 : (int) (totalValueLength / entryCount);
     fileInfo.append(FileInfo.AVG_VALUE_LEN, Bytes.toBytes(avgValueLen), false);
-    if (hFileContext.getDataBlockEncoding() == DataBlockEncoding.PREFIX_TREE) {
-      // In case of Prefix Tree encoding, we always write tags information into HFiles even if all
-      // KVs are having no tags.
-      fileInfo.append(FileInfo.MAX_TAGS_LEN, Bytes.toBytes(this.maxTagsLength), false);
-    } else if (hFileContext.isIncludesTags()) {
+    if (hFileContext.isIncludesTags()) {
       // When tags are not being written in this file, MAX_TAGS_LEN is excluded
       // from the FileInfo
       fileInfo.append(FileInfo.MAX_TAGS_LEN, Bytes.toBytes(this.maxTagsLength), false);

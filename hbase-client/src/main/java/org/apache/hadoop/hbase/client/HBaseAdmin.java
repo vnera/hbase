@@ -170,7 +170,6 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsProcedur
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsProcedureDoneResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsSnapshotDoneRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsSnapshotDoneResponse;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListDeadServersRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListDecommissionedRegionServersRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListNamespaceDescriptorsRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListTableDescriptorsByNamespaceRequest;
@@ -1372,14 +1371,14 @@ public class HBaseAdmin implements Admin {
   }
 
   @Override
-  public void move(final byte [] encodedRegionName, final byte [] destServerName)
-  throws IOException {
+  public void move(final byte[] encodedRegionName, final byte[] destServerName) throws IOException {
     executeCallable(new MasterCallable<Void>(getConnection(), getRpcControllerFactory()) {
       @Override
       protected Void rpcCall() throws Exception {
         setPriority(encodedRegionName);
         MoveRegionRequest request =
-            RequestConverter.buildMoveRegionRequest(encodedRegionName, destServerName);
+            RequestConverter.buildMoveRegionRequest(encodedRegionName,
+              destServerName != null ? ServerName.valueOf(Bytes.toString(destServerName)) : null);
         master.moveRegion(getRpcController(), request);
         return null;
       }
@@ -2100,7 +2099,7 @@ public class HBaseAdmin implements Admin {
   }
 
   /**
-   * Do a get with a timeout against the passed in <code>future<code>.
+   * Do a get with a timeout against the passed in <code>future</code>.
    */
   private static <T> T get(final Future<T> future, final long timeout, final TimeUnit units)
   throws IOException {
@@ -4344,19 +4343,6 @@ public class HBaseAdmin implements Admin {
       }
     };
     ProtobufUtil.call(callable);
-  }
-
-  @Override
-  public List<ServerName> listDeadServers() throws IOException {
-    return executeCallable(new MasterCallable<List<ServerName>>(getConnection(),
-            getRpcControllerFactory()) {
-      @Override
-      public List<ServerName> rpcCall() throws ServiceException {
-        ListDeadServersRequest req = ListDeadServersRequest.newBuilder().build();
-        return ProtobufUtil.toServerNameList(
-                master.listDeadServers(getRpcController(), req).getServerNameList());
-      }
-    });
   }
 
   @Override
