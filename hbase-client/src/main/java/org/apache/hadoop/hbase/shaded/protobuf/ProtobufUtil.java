@@ -24,7 +24,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -37,14 +36,12 @@ import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.ByteBufferCell;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellBuilder;
-import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellScanner;
 import org.apache.hadoop.hbase.CellUtil;
@@ -64,7 +61,6 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.TagUtil;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.ClientUtil;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
@@ -81,7 +77,6 @@ import org.apache.hadoop.hbase.client.PackagePrivateFieldAccessor;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.RegionInfoBuilder;
 import org.apache.hadoop.hbase.client.RegionLoadStats;
-import org.apache.hadoop.hbase.client.RegionReplicaUtil;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.SnapshotDescription;
@@ -164,6 +159,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.LockServiceProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MapReduceProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.CreateTableRequest;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.GetCompletedSnapshotsResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.GetTableDescriptorsResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListNamespaceDescriptorsResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.MajorCompactionTimestampResponse;
@@ -188,6 +184,7 @@ import org.apache.hadoop.hbase.util.ExceptionUtil;
 import org.apache.hadoop.hbase.util.Methods;
 import org.apache.hadoop.hbase.util.VersionInfo;
 import org.apache.hadoop.ipc.RemoteException;
+import org.apache.yetus.audience.InterfaceAudience;
 
 /**
  * Protobufs utility.
@@ -1738,7 +1735,7 @@ public final class ProtobufUtil {
       final RpcController controller, final AdminService.BlockingInterface admin,
       final TableName tableName) throws IOException {
     GetRegionLoadRequest request =
-        RequestConverter.buildGetRegionLoadRequest(Optional.ofNullable(tableName));
+        RequestConverter.buildGetRegionLoadRequest(tableName);
     GetRegionLoadResponse response;
     try {
       response = admin.getRegionLoad(controller, request);
@@ -2964,14 +2961,12 @@ public final class ProtobufUtil {
           lsi.getServer()), new ServerLoad(lsi.getServerLoad()));
     }
 
-    Collection<ServerName> deadServers = null;
-    deadServers = new ArrayList<>(proto.getDeadServersList().size());
+    List<ServerName> deadServers = new ArrayList<>(proto.getDeadServersList().size());
     for (HBaseProtos.ServerName sn : proto.getDeadServersList()) {
       deadServers.add(ProtobufUtil.toServerName(sn));
     }
 
-    Collection<ServerName> backupMasters = null;
-    backupMasters = new ArrayList<>(proto.getBackupMastersList().size());
+    List<ServerName> backupMasters = new ArrayList<>(proto.getBackupMastersList().size());
     for (HBaseProtos.ServerName sn : proto.getBackupMastersList()) {
       backupMasters.add(ProtobufUtil.toServerName(sn));
     }
@@ -3382,5 +3377,12 @@ public final class ProtobufUtil {
       rib.setOffline(proto.getOffline());
     }
     return rib.build();
+  }
+
+  public static List<SnapshotDescription> toSnapshotDescriptionList(
+      GetCompletedSnapshotsResponse response, Pattern pattern) {
+    return response.getSnapshotsList().stream().map(ProtobufUtil::createSnapshotDesc)
+        .filter(snap -> pattern != null ? pattern.matcher(snap.getName()).matches() : true)
+        .collect(Collectors.toList());
   }
 }

@@ -22,12 +22,6 @@ WORKSPACE=${WORKSPACE:-"."}
 RUN_IN_DOCKER=${RUN_IN_DOCKER:-"false"}
 DEBUG=${DEBUG:-"true"}
 
-export JAVA8_BUILD=true
-. /opt/toolchain/toolchain.sh
-
-# shellcheck disable=SC2034
-MAVEN_HOME=${MAVEN_3_2_2_HOME}
-
 if [[ "true" = "${DEBUG}" ]]; then
   set -x
   env
