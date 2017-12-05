@@ -21,15 +21,16 @@ package org.apache.hadoop.hbase.replication;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableSet;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Sets;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableSet;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Stat;
 
@@ -43,8 +44,8 @@ public class ReplicationQueuesClientZKImpl extends ReplicationStateZKBase implem
     this(args.getZk(), args.getConf(), args.getAbortable());
   }
 
-  public ReplicationQueuesClientZKImpl(final ZooKeeperWatcher zk, Configuration conf,
-      Abortable abortable) {
+  public ReplicationQueuesClientZKImpl(final ZKWatcher zk, Configuration conf,
+                                       Abortable abortable) {
     super(zk, conf, abortable);
   }
 
@@ -61,8 +62,8 @@ public class ReplicationQueuesClientZKImpl extends ReplicationStateZKBase implem
 
   @Override
   public List<String> getLogsInQueue(String serverName, String queueId) throws KeeperException {
-    String znode = ZKUtil.joinZNode(this.queuesZNode, serverName);
-    znode = ZKUtil.joinZNode(znode, queueId);
+    String znode = ZNodePaths.joinZNode(this.queuesZNode, serverName);
+    znode = ZNodePaths.joinZNode(znode, queueId);
     List<String> result = null;
     try {
       result = ZKUtil.listChildrenNoWatch(this.zookeeper, znode);
@@ -76,7 +77,7 @@ public class ReplicationQueuesClientZKImpl extends ReplicationStateZKBase implem
 
   @Override
   public List<String> getAllQueues(String serverName) throws KeeperException {
-    String znode = ZKUtil.joinZNode(this.queuesZNode, serverName);
+    String znode = ZNodePaths.joinZNode(this.queuesZNode, serverName);
     List<String> result = null;
     try {
       result = ZKUtil.listChildrenNoWatch(this.zookeeper, znode);
@@ -162,7 +163,7 @@ public class ReplicationQueuesClientZKImpl extends ReplicationStateZKBase implem
 
   @Override
   public List<String> getReplicableHFiles(String peerId) throws KeeperException {
-    String znode = ZKUtil.joinZNode(this.hfileRefsZNode, peerId);
+    String znode = ZNodePaths.joinZNode(this.hfileRefsZNode, peerId);
     List<String> result = null;
     try {
       result = ZKUtil.listChildrenNoWatch(this.zookeeper, znode);

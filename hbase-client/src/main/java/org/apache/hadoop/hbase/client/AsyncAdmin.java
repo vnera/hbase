@@ -17,6 +17,9 @@
  */
 package org.apache.hadoop.hbase.client;
 
+import com.google.protobuf.RpcChannel;
+
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
@@ -33,7 +36,6 @@ import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.RegionLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.RawAsyncTable.CoprocessorCallable;
 import org.apache.hadoop.hbase.client.replication.TableCFs;
 import org.apache.hadoop.hbase.client.security.SecurityCapability;
 import org.apache.hadoop.hbase.quotas.QuotaFilter;
@@ -42,13 +44,8 @@ import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.replication.ReplicationPeerDescription;
 import org.apache.yetus.audience.InterfaceAudience;
 
-import com.google.protobuf.RpcChannel;
-
 /**
  * The asynchronous administrative API for HBase.
- * <p>
- * This feature is still under development, so marked as IA.Private. Will change to public when
- * done. Use it with caution.
  * @since 2.0.0
  */
 @InterfaceAudience.Public
@@ -65,8 +62,8 @@ public interface AsyncAdmin {
    * List all the userspace tables.
    * @return - returns a list of TableDescriptors wrapped by a {@link CompletableFuture}.
    */
-  default CompletableFuture<List<TableDescriptor>> listTables() {
-    return listTables(false);
+  default CompletableFuture<List<TableDescriptor>> listTableDescriptors() {
+    return listTableDescriptors(false);
   }
 
   /**
@@ -74,7 +71,7 @@ public interface AsyncAdmin {
    * @param includeSysTables False to match only against userspace tables
    * @return - returns a list of TableDescriptors wrapped by a {@link CompletableFuture}.
    */
-  CompletableFuture<List<TableDescriptor>> listTables(boolean includeSysTables);
+  CompletableFuture<List<TableDescriptor>> listTableDescriptors(boolean includeSysTables);
 
   /**
    * List all the tables matching the given pattern.
@@ -82,7 +79,15 @@ public interface AsyncAdmin {
    * @param includeSysTables False to match only against userspace tables
    * @return - returns a list of TableDescriptors wrapped by a {@link CompletableFuture}.
    */
-  CompletableFuture<List<TableDescriptor>> listTables(Pattern pattern, boolean includeSysTables);
+  CompletableFuture<List<TableDescriptor>> listTableDescriptors(Pattern pattern,
+      boolean includeSysTables);
+
+  /**
+   * Get list of table descriptors by namespace.
+   * @param name namespace name
+   * @return returns a list of TableDescriptors wrapped by a {@link CompletableFuture}.
+   */
+  CompletableFuture<List<TableDescriptor>> listTableDescriptorsByNamespace(String name);
 
   /**
    * List all of the names of userspace tables.
@@ -109,11 +114,18 @@ public interface AsyncAdmin {
   CompletableFuture<List<TableName>> listTableNames(Pattern pattern, boolean includeSysTables);
 
   /**
+   * Get list of table names by namespace.
+   * @param name namespace name
+   * @return The list of table names in the namespace wrapped by a {@link CompletableFuture}.
+   */
+  CompletableFuture<List<TableName>> listTableNamesByNamespace(String name);
+
+  /**
    * Method for getting the tableDescriptor
    * @param tableName as a {@link TableName}
    * @return the read-only tableDescriptor wrapped by a {@link CompletableFuture}.
    */
-  CompletableFuture<TableDescriptor> getTableDescriptor(TableName tableName);
+  CompletableFuture<TableDescriptor> getDescriptor(TableName tableName);
 
   /**
    * Creates a new table.
@@ -143,6 +155,12 @@ public interface AsyncAdmin {
    * @param splitKeys array of split keys for the initial regions of the table
    */
   CompletableFuture<Void> createTable(TableDescriptor desc, byte[][] splitKeys);
+
+  /**
+   * Modify an existing table, more IRB friendly version.
+   * @param desc modified description of the table
+   */
+  CompletableFuture<Void> modifyTable(TableDescriptor desc);
 
   /**
    * Deletes a table.
@@ -257,12 +275,12 @@ public interface AsyncAdmin {
   /**
    * Get all the online regions on a region server.
    */
-  CompletableFuture<List<RegionInfo>> getOnlineRegions(ServerName serverName);
+  CompletableFuture<List<RegionInfo>> getRegions(ServerName serverName);
 
   /**
    * Get the regions of a given table.
    */
-  CompletableFuture<List<RegionInfo>> getTableRegions(TableName tableName);
+  CompletableFuture<List<RegionInfo>> getRegions(TableName tableName);
 
   /**
    * Flush a table.
@@ -281,7 +299,9 @@ public interface AsyncAdmin {
    * was sent to HBase and may need some time to finish the compact operation.
    * @param tableName table to compact
    */
-  CompletableFuture<Void> compact(TableName tableName);
+  default CompletableFuture<Void> compact(TableName tableName) {
+    return compact(tableName, CompactType.NORMAL);
+  }
 
   /**
    * Compact a column family within a table. When the returned CompletableFuture is done, it only
@@ -291,7 +311,28 @@ public interface AsyncAdmin {
    * @param columnFamily column family within a table. If not present, compact the table's all
    *          column families.
    */
-  CompletableFuture<Void> compact(TableName tableName, byte[] columnFamily);
+  default CompletableFuture<Void> compact(TableName tableName, byte[] columnFamily) {
+    return compact(tableName, columnFamily, CompactType.NORMAL);
+  }
+
+  /**
+   * Compact a table. When the returned CompletableFuture is done, it only means the compact request
+   * was sent to HBase and may need some time to finish the compact operation.
+   * @param tableName table to compact
+   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
+   */
+  CompletableFuture<Void> compact(TableName tableName, CompactType compactType);
+
+  /**
+   * Compact a column family within a table. When the returned CompletableFuture is done, it only
+   * means the compact request was sent to HBase and may need some time to finish the compact
+   * operation.
+   * @param tableName table to compact
+   * @param columnFamily column family within a table
+   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
+   */
+  CompletableFuture<Void> compact(TableName tableName, byte[] columnFamily,
+      CompactType compactType);
 
   /**
    * Compact an individual region. When the returned CompletableFuture is done, it only means the
@@ -315,7 +356,9 @@ public interface AsyncAdmin {
    * request was sent to HBase and may need some time to finish the compact operation.
    * @param tableName table to major compact
    */
-  CompletableFuture<Void> majorCompact(TableName tableName);
+  default CompletableFuture<Void> majorCompact(TableName tableName) {
+    return majorCompact(tableName, CompactType.NORMAL);
+  }
 
   /**
    * Major compact a column family within a table. When the returned CompletableFuture is done, it
@@ -325,7 +368,29 @@ public interface AsyncAdmin {
    * @param columnFamily column family within a table. If not present, major compact the table's all
    *          column families.
    */
-  CompletableFuture<Void> majorCompact(TableName tableName, byte[] columnFamily);
+  default CompletableFuture<Void> majorCompact(TableName tableName, byte[] columnFamily) {
+    return majorCompact(tableName, columnFamily, CompactType.NORMAL);
+  }
+
+  /**
+   * Major compact a table. When the returned CompletableFuture is done, it only means the compact
+   * request was sent to HBase and may need some time to finish the compact operation.
+   * @param tableName table to major compact
+   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
+   */
+  CompletableFuture<Void> majorCompact(TableName tableName, CompactType compactType);
+
+  /**
+   * Major compact a column family within a table. When the returned CompletableFuture is done, it
+   * only means the compact request was sent to HBase and may need some time to finish the compact
+   * operation.
+   * @param tableName table to major compact
+   * @param columnFamily column family within a table. If not present, major compact the table's all
+   *          column families.
+   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
+   */
+  CompletableFuture<Void> majorCompact(TableName tableName, byte[] columnFamily,
+      CompactType compactType);
 
   /**
    * Major compact a region. When the returned CompletableFuture is done, it only means the compact
@@ -361,28 +426,28 @@ public interface AsyncAdmin {
    * @param on
    * @return Previous switch value wrapped by a {@link CompletableFuture}
    */
-  CompletableFuture<Boolean> setMergeOn(boolean on);
+  CompletableFuture<Boolean> mergeSwitch(boolean on);
 
   /**
    * Query the current state of the Merge switch.
    * @return true if the switch is on, false otherwise. The return value will be wrapped by a
    *         {@link CompletableFuture}
    */
-  CompletableFuture<Boolean> isMergeOn();
+  CompletableFuture<Boolean> isMergeEnabled();
 
   /**
    * Turn the Split switch on or off.
    * @param on
    * @return Previous switch value wrapped by a {@link CompletableFuture}
    */
-  CompletableFuture<Boolean> setSplitOn(boolean on);
+  CompletableFuture<Boolean> splitSwitch(boolean on);
 
   /**
    * Query the current state of the Split switch.
    * @return true if the switch is on, false otherwise. The return value will be wrapped by a
    *         {@link CompletableFuture}
    */
-  CompletableFuture<Boolean> isSplitOn();
+  CompletableFuture<Boolean> isSplitEnabled();
 
   /**
    * Merge two regions.
@@ -481,8 +546,19 @@ public interface AsyncAdmin {
    * @param peerId a short name that identifies the peer
    * @param peerConfig configuration for the replication slave cluster
    */
+  default CompletableFuture<Void> addReplicationPeer(String peerId,
+      ReplicationPeerConfig peerConfig) {
+    return addReplicationPeer(peerId, peerConfig, true);
+  }
+
+  /**
+   * Add a new replication peer for replicating data to slave cluster
+   * @param peerId a short name that identifies the peer
+   * @param peerConfig configuration for the replication slave cluster
+   * @param enabled peer state, true if ENABLED and false if DISABLED
+   */
   CompletableFuture<Void> addReplicationPeer(String peerId,
-      ReplicationPeerConfig peerConfig);
+      ReplicationPeerConfig peerConfig, boolean enabled);
 
   /**
    * Remove a peer and stop the replication
@@ -554,6 +630,18 @@ public interface AsyncAdmin {
    *         {@link CompletableFuture}.
    */
   CompletableFuture<List<TableCFs>> listReplicatedTableCFs();
+
+  /**
+   * Enable a table's replication switch.
+   * @param tableName name of the table
+   */
+  CompletableFuture<Void> enableTableReplication(TableName tableName);
+
+  /**
+   * Disable a table's replication switch.
+   * @param tableName name of the table
+   */
+  CompletableFuture<Void> disableTableReplication(TableName tableName);
 
   /**
    * Take a snapshot for the given table. If the table is enabled, a FLUSH-type snapshot will be
@@ -732,7 +820,7 @@ public interface AsyncAdmin {
    * @param props Property/Value pairs of properties passing to the procedure
    * @return data returned after procedure execution. null if no return data.
    */
-  CompletableFuture<byte[]> execProcedureWithRet(String signature, String instance,
+  CompletableFuture<byte[]> execProcedureWithReturn(String signature, String instance,
       Map<String, String> props);
 
   /**
@@ -829,6 +917,14 @@ public interface AsyncAdmin {
   }
 
   /**
+   * @return a list of master coprocessors wrapped by {@link CompletableFuture}
+   */
+  default CompletableFuture<List<String>> getMasterCoprocessors() {
+    return getClusterStatus(EnumSet.of(Option.MASTER_COPROCESSORS))
+        .thenApply(ClusterStatus::getMasterCoprocessors).thenApply(Arrays::asList);
+  }
+
+  /**
    * Get the info port of the current master if one is available.
    * @return master info port
    */
@@ -911,7 +1007,19 @@ public interface AsyncAdmin {
    * @param tableName table to examine
    * @return the current compaction state wrapped by a {@link CompletableFuture}
    */
-  CompletableFuture<CompactionState> getCompactionState(TableName tableName);
+  default CompletableFuture<CompactionState> getCompactionState(TableName tableName) {
+    return getCompactionState(tableName, CompactType.NORMAL);
+  }
+
+  /**
+   * Get the current compaction state of a table. It could be in a major compaction, a minor
+   * compaction, both, or none.
+   * @param tableName table to examine
+   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
+   * @return the current compaction state wrapped by a {@link CompletableFuture}
+   */
+  CompletableFuture<CompactionState> getCompactionState(TableName tableName,
+      CompactType compactType);
 
   /**
    * Get the current compaction state of region. It could be in a major compaction, a minor
@@ -952,7 +1060,7 @@ public interface AsyncAdmin {
    * @param on
    * @return Previous balancer value wrapped by a {@link CompletableFuture}.
    */
-  CompletableFuture<Boolean> setBalancerOn(boolean on);
+  CompletableFuture<Boolean> balancerSwitch(boolean on);
 
   /**
    * Invoke the balancer. Will run the balancer and if regions to move, it will go ahead and do the
@@ -979,21 +1087,21 @@ public interface AsyncAdmin {
    * @return true if the balance switch is on, false otherwise. The return value will be wrapped by a
    *         {@link CompletableFuture}.
    */
-  CompletableFuture<Boolean> isBalancerOn();
+  CompletableFuture<Boolean> isBalancerEnabled();
 
   /**
    * Set region normalizer on/off.
    * @param on whether normalizer should be on or off
    * @return Previous normalizer value wrapped by a {@link CompletableFuture}
    */
-  CompletableFuture<Boolean> setNormalizerOn(boolean on);
+  CompletableFuture<Boolean> normalizerSwitch(boolean on);
 
   /**
    * Query the current state of the region normalizer
    * @return true if region normalizer is on, false otherwise. The return value will be wrapped by a
    *         {@link CompletableFuture}
    */
-  CompletableFuture<Boolean> isNormalizerOn();
+  CompletableFuture<Boolean> isNormalizerEnabled();
 
   /**
    * Invoke region normalizer. Can NOT run for various reasons. Check logs.
@@ -1007,14 +1115,14 @@ public interface AsyncAdmin {
    * @param on
    * @return Previous cleaner state wrapped by a {@link CompletableFuture}
    */
-  CompletableFuture<Boolean> setCleanerChoreOn(boolean on);
+  CompletableFuture<Boolean> cleanerChoreSwitch(boolean on);
 
   /**
    * Query the current state of the cleaner chore.
    * @return true if cleaner chore is on, false otherwise. The return value will be wrapped by
    *         a {@link CompletableFuture}
    */
-  CompletableFuture<Boolean> isCleanerChoreOn();
+  CompletableFuture<Boolean> isCleanerChoreEnabled();
 
   /**
    * Ask for cleaner chore to run.
@@ -1028,14 +1136,14 @@ public interface AsyncAdmin {
    * @param on
    * @return the previous state wrapped by a {@link CompletableFuture}
    */
-  CompletableFuture<Boolean> setCatalogJanitorOn(boolean on);
+  CompletableFuture<Boolean> catalogJanitorSwitch(boolean on);
 
   /**
    * Query on the catalog janitor state.
    * @return true if the catalog janitor is on, false otherwise. The return value will be
    *         wrapped by a {@link CompletableFuture}
    */
-  CompletableFuture<Boolean> isCatalogJanitorOn();
+  CompletableFuture<Boolean> isCatalogJanitorEnabled();
 
   /**
    * Ask for a scan of the catalog table.
@@ -1057,14 +1165,14 @@ public interface AsyncAdmin {
    * </pre>
    * @param stubMaker a delegation to the actual {@code newStub} call.
    * @param callable a delegation to the actual protobuf rpc call. See the comment of
-   *          {@link CoprocessorCallable} for more details.
+   *          {@link ServiceCaller} for more details.
    * @param <S> the type of the asynchronous stub
    * @param <R> the type of the return value
    * @return the return value of the protobuf rpc call, wrapped by a {@link CompletableFuture}.
-   * @see CoprocessorCallable
+   * @see ServiceCaller
    */
   <S, R> CompletableFuture<R> coprocessorService(Function<RpcChannel, S> stubMaker,
-      CoprocessorCallable<S, R> callable);
+      ServiceCaller<S, R> callable);
 
   /**
    * Execute the given coprocessor call on the given region server.
@@ -1079,15 +1187,15 @@ public interface AsyncAdmin {
    * </pre>
    * @param stubMaker a delegation to the actual {@code newStub} call.
    * @param callable a delegation to the actual protobuf rpc call. See the comment of
-   *          {@link CoprocessorCallable} for more details.
+   *          {@link ServiceCaller} for more details.
    * @param serverName the given region server
    * @param <S> the type of the asynchronous stub
    * @param <R> the type of the return value
    * @return the return value of the protobuf rpc call, wrapped by a {@link CompletableFuture}.
-   * @see CoprocessorCallable
+   * @see ServiceCaller
    */
   <S, R> CompletableFuture<R> coprocessorService(Function<RpcChannel, S> stubMaker,
-    CoprocessorCallable<S, R> callable, ServerName serverName);
+    ServiceCaller<S, R> callable, ServerName serverName);
 
   /**
    * List all the dead region servers.

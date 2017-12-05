@@ -52,10 +52,10 @@ import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HConstants;
-import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValue.Type;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
+import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
@@ -123,16 +123,6 @@ import org.apache.hadoop.hbase.security.Superusers;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.security.access.Permission.Action;
-import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
-import org.apache.hadoop.hbase.util.ByteRange;
-import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
-import org.apache.hadoop.hbase.util.Pair;
-import org.apache.hadoop.hbase.util.SimpleMutableByteRange;
-import org.apache.hadoop.hbase.wal.WALEdit;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
-import org.apache.yetus.audience.InterfaceAudience;
-
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.ArrayListMultimap;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableSet;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.ListMultimap;
@@ -140,6 +130,15 @@ import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.MapMaker;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.Maps;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.Sets;
+import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
+import org.apache.hadoop.hbase.util.ByteRange;
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
+import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.util.SimpleMutableByteRange;
+import org.apache.hadoop.hbase.wal.WALEdit;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.yetus.audience.InterfaceAudience;
 
 /**
  * Provides basic authorization checks for data access and administrative
@@ -430,7 +429,12 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
    */
   private User getActiveUser(ObserverContext<?> ctx) throws IOException {
     // for non-rpc handling, fallback to system user
-    return ctx.getCaller().orElse(userProvider.getCurrent());
+    Optional<User> optionalUser = ctx.getCaller();
+    User user;
+    if (optionalUser.isPresent()) {
+      return optionalUser.get();
+    }
+    return userProvider.getCurrent();
   }
 
   /**
@@ -953,7 +957,7 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
           + " accordingly.");
     }
 
-    ZooKeeperWatcher zk = null;
+    ZKWatcher zk = null;
     if (env instanceof MasterCoprocessorEnvironment) {
       // if running on HMaster
       MasterCoprocessorEnvironment mEnv = (MasterCoprocessorEnvironment)env;
@@ -1524,31 +1528,15 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
     }
     if (AccessControlLists.isAclRegion(region)) {
       aclRegion = true;
-      // When this region is under recovering state, initialize will be handled by postLogReplay
-      if (!region.isRecovering()) {
-        try {
-          initialize(env);
-        } catch (IOException ex) {
-          // if we can't obtain permissions, it's better to fail
-          // than perform checks incorrectly
-          throw new RuntimeException("Failed to initialize permissions cache", ex);
-        }
-      }
-    } else {
-      initialized = true;
-    }
-  }
-
-  @Override
-  public void postLogReplay(ObserverContext<RegionCoprocessorEnvironment> c) {
-    if (aclRegion) {
       try {
-        initialize(c.getEnvironment());
+        initialize(env);
       } catch (IOException ex) {
         // if we can't obtain permissions, it's better to fail
         // than perform checks incorrectly
         throw new RuntimeException("Failed to initialize permissions cache", ex);
       }
+    } else {
+      initialized = true;
     }
   }
 
@@ -2699,6 +2687,12 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
   public void preBalanceRSGroup(ObserverContext<MasterCoprocessorEnvironment> ctx,
                                 String groupName) throws IOException {
     requirePermission(getActiveUser(ctx), "balanceRSGroup", Action.ADMIN);
+  }
+
+  @Override
+  public void preRemoveServers(ObserverContext<MasterCoprocessorEnvironment> ctx,
+      Set<Address> servers) throws IOException {
+    requirePermission(getActiveUser(ctx), "removeServers", Action.ADMIN);
   }
 
   @Override

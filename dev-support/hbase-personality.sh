@@ -262,15 +262,15 @@ function hadoopcheck_rebuild
   # See the Hadoop section on prereqs in the HBase Reference Guide
   if [[ "${PATCH_BRANCH}" = branch-1* ]]; then
     yetus_info "setting Hadoop versions to test based on branch-1-ish rules."
-    hbase_hadoop2_versions="2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3"
+    hbase_hadoop2_versions="2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3 2.7.4"
     hbase_hadoop3_versions=""
   elif [[ ${PATCH_BRANCH} = branch-2* ]]; then
     yetus_info "setting Hadoop versions to test based on branch-2-ish rules."
-    hbase_hadoop2_versions="2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3"
+    hbase_hadoop2_versions="2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3 2.7.4"
     hbase_hadoop3_versions="3.0.0-alpha4"
   else # master or a feature branch
     yetus_info "setting Hadoop versions to test based on master/feature branch rules."
-    hbase_hadoop2_versions="2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3"
+    hbase_hadoop2_versions="2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3 2.7.4"
     hbase_hadoop3_versions="3.0.0-alpha4"
   fi
 
@@ -431,21 +431,21 @@ function hbaseanti_patchfile
 
   start_clock
 
-  warnings=$(${GREP} 'new TreeMap<byte.*()' "${patchfile}")
+  warnings=$(${GREP} -c 'new TreeMap<byte.*()' "${patchfile}")
   if [[ ${warnings} -gt 0 ]]; then
-    add_vote_table -1 hbaseanti "" "The patch appears to have anti-pattern where BYTES_COMPARATOR was omitted: ${warnings}."
+    add_vote_table -1 hbaseanti "" "The patch appears to have anti-pattern where BYTES_COMPARATOR was omitted."
     ((result=result+1))
   fi
 
-  warnings=$(${GREP} 'import org.apache.hadoop.classification' "${patchfile}")
+  warnings=$(${GREP} -c 'import org.apache.hadoop.classification' "${patchfile}")
   if [[ ${warnings} -gt 0 ]]; then
-    add_vote_table -1 hbaseanti "" "The patch appears use Hadoop classification instead of HBase: ${warnings}."
+    add_vote_table -1 hbaseanti "" "The patch appears use Hadoop classification instead of HBase."
     ((result=result+1))
   fi
 
-  warnings=$(${GREP} 'import org.codehaus.jackson' "${patchfile}")
+  warnings=$(${GREP} -c 'import org.codehaus.jackson' "${patchfile}")
   if [[ ${warnings} -gt 0 ]]; then
-    add_vote_table -1 hbaseanti "" "The patch appears use Jackson 1 classes/annotations: ${warnings}."
+    add_vote_table -1 hbaseanti "" "The patch appears use Jackson 1 classes/annotations."
     ((result=result+1))
   fi
 

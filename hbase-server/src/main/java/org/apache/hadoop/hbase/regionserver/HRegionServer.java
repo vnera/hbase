@@ -21,7 +21,6 @@ import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 import javax.servlet.http.HttpServlet;
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.lang.management.MemoryType;
 import java.lang.management.MemoryUsage;
@@ -33,7 +32,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -61,6 +59,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Abortable;
+import org.apache.hadoop.hbase.CacheEvictionStats;
 import org.apache.hadoop.hbase.ChoreService;
 import org.apache.hadoop.hbase.ClockOutOfSyncException;
 import org.apache.hadoop.hbase.CoordinatedStateManager;
@@ -101,6 +100,7 @@ import org.apache.hadoop.hbase.executor.ExecutorService;
 import org.apache.hadoop.hbase.executor.ExecutorType;
 import org.apache.hadoop.hbase.fs.HFileSystem;
 import org.apache.hadoop.hbase.http.InfoServer;
+import org.apache.hadoop.hbase.io.hfile.BlockCache;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.io.util.MemorySizeUtil;
@@ -139,6 +139,7 @@ import org.apache.hadoop.hbase.security.Superusers;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.trace.SpanReceiverHost;
+import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.hadoop.hbase.util.Addressing;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CompressionTest;
@@ -160,20 +161,17 @@ import org.apache.hadoop.hbase.wal.WALFactory;
 import org.apache.hadoop.hbase.zookeeper.ClusterStatusTracker;
 import org.apache.hadoop.hbase.zookeeper.MasterAddressTracker;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
-import org.apache.hadoop.hbase.zookeeper.RecoveringRegionWatcher;
 import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
-import org.apache.hadoop.hbase.zookeeper.ZKSplitLog;
+import org.apache.hadoop.hbase.zookeeper.ZKNodeTracker;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperNodeTracker;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.metrics2.util.MBeans;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.KeeperException.NoNodeException;
-import org.apache.zookeeper.data.Stat;
 
 import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
@@ -262,10 +260,6 @@ public class HRegionServer extends HasThread implements
    */
   protected MetaTableLocator metaTableLocator;
 
-  // Watch if a region is out of recovering state from ZooKeeper
-  @SuppressWarnings("unused")
-  private RecoveringRegionWatcher recoveringRegionWatcher;
-
   /**
    * Go here to get table descriptors.
    */
@@ -295,13 +289,6 @@ public class HRegionServer extends HasThread implements
    */
   protected final Map<String, InetSocketAddress[]> regionFavoredNodesMap =
       new ConcurrentHashMap<>();
-
-  /**
-   * Set of regions currently being in recovering state which means it can accept writes(edits from
-   * previous failed region server) but not reads. A recovering region is also an online region.
-   */
-  protected final Map<String, HRegion> recoveringRegions = Collections
-      .synchronizedMap(new HashMap<String, HRegion>());
 
   // Leases
   protected Leases leases;
@@ -393,7 +380,7 @@ public class HRegionServer extends HasThread implements
   final AtomicBoolean online = new AtomicBoolean(false);
 
   // zookeeper connection and watcher
-  protected ZooKeeperWatcher zooKeeper;
+  protected ZKWatcher zooKeeper;
 
   // master address tracker
   private MasterAddressTracker masterAddressTracker;
@@ -540,6 +527,7 @@ public class HRegionServer extends HasThread implements
   // Defer till after we register with the Master as much as possible. See #startServices.
   public HRegionServer(Configuration conf) throws IOException {
     super("RegionServer");  // thread name
+    TraceUtil.initTracer(conf);
     try {
       this.startcode = System.currentTimeMillis();
       this.conf = conf;
@@ -628,7 +616,7 @@ public class HRegionServer extends HasThread implements
       // Some unit tests don't need a cluster, so no zookeeper at all
       if (!conf.getBoolean("hbase.testing.nocluster", false)) {
         // Open connection to zookeeper and set primary watcher
-        zooKeeper = new ZooKeeperWatcher(conf, getProcessName() + ":" +
+        zooKeeper = new ZKWatcher(conf, getProcessName() + ":" +
           rpcServices.isa.getPort(), this, canCreateBaseZNode());
 
         // If no master in cluster, skip trying to track one or look for a cluster status.
@@ -898,8 +886,6 @@ public class HRegionServer extends HasThread implements
     } catch (KeeperException e) {
       this.abort("Failed to reach coordination cluster when creating procedure handler.", e);
     }
-    // register watcher for recovering regions
-    this.recoveringRegionWatcher = new RecoveringRegionWatcher(this.zooKeeper, this);
   }
 
   @edu.umd.cs.findbugs.annotations.SuppressWarnings(value="RV_RETURN_VALUE_IGNORED",
@@ -919,7 +905,7 @@ public class HRegionServer extends HasThread implements
    * @throws IOException any IO exception, plus if the RS is stopped
    * @throws InterruptedException
    */
-  private void blockAndCheckIfStopped(ZooKeeperNodeTracker tracker)
+  private void blockAndCheckIfStopped(ZKNodeTracker tracker)
       throws IOException, InterruptedException {
     while (tracker.blockUntilAvailable(this.msgInterval, false) == null) {
       if (this.stopped) {
@@ -1530,7 +1516,8 @@ public class HRegionServer extends HasThread implements
       // This call sets up an initialized replication and WAL. Later we start it up.
       setupWALAndReplication();
       // Init in here rather than in constructor after thread name has been set
-      this.metricsRegionServer = new MetricsRegionServer(new MetricsRegionServerWrapperImpl(this));
+      this.metricsRegionServer = new MetricsRegionServer(
+          new MetricsRegionServerWrapperImpl(this), conf);
       this.metricsTable = new MetricsTable(new MetricsTableWrapperAggregateImpl(this));
       // Now that we have a metrics source, start the pause monitor
       this.pauseMonitor = new JvmPauseMonitor(conf, getMetrics().getMetricsSource());
@@ -1971,7 +1958,7 @@ public class HRegionServer extends HasThread implements
         conf.getInt("hbase.log.replay.retries.number", 8)); // 8 retries take about 23 seconds
     sinkConf.setInt(HConstants.HBASE_RPC_TIMEOUT_KEY,
         conf.getInt("hbase.log.replay.rpc.timeout", 30000)); // default 30 seconds
-    sinkConf.setInt("hbase.client.serverside.retries.multiplier", 1);
+    sinkConf.setInt(HConstants.HBASE_CLIENT_SERVERSIDE_RETRIES_MULTIPLIER, 1);
     if (this.csm != null) {
       // SplitLogWorker needs csm. If none, don't start this.
       this.splitLogWorker = new SplitLogWorker(this, sinkConf, this,
@@ -2228,9 +2215,6 @@ public class HRegionServer extends HasThread implements
         r.getRegionInfo().getRegionNameAsString());
       openSeqNum = 0;
     }
-
-    // Update flushed sequence id of a recovering region in ZK
-    updateRecoveringRegionLastFlushedSequenceId(r);
 
     // Notify master
     if (!reportRegionStateTransition(new RegionStateTransitionContext(
@@ -2756,11 +2740,6 @@ public class HRegionServer extends HasThread implements
     return this.stopping;
   }
 
-  @Override
-  public Map<String, HRegion> getRecoveringRegions() {
-    return this.recoveringRegions;
-  }
-
   /**
    *
    * @return the configuration
@@ -2908,7 +2887,7 @@ public class HRegionServer extends HasThread implements
   }
 
   @Override
-  public ZooKeeperWatcher getZooKeeper() {
+  public ZKWatcher getZooKeeper() {
     return zooKeeper;
   }
 
@@ -3296,7 +3275,7 @@ public class HRegionServer extends HasThread implements
   }
 
   /**
-   * Protected utility method for safely obtaining an HRegion handle.
+   * Protected Utility method for safely obtaining an HRegion handle.
    *
    * @param regionName
    *          Name of online {@link HRegion} to return
@@ -3548,7 +3527,7 @@ public class HRegionServer extends HasThread implements
   }
 
   private String getMyEphemeralNodePath() {
-    return ZKUtil.joinZNode(this.zooKeeper.znodePaths.rsZNode, getServerName().toString());
+    return ZNodePaths.joinZNode(this.zooKeeper.znodePaths.rsZNode, getServerName().toString());
   }
 
   private boolean isHealthCheckerConfigured() {
@@ -3561,91 +3540,6 @@ public class HRegionServer extends HasThread implements
    */
   public CompactSplit getCompactSplitThread() {
     return this.compactSplitThread;
-  }
-
-  /**
-   * A helper function to store the last flushed sequence Id with the previous failed RS for a
-   * recovering region. The Id is used to skip wal edits which are flushed. Since the flushed
-   * sequence id is only valid for each RS, we associate the Id with corresponding failed RS.
-   * @throws KeeperException
-   * @throws IOException
-   */
-  private void updateRecoveringRegionLastFlushedSequenceId(Region r) throws KeeperException,
-      IOException {
-    if (!r.isRecovering()) {
-      // return immdiately for non-recovering regions
-      return;
-    }
-
-    RegionInfo regionInfo = r.getRegionInfo();
-    ZooKeeperWatcher zkw = getZooKeeper();
-    String previousRSName = this.getLastFailedRSFromZK(regionInfo.getEncodedName());
-    Map<byte[], Long> maxSeqIdInStores = r.getMaxStoreSeqId();
-    long minSeqIdForLogReplay = -1;
-    for (Long storeSeqIdForReplay : maxSeqIdInStores.values()) {
-      if (minSeqIdForLogReplay == -1 || storeSeqIdForReplay < minSeqIdForLogReplay) {
-        minSeqIdForLogReplay = storeSeqIdForReplay;
-      }
-    }
-
-    try {
-      long lastRecordedFlushedSequenceId = -1;
-      String nodePath = ZKUtil.joinZNode(this.zooKeeper.znodePaths.recoveringRegionsZNode,
-        regionInfo.getEncodedName());
-      // recovering-region level
-      byte[] data;
-      try {
-        data = ZKUtil.getData(zkw, nodePath);
-      } catch (InterruptedException e) {
-        throw new InterruptedIOException();
-      }
-      if (data != null) {
-        lastRecordedFlushedSequenceId = ZKSplitLog.parseLastFlushedSequenceIdFrom(data);
-      }
-      if (data == null || lastRecordedFlushedSequenceId < minSeqIdForLogReplay) {
-        ZKUtil.setData(zkw, nodePath, ZKUtil.positionToByteArray(minSeqIdForLogReplay));
-      }
-      if (previousRSName != null) {
-        // one level deeper for the failed RS
-        nodePath = ZKUtil.joinZNode(nodePath, previousRSName);
-        ZKUtil.setData(zkw, nodePath,
-          ZKUtil.regionSequenceIdsToByteArray(minSeqIdForLogReplay, maxSeqIdInStores));
-        LOG.debug("Update last flushed sequence id of region " + regionInfo.getEncodedName() +
-          " for " + previousRSName);
-      } else {
-        LOG.warn("Can't find failed region server for recovering region " +
-            regionInfo.getEncodedName());
-      }
-    } catch (NoNodeException ignore) {
-      LOG.debug("Region " + regionInfo.getEncodedName() +
-        " must have completed recovery because its recovery znode has been removed", ignore);
-    }
-  }
-
-  /**
-   * Return the last failed RS name under /hbase/recovering-regions/encodedRegionName
-   * @param encodedRegionName
-   * @throws KeeperException
-   */
-  private String getLastFailedRSFromZK(String encodedRegionName) throws KeeperException {
-    String result = null;
-    long maxZxid = 0;
-    ZooKeeperWatcher zkw = this.getZooKeeper();
-    String nodePath = ZKUtil.joinZNode(zkw.znodePaths.recoveringRegionsZNode, encodedRegionName);
-    List<String> failedServers = ZKUtil.listChildrenNoWatch(zkw, nodePath);
-    if (failedServers == null || failedServers.isEmpty()) {
-      return result;
-    }
-    for (String failedServer : failedServers) {
-      String rsPath = ZKUtil.joinZNode(nodePath, failedServer);
-      Stat stat = new Stat();
-      ZKUtil.getDataNoWatch(zkw, rsPath, stat);
-      if (maxZxid < stat.getCzxid()) {
-        maxZxid = stat.getCzxid();
-        result = failedServer;
-      }
-    }
-    return result;
   }
 
   public CoprocessorServiceResponse execRegionServerService(
@@ -3723,6 +3617,22 @@ public class HRegionServer extends HasThread implements
     // Reload the configuration from disk.
     conf.reloadConfiguration();
     configurationManager.notifyAllObservers(conf);
+  }
+
+  public CacheEvictionStats clearRegionBlockCache(Region region) {
+    BlockCache blockCache = this.getCacheConfig().getBlockCache();
+    long evictedBlocks = 0;
+
+    for(Store store : region.getStores()) {
+      for(StoreFile hFile : store.getStorefiles()) {
+        evictedBlocks += blockCache.evictBlocksByHfileName(hFile.getPath().getName());
+      }
+    }
+
+    return CacheEvictionStats.builder()
+        .withEvictedBlocks(evictedBlocks)
+        .withMaxCacheSize(blockCache.getMaxSize())
+        .build();
   }
 
   @Override
@@ -3805,5 +3715,12 @@ public class HRegionServer extends HasThread implements
 
   public NettyEventLoopGroupConfig getEventLoopGroupConfig() {
     return eventLoopGroupConfig;
+  }
+
+  @Override
+  public Connection createConnection(Configuration conf) throws IOException {
+    User user = UserProvider.instantiate(conf).getCurrent();
+    return ConnectionUtils.createShortCircuitConnection(conf, null, user, this.serverName,
+        this.rpcServices, this.rpcServices);
   }
 }

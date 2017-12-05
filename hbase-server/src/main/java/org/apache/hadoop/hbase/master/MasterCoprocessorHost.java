@@ -78,16 +78,14 @@ public class MasterCoprocessorHost
    */
   private static class MasterEnvironment extends BaseEnvironment<MasterCoprocessor>
       implements MasterCoprocessorEnvironment {
-    private final Connection connection;
-    private final ServerName serverName;
     private final boolean supportGroupCPs;
     private final MetricRegistry metricRegistry;
+    private final MasterServices services;
 
     public MasterEnvironment(final MasterCoprocessor impl, final int priority, final int seq,
         final Configuration conf, final MasterServices services) {
       super(impl, priority, seq, conf);
-      this.connection = services.getConnection();
-      this.serverName = services.getServerName();
+      this.services = services;
       supportGroupCPs = !useLegacyMethod(impl.getClass(),
           "preBalanceRSGroup", ObserverContext.class, String.class);
       this.metricRegistry =
@@ -96,12 +94,17 @@ public class MasterCoprocessorHost
 
     @Override
     public ServerName getServerName() {
-      return this.serverName;
+      return this.services.getServerName();
     }
 
     @Override
     public Connection getConnection() {
-      return this.connection;
+      return this.services.getConnection();
+    }
+
+    @Override
+    public Connection createConnection(Configuration conf) throws IOException {
+      return this.services.createConnection(conf);
     }
 
     @Override
@@ -1398,6 +1401,30 @@ public class MasterCoprocessorHost
     });
   }
 
+  public void preRemoveServers(final Set<Address> servers)
+      throws IOException {
+    execOperation(coprocEnvironments.isEmpty() ? null : new MasterObserverOperation() {
+      @Override
+      public void call(MasterObserver observer) throws IOException {
+        if(((MasterEnvironment)getEnvironment()).supportGroupCPs) {
+          observer.preRemoveServers(this, servers);
+        }
+      }
+    });
+  }
+
+  public void postRemoveServers(final Set<Address> servers)
+      throws IOException {
+    execOperation(coprocEnvironments.isEmpty() ? null : new MasterObserverOperation() {
+      @Override
+      public void call(MasterObserver observer) throws IOException {
+        if(((MasterEnvironment)getEnvironment()).supportGroupCPs) {
+          observer.postRemoveServers(this, servers);
+        }
+      }
+    });
+  }
+
   public void preAddReplicationPeer(final String peerId, final ReplicationPeerConfig peerConfig)
       throws IOException {
     execOperation(coprocEnvironments.isEmpty() ? null : new MasterObserverOperation() {
@@ -1593,11 +1620,12 @@ public class MasterCoprocessorHost
     });
   }
 
-  public void postClearDeadServers() throws IOException {
+  public void postClearDeadServers(List<ServerName> servers,
+      List<ServerName> notClearedServers) throws IOException {
     execOperation(coprocEnvironments.isEmpty() ? null : new MasterObserverOperation() {
       @Override
       public void call(MasterObserver observer) throws IOException {
-        observer.postClearDeadServers(this);
+        observer.postClearDeadServers(this, servers, notClearedServers);
       }
     });
   }

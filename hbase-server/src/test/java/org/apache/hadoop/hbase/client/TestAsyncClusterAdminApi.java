@@ -212,7 +212,7 @@ public class TestAsyncClusterAdminApi extends TestAsyncAdminBase {
 
   private HRegionServer startAndWriteData(TableName tableName, byte[] value) throws Exception {
     createTableWithDefaultConf(tableName);
-    RawAsyncTable table = ASYNC_CONN.getRawTable(tableName);
+    AsyncTable<?> table = ASYNC_CONN.getTable(tableName);
     HRegionServer regionServer = TEST_UTIL.getRSForFirstRegionInTable(tableName);
     for (int i = 1; i <= 256; i++) { // 256 writes should cause 8 log rolls
       Put put = new Put(Bytes.toBytes("row" + String.format("%1$04d", i)));
@@ -233,7 +233,7 @@ public class TestAsyncClusterAdminApi extends TestAsyncAdminBase {
   @Test
   public void testGetRegionLoads() throws Exception {
     // Turn off the balancer
-    admin.setBalancerOn(false).join();
+    admin.balancerSwitch(false).join();
     TableName[] tables =
         new TableName[] { TableName.valueOf(tableName.getNameAsString() + "1"),
             TableName.valueOf(tableName.getNameAsString() + "2"),
@@ -244,13 +244,13 @@ public class TestAsyncClusterAdminApi extends TestAsyncAdminBase {
     // Check if regions match with the regionLoad from the server
     Collection<ServerName> servers = admin.getRegionServers().get();
     for (ServerName serverName : servers) {
-      List<RegionInfo> regions = admin.getOnlineRegions(serverName).get();
+      List<RegionInfo> regions = admin.getRegions(serverName).get();
       checkRegionsAndRegionLoads(regions, admin.getRegionLoads(serverName).get());
     }
 
     // Check if regionLoad matches the table's regions and nothing is missed
     for (TableName table : tables) {
-      List<RegionInfo> tableRegions = admin.getTableRegions(table).get();
+      List<RegionInfo> tableRegions = admin.getRegions(table).get();
       List<RegionLoad> regionLoads = Lists.newArrayList();
       for (ServerName serverName : servers) {
         regionLoads.addAll(admin.getRegionLoads(serverName, table).get());
@@ -305,7 +305,7 @@ public class TestAsyncClusterAdminApi extends TestAsyncAdminBase {
       TableDescriptorBuilder builder = TableDescriptorBuilder.newBuilder(table);
       builder.addColumnFamily(ColumnFamilyDescriptorBuilder.of(FAMILY));
       admin.createTable(builder.build(), Bytes.toBytes("aaaaa"), Bytes.toBytes("zzzzz"), 16).join();
-      RawAsyncTable asyncTable = ASYNC_CONN.getRawTable(table);
+      AsyncTable<?> asyncTable = ASYNC_CONN.getTable(table);
       List<Put> puts = new ArrayList<>();
       for (byte[] row : HBaseTestingUtility.ROWS) {
         puts.add(new Put(row).addColumn(FAMILY, Bytes.toBytes("q"), Bytes.toBytes("v")));

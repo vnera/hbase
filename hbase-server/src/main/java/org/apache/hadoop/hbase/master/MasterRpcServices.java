@@ -46,7 +46,8 @@ import org.apache.hadoop.hbase.client.RegionInfoBuilder;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.client.TableState;
 import org.apache.hadoop.hbase.client.VersionInfoUtil;
-import org.apache.hadoop.hbase.client.replication.ReplicationSerDeHelper;
+import org.apache.hadoop.hbase.client.replication.ReplicationPeerConfigUtil;
+import org.apache.hadoop.hbase.coprocessor.MasterCoprocessor;
 import org.apache.hadoop.hbase.errorhandling.ForeignException;
 import org.apache.hadoop.hbase.exceptions.UnknownProtocolException;
 import org.apache.hadoop.hbase.ipc.CoprocessorRpcUtils;
@@ -64,6 +65,8 @@ import org.apache.hadoop.hbase.procedure2.LockType;
 import org.apache.hadoop.hbase.procedure2.LockedResource;
 import org.apache.hadoop.hbase.procedure2.Procedure;
 import org.apache.hadoop.hbase.procedure2.ProcedureUtil;
+import org.apache.hadoop.hbase.protobuf.generated.AccessControlProtos.AccessControlService;
+import org.apache.hadoop.hbase.protobuf.generated.VisibilityLabelsProtos.VisibilityLabelsService;
 import org.apache.hadoop.hbase.quotas.MasterQuotaManager;
 import org.apache.hadoop.hbase.quotas.QuotaObserverChore;
 import org.apache.hadoop.hbase.quotas.QuotaUtil;
@@ -83,7 +86,6 @@ import org.apache.hadoop.hbase.util.ForeignExceptionUtil;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
-
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.UnsafeByteOperations;
@@ -267,6 +269,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.ListR
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.ListReplicationPeersResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.RemoveReplicationPeerRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.RemoveReplicationPeerResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.ReplicationState;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.UpdateReplicationPeerConfigRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos.UpdateReplicationPeerConfigResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos.SnapshotDescription;
@@ -1768,9 +1771,9 @@ public class MasterRpcServices extends RSRpcServices
       } else {
         capabilities.add(SecurityCapabilitiesResponse.Capability.SIMPLE_AUTHENTICATION);
       }
-      // The AccessController can provide AUTHORIZATION and CELL_AUTHORIZATION
-      if (master.cpHost != null &&
-            master.cpHost.findCoprocessor(AccessController.class.getName()) != null) {
+      // A coprocessor that implements AccessControlService can provide AUTHORIZATION and
+      // CELL_AUTHORIZATION
+      if (master.cpHost != null && hasAccessControlServiceCoprocessor(master.cpHost)) {
         if (AccessController.isAuthorizationSupported(master.getConfiguration())) {
           capabilities.add(SecurityCapabilitiesResponse.Capability.AUTHORIZATION);
         }
@@ -1778,9 +1781,8 @@ public class MasterRpcServices extends RSRpcServices
           capabilities.add(SecurityCapabilitiesResponse.Capability.CELL_AUTHORIZATION);
         }
       }
-      // The VisibilityController can provide CELL_VISIBILITY
-      if (master.cpHost != null &&
-            master.cpHost.findCoprocessor(VisibilityController.class.getName()) != null) {
+      // A coprocessor that implements VisibilityLabelsService can provide CELL_VISIBILITY.
+      if (master.cpHost != null && hasVisibilityLabelsServiceCoprocessor(master.cpHost)) {
         if (VisibilityController.isCellAuthorizationSupported(master.getConfiguration())) {
           capabilities.add(SecurityCapabilitiesResponse.Capability.CELL_VISIBILITY);
         }
@@ -1790,6 +1792,42 @@ public class MasterRpcServices extends RSRpcServices
       throw new ServiceException(e);
     }
     return response.build();
+  }
+
+  /**
+   * Determines if there is a MasterCoprocessor deployed which implements
+   * {@link org.apache.hadoop.hbase.protobuf.generated.AccessControlProtos.AccessControlService.Interface}.
+   */
+  boolean hasAccessControlServiceCoprocessor(MasterCoprocessorHost cpHost) {
+    return checkCoprocessorWithService(
+        cpHost.findCoprocessors(MasterCoprocessor.class), AccessControlService.Interface.class);
+  }
+
+  /**
+   * Determines if there is a MasterCoprocessor deployed which implements
+   * {@link org.apache.hadoop.hbase.protobuf.generated.VisibilityLabelsProtos.VisibilityLabelsService.Interface}.
+   */
+  boolean hasVisibilityLabelsServiceCoprocessor(MasterCoprocessorHost cpHost) {
+    return checkCoprocessorWithService(
+        cpHost.findCoprocessors(MasterCoprocessor.class),
+        VisibilityLabelsService.Interface.class);
+  }
+
+  /**
+   * Determines if there is a coprocessor implementation in the provided argument which extends
+   * or implements the provided {@code service}.
+   */
+  boolean checkCoprocessorWithService(
+      List<MasterCoprocessor> coprocessorsToCheck, Class<?> service) {
+    if (coprocessorsToCheck == null || coprocessorsToCheck.isEmpty()) {
+      return false;
+    }
+    for (MasterCoprocessor cp : coprocessorsToCheck) {
+      if (service.isAssignableFrom(cp.getClass())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private MasterSwitchType convert(MasterProtos.MasterSwitchType switchType) {
@@ -1809,7 +1847,8 @@ public class MasterRpcServices extends RSRpcServices
       AddReplicationPeerRequest request) throws ServiceException {
     try {
       master.addReplicationPeer(request.getPeerId(),
-        ReplicationSerDeHelper.convert(request.getPeerConfig()));
+        ReplicationPeerConfigUtil.convert(request.getPeerConfig()), request.getPeerState()
+            .getState().equals(ReplicationState.State.ENABLED));
       return AddReplicationPeerResponse.newBuilder().build();
     } catch (ReplicationException | IOException e) {
       throw new ServiceException(e);
@@ -1858,7 +1897,7 @@ public class MasterRpcServices extends RSRpcServices
       String peerId = request.getPeerId();
       ReplicationPeerConfig peerConfig = master.getReplicationPeerConfig(peerId);
       response.setPeerId(peerId);
-      response.setPeerConfig(ReplicationSerDeHelper.convert(peerConfig));
+      response.setPeerConfig(ReplicationPeerConfigUtil.convert(peerConfig));
     } catch (ReplicationException | IOException e) {
       throw new ServiceException(e);
     }
@@ -1870,7 +1909,7 @@ public class MasterRpcServices extends RSRpcServices
       UpdateReplicationPeerConfigRequest request) throws ServiceException {
     try {
       master.updateReplicationPeerConfig(request.getPeerId(),
-        ReplicationSerDeHelper.convert(request.getPeerConfig()));
+        ReplicationPeerConfigUtil.convert(request.getPeerConfig()));
       return UpdateReplicationPeerConfigResponse.newBuilder().build();
     } catch (ReplicationException | IOException e) {
       throw new ServiceException(e);
@@ -1885,7 +1924,7 @@ public class MasterRpcServices extends RSRpcServices
       List<ReplicationPeerDescription> peers = master
           .listReplicationPeers(request.hasRegex() ? request.getRegex() : null);
       for (ReplicationPeerDescription peer : peers) {
-        response.addPeerDesc(ReplicationSerDeHelper.toProtoReplicationPeerDescription(peer));
+        response.addPeerDesc(ReplicationPeerConfigUtil.toProtoReplicationPeerDescription(peer));
       }
     } catch (ReplicationException | IOException e) {
       throw new ServiceException(e);
@@ -2162,7 +2201,9 @@ public class MasterRpcServices extends RSRpcServices
       }
 
       if (master.cpHost != null) {
-        master.cpHost.postClearDeadServers();
+        master.cpHost.postClearDeadServers(
+            ProtobufUtil.toServerNameList(request.getServerNameList()),
+            ProtobufUtil.toServerNameList(response.getServerNameList()));
       }
     } catch (IOException io) {
       throw new ServiceException(io);

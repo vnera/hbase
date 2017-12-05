@@ -44,7 +44,7 @@ import org.apache.hadoop.hbase.testclassification.RegionServerTests;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.RegionServerThread;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -106,7 +106,7 @@ public class TestRegionServerNoMaster {
     // so that regions can be assigned during the mocking phase.
     HRegionServer hrs = HTU.getHBaseCluster()
       .getLiveRegionServerThreads().get(0).getRegionServer();
-    ZooKeeperWatcher zkw = hrs.getZooKeeper();
+    ZKWatcher zkw = hrs.getZooKeeper();
     MetaTableLocator mtl = new MetaTableLocator();
     ServerName sn = mtl.getMetaRegionLocation(zkw);
     if (sn != null && !masterAddr.equals(sn)) {
@@ -153,7 +153,7 @@ public class TestRegionServerNoMaster {
   public static void openRegion(HBaseTestingUtility HTU, HRegionServer rs, HRegionInfo hri)
       throws Exception {
     AdminProtos.OpenRegionRequest orr =
-      RequestConverter.buildOpenRegionRequest(rs.getServerName(), hri, null, null);
+      RequestConverter.buildOpenRegionRequest(rs.getServerName(), hri, null);
     AdminProtos.OpenRegionResponse responseOpen = rs.rpcServices.openRegion(null, orr);
 
     Assert.assertTrue(responseOpen.getOpeningStateCount() == 1);
@@ -295,7 +295,7 @@ public class TestRegionServerNoMaster {
     closeRegionNoZK();
     try {
       AdminProtos.OpenRegionRequest orr = RequestConverter.buildOpenRegionRequest(
-        earlierServerName, hri, null, null);
+        earlierServerName, hri, null);
       getRS().getRSRpcServices().openRegion(null, orr);
       Assert.fail("The openRegion should have been rejected");
     } catch (org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException se) {

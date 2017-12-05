@@ -35,8 +35,7 @@ import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.CompoundConfiguration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.yetus.audience.InterfaceAudience;
-import org.apache.hadoop.hbase.client.replication.ReplicationSerDeHelper;
+import org.apache.hadoop.hbase.client.replication.ReplicationPeerConfigUtil;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos;
 import org.apache.hadoop.hbase.replication.ReplicationPeer.PeerState;
@@ -44,7 +43,9 @@ import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.zookeeper.ZKConfig;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil.ZKUtilOp;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
 
 /**
@@ -83,8 +84,8 @@ public class ReplicationPeersZKImpl extends ReplicationStateZKBase implements Re
 
   private static final Log LOG = LogFactory.getLog(ReplicationPeersZKImpl.class);
 
-  public ReplicationPeersZKImpl(final ZooKeeperWatcher zk, final Configuration conf,
-      final ReplicationQueuesClient queuesClient, Abortable abortable) {
+  public ReplicationPeersZKImpl(final ZKWatcher zk, final Configuration conf,
+                                final ReplicationQueuesClient queuesClient, Abortable abortable) {
     super(zk, conf, abortable);
     this.abortable = abortable;
     this.peerClusters = new ConcurrentHashMap<>();
@@ -104,7 +105,7 @@ public class ReplicationPeersZKImpl extends ReplicationStateZKBase implements Re
   }
 
   @Override
-  public void registerPeer(String id, ReplicationPeerConfig peerConfig)
+  public void registerPeer(String id, ReplicationPeerConfig peerConfig, boolean enabled)
       throws ReplicationException {
     try {
       if (peerExists(id)) {
@@ -129,19 +130,18 @@ public class ReplicationPeersZKImpl extends ReplicationStateZKBase implements Re
       ZKUtil.createWithParents(this.zookeeper, this.peersZNode);
 
       List<ZKUtilOp> listOfOps = new ArrayList<>(2);
-      ZKUtilOp op1 = ZKUtilOp.createAndFailSilent(getPeerNode(id),
-        ReplicationSerDeHelper.toByteArray(peerConfig));
-      // b/w PeerWatcher and ReplicationZookeeper#add method to create the
-      // peer-state znode. This happens while adding a peer
-      // The peer state data is set as "ENABLED" by default.
-      ZKUtilOp op2 = ZKUtilOp.createAndFailSilent(getPeerStateNode(id), ENABLED_ZNODE_BYTES);
+      ZKUtilOp op1 =
+          ZKUtilOp.createAndFailSilent(getPeerNode(id),
+            ReplicationPeerConfigUtil.toByteArray(peerConfig));
+      ZKUtilOp op2 =
+          ZKUtilOp.createAndFailSilent(getPeerStateNode(id), enabled ? ENABLED_ZNODE_BYTES
+              : DISABLED_ZNODE_BYTES);
       listOfOps.add(op1);
       listOfOps.add(op2);
       ZKUtil.multiOrSequential(this.zookeeper, listOfOps, false);
-      // A peer is enabled by default
     } catch (KeeperException e) {
-      throw new ReplicationException("Could not add peer with id=" + id
-          + ", peerConfif=>" + peerConfig, e);
+      throw new ReplicationException("Could not add peer with id=" + id + ", peerConfif=>"
+          + peerConfig + ", state=" + (enabled ? "ENABLED" : "DISABLED"), e);
     }
   }
 
@@ -152,7 +152,7 @@ public class ReplicationPeersZKImpl extends ReplicationStateZKBase implements Re
         throw new IllegalArgumentException("Cannot remove peer with id=" + id
             + " because that id does not exist.");
       }
-      ZKUtil.deleteNodeRecursively(this.zookeeper, ZKUtil.joinZNode(this.peersZNode, id));
+      ZKUtil.deleteNodeRecursively(this.zookeeper, ZNodePaths.joinZNode(this.peersZNode, id));
     } catch (KeeperException e) {
       throw new ReplicationException("Could not remove peer with id=" + id, e);
     }
@@ -205,9 +205,9 @@ public class ReplicationPeersZKImpl extends ReplicationStateZKBase implements Re
       }
       rpc.setTableCFsMap(tableCFs);
       ZKUtil.setData(this.zookeeper, getPeerNode(id),
-          ReplicationSerDeHelper.toByteArray(rpc));
+          ReplicationPeerConfigUtil.toByteArray(rpc));
       LOG.info("Peer tableCFs with id= " + id + " is now " +
-        ReplicationSerDeHelper.convertToString(tableCFs));
+        ReplicationPeerConfigUtil.convertToString(tableCFs));
     } catch (KeeperException e) {
       throw new ReplicationException("Unable to change tableCFs of the peer with id=" + id, e);
     }
@@ -302,7 +302,7 @@ public class ReplicationPeersZKImpl extends ReplicationStateZKBase implements Re
     }
 
     try {
-      return ReplicationSerDeHelper.parsePeerFrom(data);
+      return ReplicationPeerConfigUtil.parsePeerFrom(data);
     } catch (DeserializationException e) {
       LOG.warn("Failed to parse cluster key from peerId=" + peerId
           + ", specifically the content from the following znode: " + znode);
@@ -368,10 +368,11 @@ public class ReplicationPeersZKImpl extends ReplicationStateZKBase implements Re
     existingConfig.setTableCFsMap(newConfig.getTableCFsMap());
     existingConfig.setNamespaces(newConfig.getNamespaces());
     existingConfig.setBandwidth(newConfig.getBandwidth());
+    existingConfig.setReplicateAllUserTables(newConfig.replicateAllUserTables());
 
     try {
       ZKUtil.setData(this.zookeeper, getPeerNode(id),
-          ReplicationSerDeHelper.toByteArray(existingConfig));
+          ReplicationPeerConfigUtil.toByteArray(existingConfig));
     }
     catch(KeeperException ke){
       throw new ReplicationException("There was a problem trying to save changes to the " +

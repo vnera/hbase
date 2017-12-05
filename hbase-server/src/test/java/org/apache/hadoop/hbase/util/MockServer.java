@@ -30,8 +30,9 @@ import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 
 /**
  * Basic mock Server for handler tests.
@@ -39,10 +40,10 @@ import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 public class MockServer implements Server {
   private static final Log LOG = LogFactory.getLog(MockServer.class);
   final static ServerName NAME = ServerName.valueOf("MockServer", 123, -1);
-  
+
   boolean stopped;
   boolean aborted;
-  final ZooKeeperWatcher zk;
+  final ZKWatcher zk;
   final HBaseTestingUtility htu;
 
   @SuppressWarnings("unused")
@@ -66,7 +67,7 @@ public class MockServer implements Server {
   throws ZooKeeperConnectionException, IOException {
     this.htu = htu;
     this.zk = zkw?
-      new ZooKeeperWatcher(htu.getConfiguration(), NAME.toString(), this, true):
+      new ZKWatcher(htu.getConfiguration(), NAME.toString(), this, true):
       null;
   }
 
@@ -94,7 +95,7 @@ public class MockServer implements Server {
   }
 
   @Override
-  public ZooKeeperWatcher getZooKeeper() {
+  public ZKWatcher getZooKeeper() {
     return this.zk;
   }
 
@@ -143,5 +144,10 @@ public class MockServer implements Server {
   @Override
   public boolean isStopping() {
     return false;
+  }
+
+  @Override
+  public Connection createConnection(Configuration conf) throws IOException {
+    return null;
   }
 }

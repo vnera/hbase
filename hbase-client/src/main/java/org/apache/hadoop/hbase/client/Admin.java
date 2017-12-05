@@ -20,17 +20,18 @@ package org.apache.hadoop.hbase.client;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.Future;
 import java.util.regex.Pattern;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
+import org.apache.hadoop.hbase.CacheEvictionStats;
 import org.apache.hadoop.hbase.ClusterStatus;
 import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -57,6 +58,7 @@ import org.apache.hadoop.hbase.snapshot.HBaseSnapshotException;
 import org.apache.hadoop.hbase.snapshot.RestoreSnapshotException;
 import org.apache.hadoop.hbase.snapshot.SnapshotCreationException;
 import org.apache.hadoop.hbase.snapshot.UnknownSnapshotException;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
 
 /**
@@ -870,6 +872,33 @@ public interface Admin extends Abortable, Closeable {
     throws IOException;
 
   /**
+   * Compact a table.  Asynchronous operation in that this method requests that a
+   * Compaction run and then it returns. It does not wait on the completion of Compaction
+   * (it can take a while).
+   *
+   * @param tableName table to compact
+   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
+   * @throws IOException if a remote or network exception occurs
+   * @throws InterruptedException
+   */
+  void compact(TableName tableName, CompactType compactType)
+    throws IOException, InterruptedException;
+
+  /**
+   * Compact a column family within a table.  Asynchronous operation in that this method
+   * requests that a Compaction run and then it returns. It does not wait on the
+   * completion of Compaction (it can take a while).
+   *
+   * @param tableName table to compact
+   * @param columnFamily column family within a table
+   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
+   * @throws IOException if not a mob column family or if a remote or network exception occurs
+   * @throws InterruptedException
+   */
+  void compact(TableName tableName, byte[] columnFamily, CompactType compactType)
+    throws IOException, InterruptedException;
+
+  /**
    * Major compact a table. Asynchronous operation in that this method requests
    * that a Compaction run and then it returns. It does not wait on the completion of Compaction
    * (it can take a while).
@@ -914,16 +943,71 @@ public interface Admin extends Abortable, Closeable {
     throws IOException;
 
   /**
-   * Compact all regions on the region server. Asynchronous operation in that this method requests
-   * that a Compaction run and then it returns. It does not wait on the completion of Compaction
+   * Major compact a table.  Asynchronous operation in that this method requests that a
+   * Compaction run and then it returns. It does not wait on the completion of Compaction
    * (it can take a while).
-   * @param sn the region server name
-   * @param major if it's major compaction
-   * @throws IOException
+   *
+   * @param tableName table to compact
+   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
+   * @throws IOException if a remote or network exception occurs
    * @throws InterruptedException
    */
-  void compactRegionServer(ServerName sn, boolean major)
+  void majorCompact(TableName tableName, CompactType compactType)
     throws IOException, InterruptedException;
+
+  /**
+   * Major compact a column family within a table.  Asynchronous operation in that this method requests that a
+   * Compaction run and then it returns. It does not wait on the completion of Compaction
+   * (it can take a while).
+   *
+   * @param tableName table to compact
+   * @param columnFamily column family within a table
+   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
+   * @throws IOException if not a mob column family or if a remote or network exception occurs
+   * @throws InterruptedException
+   */
+  void majorCompact(TableName tableName, byte[] columnFamily, CompactType compactType)
+    throws IOException, InterruptedException;
+
+  /**
+   * Compact all regions on the region server. Asynchronous operation in that this method requests
+   * that a Compaction run and then it returns. It does not wait on the completion of Compaction (it
+   * can take a while).
+   * @param sn the region server name
+   * @param major if it's major compaction
+   * @throws IOException if a remote or network exception occurs
+   * @throws InterruptedException
+   * @deprecated As of release 2.0.0, this will be removed in HBase 3.0.0. Use
+   *             {@link #compactRegionServer(ServerName)} or
+   *             {@link #majorCompactRegionServer(ServerName)}.
+   */
+  @Deprecated
+  default void compactRegionServer(ServerName sn, boolean major) throws IOException,
+      InterruptedException {
+    if (major) {
+      majorCompactRegionServer(sn);
+    } else {
+      compactRegionServer(sn);
+    }
+  }
+
+  /**
+   * Compact all regions on the region server. Asynchronous operation in that this method requests
+   * that a Compaction run and then it returns. It does not wait on the completion of Compaction (it
+   * can take a while).
+   * @param serverName the region server name
+   * @throws IOException if a remote or network exception occurs
+   */
+  void compactRegionServer(ServerName serverName) throws IOException;
+
+  /**
+   * Major compact all regions on the region server. Asynchronous operation in that this method
+   * requests that a Compaction run and then it returns. It does not wait on the completion of
+   * Compaction (it can take a while).
+   * @param serverName the region server name
+   * @throws IOException if a remote or network exception occurs
+   */
+  void majorCompactRegionServer(ServerName serverName) throws IOException;
 
   /**
    * Move the region <code>r</code> to <code>dest</code>.
@@ -1046,6 +1130,18 @@ public interface Admin extends Abortable, Closeable {
    * @return <code>true</code> if the balancer is enabled, <code>false</code> otherwise.
    */
   boolean isBalancerEnabled() throws IOException;
+
+  /**
+   * Clear all the blocks corresponding to this table from BlockCache. For expert-admins.
+   * Calling this API will drop all the cached blocks specific to a table from BlockCache.
+   * This can significantly impact the query performance as the subsequent queries will
+   * have to retrieve the blocks from underlying filesystem.
+   *
+   * @param tableName table to clear block cache
+   * @return CacheEvictionStats related to the eviction
+   * @throws IOException if a remote or network exception occurs
+   */
+  CacheEvictionStats clearBlockCache(final TableName tableName) throws IOException;
 
   /**
    * Invoke region normalizer. Can NOT run for various reasons.  Check logs.
@@ -1368,13 +1464,74 @@ public interface Admin extends Abortable, Closeable {
   ClusterStatus getClusterStatus(EnumSet<Option> options) throws IOException;
 
   /**
+   * @return current master server name
+   * @throws IOException if a remote or network exception occurs
+   */
+  default ServerName getMaster() throws IOException {
+    return getClusterStatus(EnumSet.of(Option.MASTER)).getMaster();
+  }
+
+  /**
+   * @return current backup master list
+   * @throws IOException if a remote or network exception occurs
+   */
+  default Collection<ServerName> getBackupMasters() throws IOException {
+    return getClusterStatus(EnumSet.of(Option.BACKUP_MASTERS)).getBackupMasters();
+  }
+
+  /**
+   * @return current live region servers list
+   * @throws IOException if a remote or network exception occurs
+   */
+  default Collection<ServerName> getRegionServers() throws IOException {
+    return getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers();
+  }
+
+  /**
    * Get {@link RegionLoad} of all regions hosted on a regionserver.
    *
    * @param serverName region server from which regionload is required.
    * @return region load map of all regions hosted on a region server
    * @throws IOException if a remote or network exception occurs
+   * @deprecated since 2.0 version and will be removed in 3.0 version.
+   *             use {@link #getRegionLoads(ServerName)}
    */
-  Map<byte[], RegionLoad> getRegionLoad(ServerName serverName) throws IOException;
+  @Deprecated
+  default Map<byte[], RegionLoad> getRegionLoad(ServerName serverName) throws IOException {
+    return getRegionLoad(serverName, null);
+  }
+
+  /**
+   * Get {@link RegionLoad} of all regions hosted on a regionserver.
+   *
+   * @param serverName region server from which regionload is required.
+   * @return a region load list of all regions hosted on a region server
+   * @throws IOException if a remote or network exception occurs
+   */
+  default List<RegionLoad> getRegionLoads(ServerName serverName) throws IOException {
+    return getRegionLoads(serverName, null);
+  }
+
+  /**
+   * Get {@link RegionLoad} of all regions hosted on a regionserver for a table.
+   *
+   * @param serverName region server from which regionload is required.
+   * @param tableName get region load of regions belonging to the table
+   * @return region load map of all regions of a table hosted on a region server
+   * @throws IOException if a remote or network exception occurs
+   * @deprecated since 2.0 version and will be removed in 3.0 version.
+   *             use {@link #getRegionLoads(ServerName, TableName)}
+   */
+  @Deprecated
+  default Map<byte[], RegionLoad> getRegionLoad(ServerName serverName, TableName tableName)
+      throws IOException {
+    List<RegionLoad> regionLoads = getRegionLoads(serverName, tableName);
+    Map<byte[], RegionLoad> resultMap = new TreeMap<>(Bytes.BYTES_COMPARATOR);
+    for (RegionLoad regionLoad : regionLoads) {
+      resultMap.put(regionLoad.getName(), regionLoad);
+    }
+    return resultMap;
+  }
 
   /**
    * Get {@link RegionLoad} of all regions hosted on a regionserver for a table.
@@ -1384,7 +1541,7 @@ public interface Admin extends Abortable, Closeable {
    * @return region load map of all regions of a table hosted on a region server
    * @throws IOException if a remote or network exception occurs
    */
-  Map<byte[], RegionLoad> getRegionLoad(ServerName serverName, TableName tableName) throws IOException;
+  List<RegionLoad> getRegionLoads(ServerName serverName, TableName tableName) throws IOException;
 
   /**
    * @return Configuration used by the instance.
@@ -1631,6 +1788,17 @@ public interface Admin extends Abortable, Closeable {
    * @throws IOException if a remote or network exception occurs
    */
   CompactionState getCompactionState(TableName tableName) throws IOException;
+
+  /**
+   * Get the current compaction state of a table. It could be in a compaction, or none.
+   *
+   * @param tableName table to examine
+   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
+   * @return the current compaction state
+   * @throws IOException if a remote or network exception occurs
+   */
+  CompactionState getCompactionState(TableName tableName,
+    CompactType compactType) throws IOException;
 
   /**
    * Get the current compaction state of region. It could be in a major compaction, a minor
@@ -2122,12 +2290,21 @@ public interface Admin extends Abortable, Closeable {
 
   /**
    * Return a QuotaRetriever to list the quotas based on the filter.
-   *
    * @param filter the quota settings filter
    * @return the quota retriever
    * @throws IOException if a remote or network exception occurs
+   * @deprecated Since 2.0.0. Will be removed in 3.0.0. Use {@link #getQuota(QuotaFilter)}.
    */
+  @Deprecated
   QuotaRetriever getQuotaRetriever(QuotaFilter filter) throws IOException;
+
+  /**
+   * List the quotas based on the filter.
+   * @param filter the quota settings filter
+   * @return the QuotaSetting list
+   * @throws IOException if a remote or network exception occurs
+   */
+  List<QuotaSettings> getQuota(QuotaFilter filter) throws IOException;
 
   /**
    * Creates and returns a {@link com.google.protobuf.RpcChannel} instance connected to the active
@@ -2199,71 +2376,6 @@ public interface Admin extends Abortable, Closeable {
   }
 
   /**
-   * Compact a table.  Asynchronous operation in that this method requests that a
-   * Compaction run and then it returns. It does not wait on the completion of Compaction
-   * (it can take a while).
-   *
-   * @param tableName table to compact
-   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
-   * @throws IOException
-   * @throws InterruptedException
-   */
-  void compact(TableName tableName, CompactType compactType)
-    throws IOException, InterruptedException;
-
-  /**
-   * Compact a column family within a table.  Asynchronous operation in that this method requests that a
-   * Compaction run and then it returns. It does not wait on the completion of Compaction
-   * (it can take a while).
-   *
-   * @param tableName table to compact
-   * @param columnFamily column family within a table
-   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
-   * @throws IOException if not a mob column family or if a remote or network exception occurs
-   * @throws InterruptedException
-   */
-  void compact(TableName tableName, byte[] columnFamily, CompactType compactType)
-    throws IOException, InterruptedException;
-
-  /**
-   * Major compact a table.  Asynchronous operation in that this method requests that a
-   * Compaction run and then it returns. It does not wait on the completion of Compaction
-   * (it can take a while).
-   *
-   * @param tableName table to compact
-   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
-   * @throws IOException
-   * @throws InterruptedException
-   */
-  void majorCompact(TableName tableName, CompactType compactType)
-    throws IOException, InterruptedException;
-
-  /**
-   * Major compact a column family within a table.  Asynchronous operation in that this method requests that a
-   * Compaction run and then it returns. It does not wait on the completion of Compaction
-   * (it can take a while).
-   *
-   * @param tableName table to compact
-   * @param columnFamily column family within a table
-   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
-   * @throws IOException if not a mob column family or if a remote or network exception occurs
-   * @throws InterruptedException
-   */
-  void majorCompact(TableName tableName, byte[] columnFamily, CompactType compactType)
-    throws IOException, InterruptedException;
-
-  /**
-   * Get the current compaction state of a table. It could be in a compaction, or none.
-   *
-   * @param tableName table to examine
-   * @param compactType {@link org.apache.hadoop.hbase.client.CompactType}
-   * @return the current compaction state
-   * @throws IOException if a remote or network exception occurs
-   */
-  CompactionState getCompactionState(TableName tableName,
-    CompactType compactType) throws IOException;
-
-  /**
    * Return the set of supported security capabilities.
    * @throws IOException
    * @throws UnsupportedOperationException
@@ -2272,159 +2384,178 @@ public interface Admin extends Abortable, Closeable {
 
   /**
    * Turn the Split or Merge switches on or off.
-   *
    * @param enabled enabled or not
-   * @param synchronous If <code>true</code>, it waits until current split() call, if outstanding, to return.
+   * @param synchronous If <code>true</code>, it waits until current split() call, if outstanding,
+   *          to return.
    * @param switchTypes switchType list {@link MasterSwitchType}
    * @return Previous switch value array
-   * @deprecated Since 2.0.0. Will be removed in 3.0.0. Use
-   * {@link #splitOrMergeEnabledSwitch(boolean, boolean, MasterSwitchType...)}.
+   * @deprecated Since 2.0.0. Will be removed in 3.0.0. Use {@link #splitSwitch(boolean, boolean)}
+   *             or {@link #mergeSwitch(boolean, boolean)} instead.
    */
   @Deprecated
   default boolean[] setSplitOrMergeEnabled(boolean enabled, boolean synchronous,
-                                   MasterSwitchType... switchTypes) throws IOException {
-    return splitOrMergeEnabledSwitch(enabled, synchronous, switchTypes);
+      MasterSwitchType... switchTypes) throws IOException {
+    boolean[] preValues = new boolean[switchTypes.length];
+    for (int i = 0; i < switchTypes.length; i++) {
+      switch (switchTypes[i]) {
+        case SPLIT:
+          preValues[i] = splitSwitch(enabled, synchronous);
+          break;
+        case MERGE:
+          preValues[i] = mergeSwitch(enabled, synchronous);
+          break;
+        default:
+          throw new UnsupportedOperationException("Unsupported switch type:" + switchTypes[i]);
+      }
+    }
+    return preValues;
   }
 
   /**
-   * Turn the Split or Merge switches on or off.
-   *
+   * Turn the split switch on or off.
    * @param enabled enabled or not
-   * @param synchronous If <code>true</code>, it waits until current split() call, if outstanding, to return.
-   * @param switchTypes switchType list {@link MasterSwitchType}
-   * @return Previous switch value array
+   * @param synchronous If <code>true</code>, it waits until current split() call, if outstanding,
+   *          to return.
+   * @return Previous switch value
    */
-  boolean[] splitOrMergeEnabledSwitch(boolean enabled, boolean synchronous,
-                                   MasterSwitchType... switchTypes) throws IOException;
+  boolean splitSwitch(boolean enabled, boolean synchronous) throws IOException;
+
+  /**
+   * Turn the merge switch on or off.
+   * @param enabled enabled or not
+   * @param synchronous If <code>true</code>, it waits until current merge() call, if outstanding,
+   *          to return.
+   * @return Previous switch value
+   */
+  boolean mergeSwitch(boolean enabled, boolean synchronous) throws IOException;
 
   /**
    * Query the current state of the switch.
    *
    * @return <code>true</code> if the switch is enabled, <code>false</code> otherwise.
    * @deprecated Since 2.0.0. Will be removed in 3.0.0. Use
-   * {@link #splitOrMergeEnabledSwitch(MasterSwitchType)}} instead.
+   * {@link #isSplitEnabled()} or {@link #isMergeEnabled()} instead.
    */
   @Deprecated
   default boolean isSplitOrMergeEnabled(MasterSwitchType switchType) throws IOException {
-    return splitOrMergeEnabledSwitch(switchType);
+    switch (switchType) {
+      case SPLIT:
+        return isSplitEnabled();
+      case MERGE:
+        return isMergeEnabled();
+      default:
+        break;
+    }
+    throw new UnsupportedOperationException("Unsupported switch type:" + switchType);
   }
 
   /**
-   * Query the current state of the switch.
-   *
+   * Query the current state of the split switch.
    * @return <code>true</code> if the switch is enabled, <code>false</code> otherwise.
    */
-  boolean splitOrMergeEnabledSwitch(MasterSwitchType switchType) throws IOException;
+  boolean isSplitEnabled() throws IOException;
+
+  /**
+   * Query the current state of the merge switch.
+   * @return <code>true</code> if the switch is enabled, <code>false</code> otherwise.
+   */
+  boolean isMergeEnabled() throws IOException;
 
   /**
    * Add a new replication peer for replicating data to slave cluster.
    * @param peerId a short name that identifies the peer
    * @param peerConfig configuration for the replication slave cluster
-   * @throws IOException
+   * @throws IOException if a remote or network exception occurs
    */
   default void addReplicationPeer(String peerId, ReplicationPeerConfig peerConfig)
       throws IOException {
+    addReplicationPeer(peerId, peerConfig, true);
   }
+
+  /**
+   * Add a new replication peer for replicating data to slave cluster.
+   * @param peerId a short name that identifies the peer
+   * @param peerConfig configuration for the replication slave cluster
+   * @param enabled peer state, true if ENABLED and false if DISABLED
+   * @throws IOException if a remote or network exception occurs
+   */
+  void addReplicationPeer(String peerId, ReplicationPeerConfig peerConfig, boolean enabled)
+      throws IOException;
 
   /**
    * Remove a peer and stop the replication.
    * @param peerId a short name that identifies the peer
-   * @throws IOException
+   * @throws IOException if a remote or network exception occurs
    */
-  default void removeReplicationPeer(String peerId) throws IOException {
-  }
+  void removeReplicationPeer(String peerId) throws IOException;
 
   /**
    * Restart the replication stream to the specified peer.
    * @param peerId a short name that identifies the peer
-   * @throws IOException
+   * @throws IOException if a remote or network exception occurs
    */
-  default void enableReplicationPeer(String peerId) throws IOException {
-  }
+  void enableReplicationPeer(String peerId) throws IOException;
 
   /**
    * Stop the replication stream to the specified peer.
    * @param peerId a short name that identifies the peer
-   * @throws IOException
+   * @throws IOException if a remote or network exception occurs
    */
-  default void disableReplicationPeer(String peerId) throws IOException {
-  }
+  void disableReplicationPeer(String peerId) throws IOException;
 
   /**
    * Returns the configured ReplicationPeerConfig for the specified peer.
    * @param peerId a short name that identifies the peer
    * @return ReplicationPeerConfig for the peer
-   * @throws IOException
+   * @throws IOException if a remote or network exception occurs
    */
-  default ReplicationPeerConfig getReplicationPeerConfig(String peerId) throws IOException {
-    return new ReplicationPeerConfig();
-  }
+  ReplicationPeerConfig getReplicationPeerConfig(String peerId) throws IOException;
 
   /**
    * Update the peerConfig for the specified peer.
    * @param peerId a short name that identifies the peer
    * @param peerConfig new config for the peer
-   * @throws IOException
+   * @throws IOException if a remote or network exception occurs
    */
-  default void updateReplicationPeerConfig(String peerId,
-      ReplicationPeerConfig peerConfig) throws IOException {
-  }
+  void updateReplicationPeerConfig(String peerId,
+      ReplicationPeerConfig peerConfig) throws IOException;
 
   /**
    * Append the replicable table column family config from the specified peer.
    * @param id a short that identifies the cluster
    * @param tableCfs A map from tableName to column family names
-   * @throws ReplicationException
-   * @throws IOException
+   * @throws ReplicationException if tableCfs has conflict with existing config
+   * @throws IOException if a remote or network exception occurs
    */
-  default void appendReplicationPeerTableCFs(String id,
-      Map<TableName, ? extends Collection<String>> tableCfs) throws ReplicationException,
-      IOException {
-  }
+  void appendReplicationPeerTableCFs(String id,
+      Map<TableName, ? extends Collection<String>> tableCfs)
+      throws ReplicationException, IOException;
 
   /**
    * Remove some table-cfs from config of the specified peer.
    * @param id a short name that identifies the cluster
    * @param tableCfs A map from tableName to column family names
-   * @throws ReplicationException
-   * @throws IOException
+   * @throws ReplicationException if tableCfs has conflict with existing config
+   * @throws IOException if a remote or network exception occurs
    */
-  default void removeReplicationPeerTableCFs(String id,
-      Map<TableName, ? extends Collection<String>> tableCfs) throws ReplicationException,
-      IOException {
-  }
+  void removeReplicationPeerTableCFs(String id,
+      Map<TableName, ? extends Collection<String>> tableCfs)
+      throws ReplicationException, IOException;
 
   /**
    * Return a list of replication peers.
    * @return a list of replication peers description
-   * @throws IOException
+   * @throws IOException if a remote or network exception occurs
    */
-  default List<ReplicationPeerDescription> listReplicationPeers() throws IOException {
-    return new ArrayList<>();
-  }
-
-  /**
-   * Return a list of replication peers.
-   * @param regex The regular expression to match peer id
-   * @return a list of replication peers description
-   * @throws IOException
-   * @deprecated since 2.0 version and will be removed in 3.0 version. Use
-   *             {@link #listReplicationPeers(Pattern)} instead.
-   */
-  @Deprecated
-  default List<ReplicationPeerDescription> listReplicationPeers(String regex) throws IOException {
-    return new ArrayList<>();
-  }
+  List<ReplicationPeerDescription> listReplicationPeers() throws IOException;
 
   /**
    * Return a list of replication peers.
    * @param pattern The compiled regular expression to match peer id
    * @return a list of replication peers description
-   * @throws IOException
+   * @throws IOException if a remote or network exception occurs
    */
-  default List<ReplicationPeerDescription> listReplicationPeers(Pattern pattern) throws IOException {
-    return new ArrayList<>();
-  }
+  List<ReplicationPeerDescription> listReplicationPeers(Pattern pattern) throws IOException;
 
   /**
    * Mark region server(s) as decommissioned to prevent additional regions from getting

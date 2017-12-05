@@ -252,7 +252,7 @@ public class AssignmentManager implements ServerListener {
 
     // Update meta events (for testing)
     if (hasProcExecutor) {
-      getProcedureScheduler().suspendEvent(metaLoadEvent);
+      metaLoadEvent.suspend();
       setFailoverCleanupDone(false);
       for (RegionInfo hri: getMetaRegionSet()) {
         setMetaInitialized(hri, false);
@@ -377,7 +377,7 @@ public class AssignmentManager implements ServerListener {
 
   private boolean isCarryingRegion(final ServerName serverName, final RegionInfo regionInfo) {
     // TODO: check for state?
-    final RegionStateNode node = regionStates.getRegionNode(regionInfo);
+    final RegionStateNode node = regionStates.getRegionStateNode(regionInfo);
     return(node != null && serverName.equals(node.getRegionLocation()));
   }
 
@@ -413,17 +413,16 @@ public class AssignmentManager implements ServerListener {
   }
 
   public boolean waitMetaInitialized(final Procedure proc, final RegionInfo regionInfo) {
-    return getProcedureScheduler().waitEvent(
-      getMetaInitializedEvent(getMetaForRegion(regionInfo)), proc);
+    return getMetaInitializedEvent(getMetaForRegion(regionInfo)).suspendIfNotReady(proc);
   }
 
   private void setMetaInitialized(final RegionInfo metaRegionInfo, final boolean isInitialized) {
     assert isMetaRegion(metaRegionInfo) : "unexpected non-meta region " + metaRegionInfo;
     final ProcedureEvent metaInitEvent = getMetaInitializedEvent(metaRegionInfo);
     if (isInitialized) {
-      getProcedureScheduler().wakeEvent(metaInitEvent);
+      metaInitEvent.wake(getProcedureScheduler());
     } else {
-      getProcedureScheduler().suspendEvent(metaInitEvent);
+      metaInitEvent.suspend();
     }
   }
 
@@ -434,11 +433,11 @@ public class AssignmentManager implements ServerListener {
   }
 
   public boolean waitMetaLoaded(final Procedure proc) {
-    return getProcedureScheduler().waitEvent(metaLoadEvent, proc);
+    return metaLoadEvent.suspendIfNotReady(proc);
   }
 
   protected void wakeMetaLoadedEvent() {
-    getProcedureScheduler().wakeEvent(metaLoadEvent);
+    metaLoadEvent.wake(getProcedureScheduler());
     assert isMetaLoaded() : "expected meta to be loaded";
   }
 
@@ -539,7 +538,7 @@ public class AssignmentManager implements ServerListener {
   public void unassign(final RegionInfo regionInfo, final boolean forceNewPlan)
   throws IOException {
     // TODO: rename this reassign
-    RegionStateNode node = this.regionStates.getRegionNode(regionInfo);
+    RegionStateNode node = this.regionStates.getRegionStateNode(regionInfo);
     ServerName destinationServer = node.getRegionLocation();
     if (destinationServer == null) {
       throw new UnexpectedStateException("DestinationServer is null; Assigned? " + node.toString());
@@ -550,7 +549,7 @@ public class AssignmentManager implements ServerListener {
   }
 
   public void move(final RegionInfo regionInfo) throws IOException {
-    RegionStateNode node = this.regionStates.getRegionNode(regionInfo);
+    RegionStateNode node = this.regionStates.getRegionStateNode(regionInfo);
     ServerName sourceServer = node.getRegionLocation();
     RegionPlan plan = new RegionPlan(regionInfo, sourceServer, null);
     MoveRegionProcedure proc = createMoveRegionProcedure(plan);
@@ -577,7 +576,7 @@ public class AssignmentManager implements ServerListener {
     long startTime = System.currentTimeMillis();
     // Something badly wrong if takes ten seconds to register a region.
     long endTime = startTime + 10000;
-    while ((node = regionStates.getRegionNode(regionInfo)) == null && isRunning() &&
+    while ((node = regionStates.getRegionStateNode(regionInfo)) == null && isRunning() &&
         System.currentTimeMillis() < endTime) {
       // Presume it not yet added but will be added soon. Let it spew a lot so we can tell if
       // we are waiting here alot.
@@ -797,7 +796,7 @@ public class AssignmentManager implements ServerListener {
       throws PleaseHoldException, UnexpectedStateException {
     checkFailoverCleanupCompleted(regionInfo);
 
-    final RegionStateNode regionNode = regionStates.getRegionNode(regionInfo);
+    final RegionStateNode regionNode = regionStates.getRegionStateNode(regionInfo);
     if (regionNode == null) {
       // the table/region is gone. maybe a delete, split, merge
       throw new UnexpectedStateException(String.format(
@@ -935,7 +934,7 @@ public class AssignmentManager implements ServerListener {
     wakeServerReportEvent(serverNode);
   }
 
-  public void checkOnlineRegionsReportForMeta(final ServerStateNode serverNode,
+  void checkOnlineRegionsReportForMeta(final ServerStateNode serverNode,
       final Set<byte[]> regionNames) {
     try {
       for (byte[] regionName: regionNames) {
@@ -948,10 +947,10 @@ public class AssignmentManager implements ServerListener {
           continue;
         }
 
-        final RegionStateNode regionNode = regionStates.getOrCreateRegionNode(hri);
+        final RegionStateNode regionNode = regionStates.getOrCreateRegionStateNode(hri);
         LOG.info("META REPORTED: " + regionNode);
         if (!reportTransition(regionNode, serverNode, TransitionCode.OPENED, 0)) {
-          LOG.warn("META REPORTED but no procedure found");
+          LOG.warn("META REPORTED but no procedure found (complete?)");
           regionNode.setRegionLocation(serverNode.getServerName());
         } else if (LOG.isTraceEnabled()) {
           LOG.trace("META REPORTED: " + regionNode);
@@ -970,7 +969,7 @@ public class AssignmentManager implements ServerListener {
     try {
       for (byte[] regionName: regionNames) {
         if (!isRunning()) return;
-        final RegionStateNode regionNode = regionStates.getRegionNodeFromName(regionName);
+        final RegionStateNode regionNode = regionStates.getRegionStateNodeFromName(regionName);
         if (regionNode == null) {
           throw new UnexpectedStateException("Not online: " + Bytes.toStringBinary(regionName));
         }
@@ -1011,11 +1010,11 @@ public class AssignmentManager implements ServerListener {
 
   protected boolean waitServerReportEvent(final ServerName serverName, final Procedure proc) {
     final ServerStateNode serverNode = regionStates.getOrCreateServer(serverName);
-    return getProcedureScheduler().waitEvent(serverNode.getReportEvent(), proc);
+    return serverNode.getReportEvent().suspendIfNotReady(proc);
   }
 
   protected void wakeServerReportEvent(final ServerStateNode serverNode) {
-    getProcedureScheduler().wakeEvent(serverNode.getReportEvent());
+    serverNode.getReportEvent().wake(getProcedureScheduler());
   }
 
   // ============================================================================================
@@ -1143,7 +1142,7 @@ public class AssignmentManager implements ServerListener {
   }
 
   private void handleRegionOverStuckWarningThreshold(final RegionInfo regionInfo) {
-    final RegionStateNode regionNode = regionStates.getRegionNode(regionInfo);
+    final RegionStateNode regionNode = regionStates.getRegionStateNode(regionInfo);
     //if (regionNode.isStuck()) {
     LOG.warn("TODO Handle stuck in transition: " + regionNode);
   }
@@ -1182,18 +1181,27 @@ public class AssignmentManager implements ServerListener {
       @Override
       public void visitRegionState(final RegionInfo regionInfo, final State state,
           final ServerName regionLocation, final ServerName lastHost, final long openSeqNum) {
-        final RegionStateNode regionNode = regionStates.getOrCreateRegionNode(regionInfo);
+        final RegionStateNode regionNode = regionStates.getOrCreateRegionStateNode(regionInfo);
+        State localState = state;
+        if (localState == null) {
+          // No region state column data in hbase:meta table! Are I doing a rolling upgrade from
+          // hbase1 to hbase2? Am I restoring a SNAPSHOT or otherwise adding a region to hbase:meta?
+          // In any of these cases, state is empty. For now, presume OFFLINE but there are probably
+          // cases where we need to probe more to be sure this correct; TODO informed by experience.
+          LOG.info(regionInfo.getEncodedName() + " state=null; presuming " + State.OFFLINE);
+          localState = State.OFFLINE;
+        }
         synchronized (regionNode) {
           if (!regionNode.isInTransition()) {
-            regionNode.setState(state);
+            regionNode.setState(localState);
             regionNode.setLastHost(lastHost);
             regionNode.setRegionLocation(regionLocation);
             regionNode.setOpenSeqNum(openSeqNum);
 
-            if (state == State.OPEN) {
+            if (localState == State.OPEN) {
               assert regionLocation != null : "found null region location for " + regionNode;
-              regionStates.addRegionToServer(regionLocation, regionNode);
-            } else if (state == State.OFFLINE || regionInfo.isOffline()) {
+              regionStates.addRegionToServer(regionNode);
+            } else if (localState == State.OFFLINE || regionInfo.isOffline()) {
               regionStates.addToOfflineRegions(regionNode);
             } else {
               // These regions should have a procedure in replay
@@ -1219,7 +1227,7 @@ public class AssignmentManager implements ServerListener {
     long st, et;
 
     st = System.currentTimeMillis();
-    for (RegionStateNode regionNode: regionStates.getRegionNodes()) {
+    for (RegionStateNode regionNode: regionStates.getRegionStateNodes()) {
       if (regionNode.getState() == State.OPEN) {
         final ServerName serverName = regionNode.getRegionLocation();
         if (!master.getServerManager().isServerOnline(serverName)) {
@@ -1323,7 +1331,7 @@ public class AssignmentManager implements ServerListener {
 
   public void offlineRegion(final RegionInfo regionInfo) {
     // TODO used by MasterRpcServices ServerCrashProcedure
-    final RegionStateNode node = regionStates.getRegionNode(regionInfo);
+    final RegionStateNode node = regionStates.getRegionStateNode(regionInfo);
     if (node != null) node.offline();
   }
 
@@ -1404,7 +1412,7 @@ public class AssignmentManager implements ServerListener {
   }
 
   public RegionInfo getRegionInfo(final byte[] regionName) {
-    final RegionStateNode regionState = regionStates.getRegionNodeFromName(regionName);
+    final RegionStateNode regionState = regionStates.getRegionStateNodeFromName(regionName);
     return regionState != null ? regionState.getRegionInfo() : null;
   }
 
@@ -1432,11 +1440,9 @@ public class AssignmentManager implements ServerListener {
 
   public void markRegionAsOpening(final RegionStateNode regionNode) throws IOException {
     synchronized (regionNode) {
-      State state = regionNode.transitionState(State.OPENING, RegionStates.STATES_EXPECTED_ON_OPEN);
-      regionStates.addRegionToServer(regionNode.getRegionLocation(), regionNode);
-      regionStateStore.updateRegionLocation(regionNode.getRegionInfo(), state,
-        regionNode.getRegionLocation(), regionNode.getLastHost(), HConstants.NO_SEQNUM,
-        regionNode.getProcedure().getProcId());
+      regionNode.transitionState(State.OPENING, RegionStates.STATES_EXPECTED_ON_OPEN);
+      regionStates.addRegionToServer(regionNode);
+      regionStateStore.updateRegionLocation(regionNode);
     }
 
     // update the operation count metrics
@@ -1460,18 +1466,16 @@ public class AssignmentManager implements ServerListener {
   public void markRegionAsOpened(final RegionStateNode regionNode) throws IOException {
     final RegionInfo hri = regionNode.getRegionInfo();
     synchronized (regionNode) {
-      State state = regionNode.transitionState(State.OPEN, RegionStates.STATES_EXPECTED_ON_OPEN);
+      regionNode.transitionState(State.OPEN, RegionStates.STATES_EXPECTED_ON_OPEN);
       if (isMetaRegion(hri)) {
         master.getTableStateManager().setTableState(TableName.META_TABLE_NAME,
             TableState.State.ENABLED);
         setMetaInitialized(hri, true);
       }
-      regionStates.addRegionToServer(regionNode.getRegionLocation(), regionNode);
+      regionStates.addRegionToServer(regionNode);
       // TODO: OPENING Updates hbase:meta too... we need to do both here and there?
       // That is a lot of hbase:meta writing.
-      regionStateStore.updateRegionLocation(regionNode.getRegionInfo(), state,
-        regionNode.getRegionLocation(), regionNode.getLastHost(), regionNode.getOpenSeqNum(),
-        regionNode.getProcedure().getProcId());
+      regionStateStore.updateRegionLocation(regionNode);
       sendRegionOpenedNotification(hri, regionNode.getRegionLocation());
     }
   }
@@ -1479,15 +1483,13 @@ public class AssignmentManager implements ServerListener {
   public void markRegionAsClosing(final RegionStateNode regionNode) throws IOException {
     final RegionInfo hri = regionNode.getRegionInfo();
     synchronized (regionNode) {
-      State state = regionNode.transitionState(State.CLOSING, RegionStates.STATES_EXPECTED_ON_CLOSE);
+      regionNode.transitionState(State.CLOSING, RegionStates.STATES_EXPECTED_ON_CLOSE);
       // Set meta has not initialized early. so people trying to create/edit tables will wait
       if (isMetaRegion(hri)) {
         setMetaInitialized(hri, false);
       }
-      regionStates.addRegionToServer(regionNode.getRegionLocation(), regionNode);
-      regionStateStore.updateRegionLocation(regionNode.getRegionInfo(), state,
-        regionNode.getRegionLocation(), regionNode.getLastHost(), HConstants.NO_SEQNUM,
-        regionNode.getProcedure().getProcId());
+      regionStates.addRegionToServer(regionNode);
+      regionStateStore.updateRegionLocation(regionNode);
     }
 
     // update the operation count metrics
@@ -1502,13 +1504,11 @@ public class AssignmentManager implements ServerListener {
   public void markRegionAsClosed(final RegionStateNode regionNode) throws IOException {
     final RegionInfo hri = regionNode.getRegionInfo();
     synchronized (regionNode) {
-      State state = regionNode.transitionState(State.CLOSED, RegionStates.STATES_EXPECTED_ON_CLOSE);
+      regionNode.transitionState(State.CLOSED, RegionStates.STATES_EXPECTED_ON_CLOSE);
       regionStates.removeRegionFromServer(regionNode.getRegionLocation(), regionNode);
       regionNode.setLastHost(regionNode.getRegionLocation());
       regionNode.setRegionLocation(null);
-      regionStateStore.updateRegionLocation(regionNode.getRegionInfo(), state,
-        regionNode.getRegionLocation()/*null*/, regionNode.getLastHost(),
-        HConstants.NO_SEQNUM, regionNode.getProcedure().getProcId());
+      regionStateStore.updateRegionLocation(regionNode);
       sendRegionClosedNotification(hri);
     }
   }
@@ -1521,8 +1521,13 @@ public class AssignmentManager implements ServerListener {
     // Update its state in regionStates to it shows as offline and split when read
     // later figuring what regions are in a table and what are not: see
     // regionStates#getRegionsOfTable
-    final RegionStateNode node = regionStates.getOrCreateRegionNode(parent);
+    final RegionStateNode node = regionStates.getOrCreateRegionStateNode(parent);
     node.setState(State.SPLIT);
+    final RegionStateNode nodeA = regionStates.getOrCreateRegionStateNode(daughterA);
+    nodeA.setState(State.SPLITTING_NEW);
+    final RegionStateNode nodeB = regionStates.getOrCreateRegionStateNode(daughterB);
+    nodeB.setState(State.SPLITTING_NEW);
+
     regionStateStore.splitRegion(parent, daughterA, daughterB, serverName);
     if (shouldAssignFavoredNodes(parent)) {
       List<ServerName> onlineServers = this.master.getServerManager().getOnlineServersList();
@@ -1541,7 +1546,7 @@ public class AssignmentManager implements ServerListener {
    */
   public void markRegionAsMerged(final RegionInfo child, final ServerName serverName,
       final RegionInfo mother, final RegionInfo father) throws IOException {
-    final RegionStateNode node = regionStates.getOrCreateRegionNode(child);
+    final RegionStateNode node = regionStates.getOrCreateRegionStateNode(child);
     node.setState(State.MERGED);
     regionStates.deleteRegion(mother);
     regionStates.deleteRegion(father);
@@ -1574,7 +1579,7 @@ public class AssignmentManager implements ServerListener {
    * and each region will be assigned by a server using the balancer.
    */
   protected void queueAssign(final RegionStateNode regionNode) {
-    getProcedureScheduler().suspendEvent(regionNode.getProcedureEvent());
+    regionNode.getProcedureEvent().suspend();
 
     // TODO: quick-start for meta and the other sys-tables?
     assignQueueLock.lock();
@@ -1773,7 +1778,7 @@ public class AssignmentManager implements ServerListener {
         events[evcount++] = regionNode.getProcedureEvent();
       }
     }
-    getProcedureScheduler().wakeEvents(evcount, events);
+    ProcedureEvent.wakeEvents(getProcedureScheduler(), events);
 
     final long et = System.currentTimeMillis();
     if (LOG.isTraceEnabled()) {

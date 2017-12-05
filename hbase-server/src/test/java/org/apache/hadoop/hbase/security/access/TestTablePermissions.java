@@ -44,7 +44,7 @@ import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.testclassification.SecurityTests;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -61,7 +61,7 @@ import org.apache.hadoop.hbase.shaded.com.google.common.collect.ListMultimap;
 public class TestTablePermissions {
   private static final Log LOG = LogFactory.getLog(TestTablePermissions.class);
   private static final HBaseTestingUtility UTIL = new HBaseTestingUtility();
-  private static ZooKeeperWatcher ZKW;
+  private static ZKWatcher ZKW;
   private final static Abortable ABORTABLE = new Abortable() {
     private final AtomicBoolean abort = new AtomicBoolean(false);
 
@@ -97,7 +97,7 @@ public class TestTablePermissions {
     // Wait for the ACL table to become available
     UTIL.waitTableEnabled(AccessControlLists.ACL_TABLE_NAME);
 
-    ZKW = new ZooKeeperWatcher(UTIL.getConfiguration(),
+    ZKW = new ZKWatcher(UTIL.getConfiguration(),
       "TestTablePermissions", ABORTABLE);
 
     UTIL.createTable(TEST_TABLE, TEST_FAMILY);
@@ -189,9 +189,9 @@ public class TestTablePermissions {
     permission = userPerms.get(0);
     assertEquals("Permission should be for " + TEST_TABLE,
         TEST_TABLE, permission.getTableName());
-    assertTrue("Permission should be for family " + TEST_FAMILY,
+    assertTrue("Permission should be for family " + Bytes.toString(TEST_FAMILY),
         Bytes.equals(TEST_FAMILY, permission.getFamily()));
-    assertTrue("Permission should be for qualifier " + TEST_QUALIFIER,
+    assertTrue("Permission should be for qualifier " + Bytes.toString(TEST_QUALIFIER),
         Bytes.equals(TEST_QUALIFIER, permission.getQualifier()));
 
     // check actions

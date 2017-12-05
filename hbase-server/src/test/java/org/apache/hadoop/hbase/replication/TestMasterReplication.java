@@ -58,7 +58,7 @@ import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Table;
-import org.apache.hadoop.hbase.client.replication.ReplicationSerDeHelper;
+import org.apache.hadoop.hbase.client.replication.ReplicationPeerConfigUtil;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessor;
@@ -75,7 +75,8 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.HFileTestUtil;
 import org.apache.hadoop.hbase.zookeeper.MiniZooKeeperCluster;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -202,11 +203,11 @@ public class TestMasterReplication {
     Table[] htables = getHTablesOnClusters(tableName);
     putAndWait(row, famName, htables[0], htables[0]);
     rollWALAndWait(utilities[0], table.getTableName(), row);
-    ZooKeeperWatcher zkw = utilities[0].getZooKeeperWatcher();
-    String queuesZnode =
-        ZKUtil.joinZNode(zkw.getZNodePaths().baseZNode, ZKUtil.joinZNode("replication", "rs"));
+    ZKWatcher zkw = utilities[0].getZooKeeperWatcher();
+    String queuesZnode = ZNodePaths.joinZNode(zkw.getZNodePaths().baseZNode,
+      ZNodePaths.joinZNode("replication", "rs"));
     List<String> listChildrenNoWatch =
-        ZKUtil.listChildrenNoWatch(zkw, ZKUtil.joinZNode(queuesZnode, rsName.toString()));
+        ZKUtil.listChildrenNoWatch(zkw, ZNodePaths.joinZNode(queuesZnode, rsName.toString()));
     assertEquals(0, listChildrenNoWatch.size());
   }
 
@@ -492,7 +493,7 @@ public class TestMasterReplication {
       utility.startMiniCluster();
       utilities[i] = utility;
       configurations[i] = conf;
-      new ZooKeeperWatcher(conf, "cluster" + i, null, true);
+      new ZKWatcher(conf, "cluster" + i, null, true);
     }
   }
 
@@ -523,11 +524,13 @@ public class TestMasterReplication {
 
   private void addPeer(String id, int masterClusterNumber, int slaveClusterNumber, String tableCfs)
       throws Exception {
-    try (Admin admin = ConnectionFactory.createConnection(configurations[masterClusterNumber])
-        .getAdmin()) {
-      admin.addReplicationPeer(id,
+    try (Admin admin =
+        ConnectionFactory.createConnection(configurations[masterClusterNumber]).getAdmin()) {
+      admin.addReplicationPeer(
+        id,
         new ReplicationPeerConfig().setClusterKey(utilities[slaveClusterNumber].getClusterKey())
-            .setTableCFsMap(ReplicationSerDeHelper.parseTableCFsFromConfig(tableCfs)));
+            .setReplicateAllUserTables(false)
+            .setTableCFsMap(ReplicationPeerConfigUtil.parseTableCFsFromConfig(tableCfs)));
     }
   }
 
@@ -689,7 +692,7 @@ public class TestMasterReplication {
     final CountDownLatch latch = new CountDownLatch(1);
 
     // listen for successful log rolls
-    final WALActionsListener listener = new WALActionsListener.Base() {
+    final WALActionsListener listener = new WALActionsListener() {
           @Override
           public void postLogRoll(final Path oldPath, final Path newPath) throws IOException {
             latch.countDown();

@@ -29,9 +29,11 @@ import java.net.URLEncoder;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Random;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -47,6 +49,7 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.Waiter;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesArguments;
@@ -57,7 +60,7 @@ import org.apache.hadoop.hbase.testclassification.MasterTests;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.hadoop.hbase.zookeeper.RecoverableZooKeeper;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Stat;
 import org.junit.AfterClass;
@@ -75,11 +78,13 @@ public class TestLogsCleaner {
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     TEST_UTIL.startMiniZKCluster();
+    TEST_UTIL.startMiniDFSCluster(1);
   }
 
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
     TEST_UTIL.shutdownMiniZKCluster();
+    TEST_UTIL.shutdownMiniDFSCluster();
   }
 
   /**
@@ -234,7 +239,7 @@ public class TestLogsCleaner {
 
     // when zk is working both files should be returned
     cleaner = new ReplicationLogCleaner();
-    try (ZooKeeperWatcher zkw = new ZooKeeperWatcher(conf, "testZooKeeperAbort-normal", null)) {
+    try (ZKWatcher zkw = new ZKWatcher(conf, "testZooKeeperAbort-normal", null)) {
       cleaner.setConf(conf, zkw);
       cleaner.preClean();
       Iterable<FileStatus> filesToDelete = cleaner.getDeletableFiles(dummyFiles);
@@ -247,6 +252,53 @@ public class TestLogsCleaner {
     }
   }
 
+  @Test
+  public void testOnConfigurationChange() throws Exception {
+    Configuration conf = TEST_UTIL.getConfiguration();
+    conf.setInt(LogCleaner.OLD_WALS_CLEANER_SIZE, LogCleaner.OLD_WALS_CLEANER_DEFAULT_SIZE);
+    // Prepare environments
+    Server server = new DummyServer();
+    Path oldWALsDir = new Path(TEST_UTIL.getDefaultRootDirPath(),
+        HConstants.HREGION_OLDLOGDIR_NAME);
+    FileSystem fs = TEST_UTIL.getDFSCluster().getFileSystem();
+    LogCleaner cleaner = new LogCleaner(3000, server, conf, fs, oldWALsDir);
+    assertEquals(LogCleaner.OLD_WALS_CLEANER_DEFAULT_SIZE, cleaner.getSizeOfCleaners());
+    // Create dir and files for test
+    fs.delete(oldWALsDir, true);
+    fs.mkdirs(oldWALsDir);
+    int numOfFiles = 10;
+    createFiles(fs, oldWALsDir, numOfFiles);
+    FileStatus[] status = fs.listStatus(oldWALsDir);
+    assertEquals(numOfFiles, status.length);
+    // Start cleaner chore
+    Thread thread = new Thread(() -> cleaner.chore());
+    thread.setDaemon(true);
+    thread.start();
+    // change size of cleaners dynamically
+    int sizeToChange = 4;
+    conf.setInt(LogCleaner.OLD_WALS_CLEANER_SIZE, sizeToChange);
+    cleaner.onConfigurationChange(conf);
+    assertEquals(sizeToChange, cleaner.getSizeOfCleaners());
+    // Stop chore
+    thread.join();
+    status = fs.listStatus(oldWALsDir);
+    assertEquals(0, status.length);
+  }
+
+  private void createFiles(FileSystem fs, Path parentDir, int numOfFiles) throws IOException {
+    Random random = new Random();
+    for (int i = 0; i < numOfFiles; i++) {
+      int xMega = 1 + random.nextInt(3); // size of each file is between 1~3M
+      try (FSDataOutputStream fsdos = fs.create(new Path(parentDir, "file-" + i))) {
+        for (int m = 0; m < xMega; m++) {
+          byte[] M = new byte[1024 * 1024];
+          random.nextBytes(M);
+          fsdos.write(M);
+        }
+      }
+    }
+  }
+
   static class DummyServer implements Server {
 
     @Override
@@ -255,9 +307,9 @@ public class TestLogsCleaner {
     }
 
     @Override
-    public ZooKeeperWatcher getZooKeeper() {
+    public ZKWatcher getZooKeeper() {
       try {
-        return new ZooKeeperWatcher(getConfiguration(), "dummy server", this);
+        return new ZKWatcher(getConfiguration(), "dummy server", this);
       } catch (IOException e) {
         e.printStackTrace();
       }
@@ -319,9 +371,14 @@ public class TestLogsCleaner {
     public boolean isStopping() {
       return false;
     }
+
+    @Override
+    public Connection createConnection(Configuration conf) throws IOException {
+      return null;
+    }
   }
 
-  static class FaultyZooKeeperWatcher extends ZooKeeperWatcher {
+  static class FaultyZooKeeperWatcher extends ZKWatcher {
     private RecoverableZooKeeper zk;
 
     public FaultyZooKeeperWatcher(Configuration conf, String identifier, Abortable abortable)

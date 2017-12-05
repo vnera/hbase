@@ -38,8 +38,11 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CompareOperator;
 import org.apache.hadoop.hbase.Coprocessor;
+import org.apache.hadoop.hbase.ExtendedCellBuilder;
+import org.apache.hadoop.hbase.ExtendedCellBuilderFactory;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.ServerName;
@@ -57,6 +60,7 @@ import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.coprocessor.BaseEnvironment;
 import org.apache.hadoop.hbase.coprocessor.BulkLoadObserver;
+import org.apache.hadoop.hbase.coprocessor.CoprocessorException;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorService;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorServiceBackwardCompatiblity;
@@ -79,14 +83,13 @@ import org.apache.hadoop.hbase.regionserver.compactions.CompactionLifeCycleTrack
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest;
 import org.apache.hadoop.hbase.regionserver.querymatcher.DeleteTracker;
 import org.apache.hadoop.hbase.security.User;
+import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CoprocessorClassLoader;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.wal.WALKey;
 import org.apache.yetus.audience.InterfaceAudience;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 
 /**
  * Implements the coprocessor environment and runtime support for coprocessors
@@ -114,9 +117,7 @@ public class RegionCoprocessorHost
     private Region region;
     ConcurrentMap<String, Object> sharedData;
     private final MetricRegistry metricRegistry;
-    private final Connection connection;
-    private final ServerName serverName;
-    private final OnlineRegions onlineRegions;
+    private final RegionServerServices services;
 
     /**
      * Constructor
@@ -128,11 +129,8 @@ public class RegionCoprocessorHost
         final RegionServerServices services, final ConcurrentMap<String, Object> sharedData) {
       super(impl, priority, seq, conf);
       this.region = region;
-      // Mocks may have services as null at test time.
-      this.connection = services != null? services.getConnection(): null;
-      this.serverName = services != null? services.getServerName(): null;
       this.sharedData = sharedData;
-      this.onlineRegions = services;
+      this.services = services;
       this.metricRegistry =
           MetricsCoprocessor.createRegistryForRegionCoprocessor(impl.getClass().getName());
     }
@@ -144,17 +142,23 @@ public class RegionCoprocessorHost
     }
 
     public OnlineRegions getOnlineRegions() {
-      return this.onlineRegions;
+      return this.services;
     }
 
     @Override
     public Connection getConnection() {
-      return this.connection;
+      // Mocks may have services as null at test time.
+      return services != null ? services.getConnection() : null;
+    }
+
+    @Override
+    public Connection createConnection(Configuration conf) throws IOException {
+      return services != null ? this.services.createConnection(conf) : null;
     }
 
     @Override
     public ServerName getServerName() {
-      return this.serverName;
+      return services != null? services.getServerName(): null;
     }
 
     @Override
@@ -176,6 +180,13 @@ public class RegionCoprocessorHost
     @Override
     public MetricRegistry getMetricRegistryForRegionServer() {
       return metricRegistry;
+    }
+
+    @Override
+    public ExtendedCellBuilder getCellBuilder() {
+      // do not allow seqId update.
+      // We always do a DEEP_COPY only
+      return ExtendedCellBuilderFactory.create(CellBuilderType.DEEP_COPY, false);
     }
   }
 
@@ -546,25 +557,6 @@ public class RegionCoprocessorHost
   }
 
   /**
-   * Invoked after log replay on region
-   */
-  public void postLogReplay() {
-    if (coprocEnvironments.isEmpty()) {
-      return;
-    }
-    try {
-      execOperation(new RegionObserverOperationWithoutResult() {
-        @Override
-        public void call(RegionObserver observer) throws IOException {
-          observer.postLogReplay(this);
-        }
-      });
-    } catch (IOException e) {
-      LOG.warn(e);
-    }
-  }
-
-  /**
    * Invoked before a region is closed
    * @param abortRequested true if the server is aborting
    */
@@ -673,9 +665,9 @@ public class RegionCoprocessorHost
    * @param tracker used to track the life cycle of a compaction
    * @param request the compaction request
    * @param user the user
+   * @return Scanner to use (cannot be null!)
    * @throws IOException
    */
-  // A Coprocessor can return null to cancel Compact. Leaving for now but this is form of 'bypass'.
   public InternalScanner preCompact(final HStore store, final InternalScanner scanner,
       final ScanType scanType, final CompactionLifeCycleTracker tracker,
       final CompactionRequest request, final User user) throws IOException {
@@ -688,7 +680,12 @@ public class RegionCoprocessorHost
             defaultResult, user) {
           @Override
           public InternalScanner call(RegionObserver observer) throws IOException {
-            return observer.preCompact(this, store, getResult(), scanType, tracker, request);
+            InternalScanner scanner =
+                observer.preCompact(this, store, getResult(), scanType, tracker, request);
+            if (scanner == null) {
+              throw new CoprocessorException("Null Scanner return disallowed!");
+            }
+            return scanner;
           }
         });
   }
@@ -733,9 +730,9 @@ public class RegionCoprocessorHost
 
   /**
    * Invoked before a memstore flush
+   * @return Scanner to use (cannot be null!)
    * @throws IOException
    */
-  // A Coprocessor can return null to cancel Flush. Leaving for now but this is a form of 'bypass'.
   public InternalScanner preFlush(HStore store, InternalScanner scanner,
       FlushLifeCycleTracker tracker) throws IOException {
     if (coprocEnvironments.isEmpty()) {
@@ -745,7 +742,11 @@ public class RegionCoprocessorHost
         new ObserverOperationWithResult<RegionObserver, InternalScanner>(regionObserverGetter, scanner) {
           @Override
           public InternalScanner call(RegionObserver observer) throws IOException {
-            return observer.preFlush(this, store, getResult(), tracker);
+            InternalScanner scanner = observer.preFlush(this, store, getResult(), tracker);
+            if (scanner == null) {
+              throw new CoprocessorException("Null Scanner return disallowed!");
+            }
+            return scanner;
           }
         });
   }

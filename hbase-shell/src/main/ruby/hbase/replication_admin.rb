@@ -20,7 +20,7 @@
 include Java
 
 java_import org.apache.hadoop.hbase.client.replication.ReplicationAdmin
-java_import org.apache.hadoop.hbase.client.replication.ReplicationSerDeHelper
+java_import org.apache.hadoop.hbase.client.replication.ReplicationPeerConfigUtil
 java_import org.apache.hadoop.hbase.replication.ReplicationPeerConfig
 java_import org.apache.hadoop.hbase.util.Bytes
 java_import org.apache.hadoop.hbase.zookeeper.ZKConfig
@@ -65,6 +65,7 @@ module Hbase
         data = args.fetch(DATA, nil)
         table_cfs = args.fetch(TABLE_CFS, nil)
         namespaces = args.fetch(NAMESPACES, nil)
+        peer_state = args.fetch(STATE, nil)
 
         # Create and populate a ReplicationPeerConfig
         replication_peer_config = ReplicationPeerConfig.new
@@ -91,6 +92,7 @@ module Hbase
           namespaces.each do |n|
             ns_set.add(n)
           end
+          replication_peer_config.setReplicateAllUserTables(false)
           replication_peer_config.set_namespaces(ns_set)
         end
 
@@ -100,9 +102,15 @@ module Hbase
           table_cfs.each do |key, val|
             map.put(org.apache.hadoop.hbase.TableName.valueOf(key), val)
           end
+          replication_peer_config.setReplicateAllUserTables(false)
           replication_peer_config.set_table_cfs_map(map)
         end
-        @admin.addReplicationPeer(id, replication_peer_config)
+
+        enabled = true
+        unless peer_state.nil?
+          enabled = false if peer_state == 'DISABLED'
+        end
+        @admin.addReplicationPeer(id, replication_peer_config, enabled)
       else
         raise(ArgumentError, 'args must be a Hash')
       end
@@ -144,7 +152,7 @@ module Hbase
     # Show the current tableCFs config for the specified peer
     def show_peer_tableCFs(id)
       rpc = @admin.getReplicationPeerConfig(id)
-      ReplicationSerDeHelper.convertToString(rpc.getTableCFsMap)
+      ReplicationPeerConfigUtil.convertToString(rpc.getTableCFsMap)
     end
 
     #----------------------------------------------------------------------------------------------
@@ -257,6 +265,13 @@ module Hbase
         rpc.setBandwidth(bandwidth)
         @admin.updateReplicationPeerConfig(id, rpc)
       end
+    end
+
+    def set_peer_replicate_all(id, replicate_all)
+      rpc = @replication_admin.getPeerConfig(id)
+      return if rpc.nil?
+      rpc.setReplicateAllUserTables(replicate_all)
+      @replication_admin.updatePeerConfig(id, rpc)
     end
 
     #----------------------------------------------------------------------------------------------

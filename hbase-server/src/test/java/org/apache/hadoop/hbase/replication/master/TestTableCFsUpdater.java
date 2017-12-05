@@ -26,14 +26,14 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.replication.ReplicationSerDeHelper;
+import org.apache.hadoop.hbase.client.replication.ReplicationPeerConfigUtil;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.zookeeper.KeeperException;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -50,12 +50,12 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 @Category({ReplicationTests.class, SmallTests.class})
-public class TestTableCFsUpdater extends TableCFsUpdater {
+public class TestTableCFsUpdater extends ReplicationPeerConfigUpgrader {
 
   private static final Log LOG = LogFactory.getLog(TestTableCFsUpdater.class);
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
 
-  private static ZooKeeperWatcher zkw = null;
+  private static ZKWatcher zkw = null;
   private static Abortable abortable = null;
 
   @Rule
@@ -80,7 +80,7 @@ public class TestTableCFsUpdater extends TableCFsUpdater {
         return false;
       }
     };
-    zkw = new ZooKeeperWatcher(conf, "TableCFs", abortable, true);
+    zkw = new ZKWatcher(conf, "TableCFs", abortable, true);
   }
 
   @AfterClass
@@ -99,14 +99,15 @@ public class TestTableCFsUpdater extends TableCFsUpdater {
     ReplicationPeerConfig rpc = new ReplicationPeerConfig();
     rpc.setClusterKey(zkw.getQuorum());
     String peerNode = getPeerNode(peerId);
-    ZKUtil.createWithParents(zkw, peerNode, ReplicationSerDeHelper.toByteArray(rpc));
+    ZKUtil.createWithParents(zkw, peerNode, ReplicationPeerConfigUtil.toByteArray(rpc));
 
     String tableCFs = tableName1 + ":cf1,cf2;" + tableName2 + ":cf3;" + tableName3;
     String tableCFsNode = getTableCFsNode(peerId);
     LOG.info("create tableCFs :" + tableCFsNode + " for peerId=" + peerId);
     ZKUtil.createWithParents(zkw, tableCFsNode , Bytes.toBytes(tableCFs));
 
-    ReplicationPeerConfig actualRpc = ReplicationSerDeHelper.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
+    ReplicationPeerConfig actualRpc =
+        ReplicationPeerConfigUtil.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
     String actualTableCfs = Bytes.toString(ZKUtil.getData(zkw, tableCFsNode));
 
     assertEquals(rpc.getClusterKey(), actualRpc.getClusterKey());
@@ -117,14 +118,14 @@ public class TestTableCFsUpdater extends TableCFsUpdater {
     rpc = new ReplicationPeerConfig();
     rpc.setClusterKey(zkw.getQuorum());
     peerNode = getPeerNode(peerId);
-    ZKUtil.createWithParents(zkw, peerNode, ReplicationSerDeHelper.toByteArray(rpc));
+    ZKUtil.createWithParents(zkw, peerNode, ReplicationPeerConfigUtil.toByteArray(rpc));
 
     tableCFs = tableName1 + ":cf1,cf3;" + tableName2 + ":cf2";
     tableCFsNode = getTableCFsNode(peerId);
     LOG.info("create tableCFs :" + tableCFsNode + " for peerId=" + peerId);
     ZKUtil.createWithParents(zkw, tableCFsNode , Bytes.toBytes(tableCFs));
 
-    actualRpc = ReplicationSerDeHelper.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
+    actualRpc = ReplicationPeerConfigUtil.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
     actualTableCfs = Bytes.toString(ZKUtil.getData(zkw, tableCFsNode));
 
     assertEquals(rpc.getClusterKey(), actualRpc.getClusterKey());
@@ -135,14 +136,14 @@ public class TestTableCFsUpdater extends TableCFsUpdater {
     rpc = new ReplicationPeerConfig();
     rpc.setClusterKey(zkw.getQuorum());
     peerNode = getPeerNode(peerId);
-    ZKUtil.createWithParents(zkw, peerNode, ReplicationSerDeHelper.toByteArray(rpc));
+    ZKUtil.createWithParents(zkw, peerNode, ReplicationPeerConfigUtil.toByteArray(rpc));
 
     tableCFs = "";
     tableCFsNode = getTableCFsNode(peerId);
     LOG.info("create tableCFs :" + tableCFsNode + " for peerId=" + peerId);
     ZKUtil.createWithParents(zkw, tableCFsNode , Bytes.toBytes(tableCFs));
 
-    actualRpc = ReplicationSerDeHelper.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
+    actualRpc = ReplicationPeerConfigUtil.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
     actualTableCfs = Bytes.toString(ZKUtil.getData(zkw, tableCFsNode));
 
     assertEquals(rpc.getClusterKey(), actualRpc.getClusterKey());
@@ -153,21 +154,21 @@ public class TestTableCFsUpdater extends TableCFsUpdater {
     rpc = new ReplicationPeerConfig();
     rpc.setClusterKey(zkw.getQuorum());
     peerNode = getPeerNode(peerId);
-    ZKUtil.createWithParents(zkw, peerNode, ReplicationSerDeHelper.toByteArray(rpc));
+    ZKUtil.createWithParents(zkw, peerNode, ReplicationPeerConfigUtil.toByteArray(rpc));
 
     tableCFsNode = getTableCFsNode(peerId);
-    actualRpc = ReplicationSerDeHelper.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
+    actualRpc = ReplicationPeerConfigUtil.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
     actualTableCfs = Bytes.toString(ZKUtil.getData(zkw, tableCFsNode));
 
     assertEquals(rpc.getClusterKey(), actualRpc.getClusterKey());
     assertNull(actualRpc.getTableCFsMap());
     assertNull(actualTableCfs);
 
-    update();
+    copyTableCFs();
 
     peerId = "1";
     peerNode = getPeerNode(peerId);
-    actualRpc = ReplicationSerDeHelper.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
+    actualRpc = ReplicationPeerConfigUtil.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
     assertEquals(rpc.getClusterKey(), actualRpc.getClusterKey());
     Map<TableName, List<String>> tableNameListMap = actualRpc.getTableCFsMap();
     assertEquals(3, tableNameListMap.size());
@@ -184,7 +185,7 @@ public class TestTableCFsUpdater extends TableCFsUpdater {
 
     peerId = "2";
     peerNode = getPeerNode(peerId);
-    actualRpc = ReplicationSerDeHelper.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
+    actualRpc = ReplicationPeerConfigUtil.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
     assertEquals(rpc.getClusterKey(), actualRpc.getClusterKey());
     tableNameListMap = actualRpc.getTableCFsMap();
     assertEquals(2, tableNameListMap.size());
@@ -198,14 +199,14 @@ public class TestTableCFsUpdater extends TableCFsUpdater {
 
     peerId = "3";
     peerNode = getPeerNode(peerId);
-    actualRpc = ReplicationSerDeHelper.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
+    actualRpc = ReplicationPeerConfigUtil.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
     assertEquals(rpc.getClusterKey(), actualRpc.getClusterKey());
     tableNameListMap = actualRpc.getTableCFsMap();
     assertNull(tableNameListMap);
 
     peerId = "4";
     peerNode = getPeerNode(peerId);
-    actualRpc = ReplicationSerDeHelper.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
+    actualRpc = ReplicationPeerConfigUtil.parsePeerFrom(ZKUtil.getData(zkw, peerNode));
     assertEquals(rpc.getClusterKey(), actualRpc.getClusterKey());
     tableNameListMap = actualRpc.getTableCFsMap();
     assertNull(tableNameListMap);

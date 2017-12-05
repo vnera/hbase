@@ -260,7 +260,8 @@ public abstract class CoprocessorHost<C extends Coprocessor, E extends Coprocess
     }
     // create the environment
     E env = createEnvironment(impl, priority, loadSequence.incrementAndGet(), conf);
-    env.startup();
+    assert env instanceof BaseEnvironment;
+    ((BaseEnvironment<C>) env).startup();
     // HBASE-4014: maintain list of loaded coprocessors for later crash analysis
     // if server (master or regionserver) aborts.
     coprocessorNames.add(implClass.getName());
@@ -283,10 +284,11 @@ public abstract class CoprocessorHost<C extends Coprocessor, E extends Coprocess
       throws InstantiationException, IllegalAccessException;
 
   public void shutdown(E e) {
+    assert e instanceof BaseEnvironment;
     if (LOG.isDebugEnabled()) {
       LOG.debug("Stop coprocessor " + e.getInstance().getClass().getName());
     }
-    e.shutdown();
+    ((BaseEnvironment<C>) e).shutdown();
   }
 
   /**
@@ -557,8 +559,7 @@ public abstract class CoprocessorHost<C extends Coprocessor, E extends Coprocess
     }
 
     ObserverOperation(ObserverGetter<C, O> observerGetter, User user, boolean bypassable) {
-      super(user != null? user: RpcServer.getRequestUser().orElse(null),
-          bypassable, bypassable/*'completable': make completable same as bypassable*/);
+      super(user != null? user: RpcServer.getRequestUser().orElse(null), bypassable);
       this.observerGetter = observerGetter;
     }
 
@@ -676,10 +677,6 @@ public abstract class CoprocessorHost<C extends Coprocessor, E extends Coprocess
       }
       // Internal to shouldBypass, it checks if obeserverOperation#isBypassable().
       bypass |= observerOperation.shouldBypass();
-      // Internal to shouldComplete, it checks if obeserverOperation#isCompletable().
-      if (observerOperation.shouldComplete()) {
-        break;
-      }
       observerOperation.postEnvCall();
     }
     return bypass;
@@ -716,9 +713,6 @@ public abstract class CoprocessorHost<C extends Coprocessor, E extends Coprocess
         currentThread.setContextClassLoader(cl);
       }
       bypass |= observerOperation.shouldBypass();
-      if (observerOperation.shouldComplete()) {
-        break;
-      }
     }
 
     // Iterate the coprocessors and execute ObserverOperation's postEnvCall()

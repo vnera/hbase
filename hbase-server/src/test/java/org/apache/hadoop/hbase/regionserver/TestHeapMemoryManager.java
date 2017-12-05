@@ -23,6 +23,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.util.Iterator;
 
@@ -37,6 +38,7 @@ import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.Waiter;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.io.hfile.BlockCache;
 import org.apache.hadoop.hbase.io.hfile.BlockCacheKey;
 import org.apache.hadoop.hbase.io.hfile.CacheStats;
@@ -49,7 +51,7 @@ import org.apache.hadoop.hbase.regionserver.HeapMemoryManager.TunerResult;
 import org.apache.hadoop.hbase.testclassification.RegionServerTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -602,58 +604,6 @@ public class TestHeapMemoryManager {
     assertEquals(oldBlockCacheSize, blockCache.maxSize);
   }
 
-  @Test
-  public void testWhenL2BlockCacheIsOnHeap() throws Exception {
-    HeapMemoryManager heapMemoryManager = null;
-    BlockCacheStub blockCache = new BlockCacheStub((long) (maxHeapSize * 0.4));
-    MemstoreFlusherStub memStoreFlusher = new MemstoreFlusherStub((long) (maxHeapSize * 0.3));
-    Configuration conf = HBaseConfiguration.create();
-    conf.setFloat(HeapMemoryManager.MEMSTORE_SIZE_MAX_RANGE_KEY, 0.7f);
-    conf.setFloat(HeapMemoryManager.MEMSTORE_SIZE_MIN_RANGE_KEY, 0.1f);
-    conf.setFloat(HeapMemoryManager.BLOCK_CACHE_SIZE_MAX_RANGE_KEY, 0.7f);
-    conf.setFloat(HeapMemoryManager.BLOCK_CACHE_SIZE_MIN_RANGE_KEY, 0.1f);
-    conf.setInt(DefaultHeapMemoryTuner.NUM_PERIODS_TO_IGNORE, 0);
-    conf.setFloat(MemorySizeUtil.MEMSTORE_SIZE_KEY, 0.4F);
-    conf.setFloat(HConstants.HFILE_BLOCK_CACHE_SIZE_KEY, 0.3F);
-    conf.setFloat(HConstants.BUCKET_CACHE_SIZE_KEY, 0.1F);
-    conf.set(HConstants.BUCKET_CACHE_IOENGINE_KEY, "heap");
-
-    conf.setLong(HeapMemoryManager.HBASE_RS_HEAP_MEMORY_TUNER_PERIOD, 1000);
-    conf.setClass(HeapMemoryManager.HBASE_RS_HEAP_MEMORY_TUNER_CLASS, CustomHeapMemoryTuner.class,
-        HeapMemoryTuner.class);
-
-    try {
-      heapMemoryManager = new HeapMemoryManager(blockCache, memStoreFlusher,
-          new RegionServerStub(conf), new RegionServerAccountingStub(conf));
-      fail("Should have failed as the collective heap memory need is above 80%");
-    } catch (Exception e) {
-    }
-
-    // Change the max/min ranges for memstore and bock cache so as to pass the criteria check
-    conf.setFloat(HeapMemoryManager.MEMSTORE_SIZE_MAX_RANGE_KEY, 0.6f);
-    conf.setFloat(HeapMemoryManager.BLOCK_CACHE_SIZE_MAX_RANGE_KEY, 0.6f);
-    heapMemoryManager = new HeapMemoryManager(blockCache, memStoreFlusher,
-        new RegionServerStub(conf), new RegionServerAccountingStub(conf));
-    long oldMemstoreSize = memStoreFlusher.memstoreSize;
-    long oldBlockCacheSize = blockCache.maxSize;
-    final ChoreService choreService = new ChoreService("TEST_SERVER_NAME");
-    heapMemoryManager.start(choreService);
-    CustomHeapMemoryTuner.memstoreSize = 0.4f;
-    CustomHeapMemoryTuner.blockCacheSize = 0.4f;
-    // Allow the tuner to run once and do necessary memory up
-    Thread.sleep(1500);
-    // The size should not get changes as the collection of memstore size and L1 and L2 block cache
-    // size will cross the ax allowed 80% mark
-    assertEquals(oldMemstoreSize, memStoreFlusher.memstoreSize);
-    assertEquals(oldBlockCacheSize, blockCache.maxSize);
-    CustomHeapMemoryTuner.memstoreSize = 0.1f;
-    CustomHeapMemoryTuner.blockCacheSize = 0.5f;
-    // Allow the tuner to run once and do necessary memory up
-    waitForTune(memStoreFlusher, memStoreFlusher.memstoreSize);
-    assertHeapSpace(0.1f, memStoreFlusher.memstoreSize);
-    assertHeapSpace(0.5f, blockCache.maxSize);
-  }
-
   private void assertHeapSpace(float expectedHeapPercentage, long currentHeapSpace) {
     long expected = (long) (this.maxHeapSize * expectedHeapPercentage);
     assertEquals(expected, currentHeapSpace);
@@ -865,7 +815,7 @@ public class TestHeapMemoryManager {
     }
 
     @Override
-    public ZooKeeperWatcher getZooKeeper() {
+    public ZKWatcher getZooKeeper() {
       return null;
     }
 
@@ -908,6 +858,11 @@ public class TestHeapMemoryManager {
     @Override
     public boolean isStopping() {
       return false;
+    }
+
+    @Override
+    public Connection createConnection(Configuration conf) throws IOException {
+      return null;
     }
   }
 

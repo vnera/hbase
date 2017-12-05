@@ -45,7 +45,6 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.TagUtil;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.Consistency;
 import org.apache.hadoop.hbase.client.Delete;
@@ -91,6 +90,7 @@ import org.apache.hadoop.hbase.util.DynamicClassLoader;
 import org.apache.hadoop.hbase.util.ExceptionUtil;
 import org.apache.hadoop.hbase.util.Methods;
 import org.apache.hadoop.ipc.RemoteException;
+import org.apache.yetus.audience.InterfaceAudience;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.CodedInputStream;
@@ -251,6 +251,21 @@ public final class ProtobufUtil {
    */
   public static IOException getRemoteException(ServiceException se) {
     return makeIOExceptionOfException(se);
+  }
+
+  /**
+   * Return the Exception thrown by the remote server wrapped in
+   * ServiceException as cause. RemoteException are left untouched.
+   *
+   * @param se ServiceException that wraps IO exception thrown by the server
+   * @return Exception wrapped in ServiceException.
+   */
+  public static IOException getServiceException(org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException e) {
+    Throwable t = e.getCause();
+    if (ExceptionUtil.isInterrupt(t)) {
+      return ExceptionUtil.asInterrupt(t);
+    }
+    return t instanceof IOException ? (IOException) t : new HBaseIOException(t);
   }
 
   /**
@@ -523,7 +538,8 @@ public final class ProtobufUtil {
                       .setTags(allTagsBytes)
                       .build());
             } else {
-              List<Tag> tags = TagUtil.asList(allTagsBytes, 0, (short)allTagsBytes.length);
+              List<Tag> tags =
+                  TagUtil.asList(allTagsBytes, 0, (short) allTagsBytes.length);
               Tag[] tagsArray = new Tag[tags.size()];
               put.addImmutable(family, qualifier, ts, value, tags.toArray(tagsArray));
             }

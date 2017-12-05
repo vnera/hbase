@@ -67,6 +67,10 @@ import org.apache.hadoop.hbase.Waiter.Predicate;
 import org.apache.hadoop.hbase.client.ImmutableHRegionInfo;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.RegionInfoBuilder;
+import org.apache.hadoop.hbase.master.RegionState;
+import org.apache.hadoop.hbase.master.assignment.RegionStateStore;
+import org.apache.hadoop.hbase.trace.TraceUtil;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.BufferedMutator;
@@ -132,7 +136,6 @@ import org.apache.hadoop.hbase.wal.WALFactory;
 import org.apache.hadoop.hbase.zookeeper.EmptyWatcher;
 import org.apache.hadoop.hbase.zookeeper.MiniZooKeeperCluster;
 import org.apache.hadoop.hbase.zookeeper.ZKConfig;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.hadoop.hdfs.DFSClient;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
@@ -657,6 +660,7 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
     org.apache.log4j.Logger.getLogger(org.apache.hadoop.metrics2.impl.MetricsSystemImpl.class).
         setLevel(org.apache.log4j.Level.ERROR);
 
+    TraceUtil.initTracer(conf);
 
     this.dfsCluster = new MiniDFSCluster(0, this.conf, servers, true, true,
       true, null, null, hosts, null);
@@ -1125,6 +1129,7 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
     }
 
     Configuration c = new Configuration(this.conf);
+    TraceUtil.initTracer(c);
     this.hbaseCluster =
         new MiniHBaseCluster(c, numMasters, numSlaves, masterClass, regionserverClass);
     // Don't leave here till we've done a successful scan of the hbase:meta
@@ -2505,6 +2510,21 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
     return rows;
   }
 
+  /*
+   * Find any other region server which is different from the one identified by parameter
+   * @param rs
+   * @return another region server
+   */
+  public HRegionServer getOtherRegionServer(HRegionServer rs) {
+    for (JVMClusterUtil.RegionServerThread rst :
+      getMiniHBaseCluster().getRegionServerThreads()) {
+      if (!(rst.getRegionServer() == rs)) {
+        return rst.getRegionServer();
+      }
+    }
+    return null;
+  }
+
   /**
    * Tool to get the reference to the region server object that holds the
    * region of the specified user table.
@@ -2549,6 +2569,10 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
    * @throws IOException When starting the cluster fails.
    */
   public MiniMRCluster startMiniMapReduceCluster() throws IOException {
+    // Set a very high max-disk-utilization percentage to avoid the NodeManagers from failing.
+    conf.setIfUnset(
+        "yarn.nodemanager.disk-health-checker.max-disk-utilization-per-disk-percentage",
+        "99.0");
     startMiniMapReduceCluster(2);
     return mrCluster;
   }
@@ -2749,7 +2773,7 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
     }
   }
 
-  public void expireSession(ZooKeeperWatcher nodeZK) throws Exception {
+  public void expireSession(ZKWatcher nodeZK) throws Exception {
    expireSession(nodeZK, false);
   }
 
@@ -2764,7 +2788,7 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
    * @param checkStatus - true to check if we can create a Table with the
    *                    current configuration.
    */
-  public void expireSession(ZooKeeperWatcher nodeZK, boolean checkStatus)
+  public void expireSession(ZKWatcher nodeZK, boolean checkStatus)
     throws Exception {
     Configuration c = new Configuration(this.conf);
     String quorumServers = ZKConfig.getZKQuorumServersString(c);
@@ -2879,18 +2903,18 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
   private HBaseAdmin hbaseAdmin = null;
 
   /**
-   * Returns a ZooKeeperWatcher instance.
+   * Returns a ZKWatcher instance.
    * This instance is shared between HBaseTestingUtility instance users.
    * Don't close it, it will be closed automatically when the
    * cluster shutdowns
    *
-   * @return The ZooKeeperWatcher instance.
+   * @return The ZKWatcher instance.
    * @throws IOException
    */
-  public synchronized ZooKeeperWatcher getZooKeeperWatcher()
+  public synchronized ZKWatcher getZooKeeperWatcher()
     throws IOException {
     if (zooKeeperWatcher == null) {
-      zooKeeperWatcher = new ZooKeeperWatcher(conf, "testing utility",
+      zooKeeperWatcher = new ZKWatcher(conf, "testing utility",
         new Abortable() {
         @Override public void abort(String why, Throwable e) {
           throw new RuntimeException("Unexpected abort in HBaseTestingUtility:"+why, e);
@@ -2900,7 +2924,7 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
     }
     return zooKeeperWatcher;
   }
-  private ZooKeeperWatcher zooKeeperWatcher;
+  private ZKWatcher zooKeeperWatcher;
 
 
 
@@ -3411,8 +3435,27 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
               byte[] b = r.getValue(HConstants.CATALOG_FAMILY, HConstants.REGIONINFO_QUALIFIER);
               HRegionInfo info = HRegionInfo.parseFromOrNull(b);
               if (info != null && info.getTable().equals(tableName)) {
-                b = r.getValue(HConstants.CATALOG_FAMILY, HConstants.SERVER_QUALIFIER);
-                allRegionsAssigned &= (b != null);
+                // Get server hosting this region from catalog family. Return false if no server
+                // hosting this region, or if the server hosting this region was recently killed
+                // (for fault tolerance testing).
+                byte[] server =
+                    r.getValue(HConstants.CATALOG_FAMILY, HConstants.SERVER_QUALIFIER);
+                if (server == null) {
+                  return false;
+                } else {
+                  byte[] startCode =
+                      r.getValue(HConstants.CATALOG_FAMILY, HConstants.STARTCODE_QUALIFIER);
+                  ServerName serverName =
+                      ServerName.valueOf(Bytes.toString(server).replaceFirst(":", ",") + "," +
+                          Bytes.toLong(startCode));
+                  if (getHBaseCluster().isKilledRS(serverName)) {
+                    return false;
+                  }
+                }
+                if (RegionStateStore.getRegionState(r, info.getReplicaId())
+                    != RegionState.State.OPEN) {
+                  return false;
+                }
               }
             }
           } finally {
@@ -3505,13 +3548,13 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
   }
 
   /**
-   * Gets a ZooKeeperWatcher.
+   * Gets a ZKWatcher.
    * @param TEST_UTIL
    */
-  public static ZooKeeperWatcher getZooKeeperWatcher(
+  public static ZKWatcher getZooKeeperWatcher(
       HBaseTestingUtility TEST_UTIL) throws ZooKeeperConnectionException,
       IOException {
-    ZooKeeperWatcher zkw = new ZooKeeperWatcher(TEST_UTIL.getConfiguration(),
+    ZKWatcher zkw = new ZKWatcher(TEST_UTIL.getConfiguration(),
         "unittest", new Abortable() {
           boolean aborted = false;
 

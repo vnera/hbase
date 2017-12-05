@@ -22,19 +22,18 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.CodedOutputStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
-import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.hadoop.hbase.shaded.com.google.protobuf.CodedOutputStream;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ReplicationProtos;
 import org.apache.hadoop.hbase.zookeeper.ZKConfig;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
-
 
 /**
  * This is a base class for maintaining replication state in zookeeper.
@@ -60,7 +59,7 @@ public abstract class ReplicationStateZKBase {
   /** The name of the znode that contains tableCFs */
   protected final String tableCFsNodeName;
 
-  protected final ZooKeeperWatcher zookeeper;
+  protected final ZKWatcher zookeeper;
   protected final Configuration conf;
   protected final Abortable abortable;
 
@@ -73,8 +72,8 @@ public abstract class ReplicationStateZKBase {
       "zookeeper.znode.replication.hfile.refs";
   public static final String ZOOKEEPER_ZNODE_REPLICATION_HFILE_REFS_DEFAULT = "hfile-refs";
 
-  public ReplicationStateZKBase(ZooKeeperWatcher zookeeper, Configuration conf,
-      Abortable abortable) {
+  public ReplicationStateZKBase(ZKWatcher zookeeper, Configuration conf,
+                                Abortable abortable) {
     this.zookeeper = zookeeper;
     this.conf = conf;
     this.abortable = abortable;
@@ -87,11 +86,11 @@ public abstract class ReplicationStateZKBase {
     this.peerStateNodeName = conf.get("zookeeper.znode.replication.peers.state", "peer-state");
     this.tableCFsNodeName = conf.get("zookeeper.znode.replication.peers.tableCFs", "tableCFs");
     this.ourClusterKey = ZKConfig.getZooKeeperClusterKey(this.conf);
-    this.replicationZNode = ZKUtil.joinZNode(this.zookeeper.znodePaths.baseZNode,
+    this.replicationZNode = ZNodePaths.joinZNode(this.zookeeper.znodePaths.baseZNode,
       replicationZNodeName);
-    this.peersZNode = ZKUtil.joinZNode(replicationZNode, peersZNodeName);
-    this.queuesZNode = ZKUtil.joinZNode(replicationZNode, queuesZNodeName);
-    this.hfileRefsZNode = ZKUtil.joinZNode(replicationZNode, hfileRefsZNodeName);
+    this.peersZNode = ZNodePaths.joinZNode(replicationZNode, peersZNodeName);
+    this.queuesZNode = ZNodePaths.joinZNode(replicationZNode, queuesZNodeName);
+    this.hfileRefsZNode = ZNodePaths.joinZNode(replicationZNode, hfileRefsZNodeName);
   }
 
   public List<String> getListOfReplicators() {
@@ -127,7 +126,7 @@ public abstract class ReplicationStateZKBase {
   }
 
   protected boolean peerExists(String id) throws KeeperException {
-    return ZKUtil.checkExists(this.zookeeper, ZKUtil.joinZNode(this.peersZNode, id)) >= 0;
+    return ZKUtil.checkExists(this.zookeeper, ZNodePaths.joinZNode(this.peersZNode, id)) >= 0;
   }
 
   /**
@@ -141,15 +140,15 @@ public abstract class ReplicationStateZKBase {
 
   @VisibleForTesting
   protected String getTableCFsNode(String id) {
-    return ZKUtil.joinZNode(this.peersZNode, ZKUtil.joinZNode(id, this.tableCFsNodeName));
+    return ZNodePaths.joinZNode(this.peersZNode, ZNodePaths.joinZNode(id, this.tableCFsNodeName));
   }
 
   @VisibleForTesting
   protected String getPeerStateNode(String id) {
-    return ZKUtil.joinZNode(this.peersZNode, ZKUtil.joinZNode(id, this.peerStateNodeName));
+    return ZNodePaths.joinZNode(this.peersZNode, ZNodePaths.joinZNode(id, this.peerStateNodeName));
   }
   @VisibleForTesting
   protected String getPeerNode(String id) {
-    return ZKUtil.joinZNode(this.peersZNode, id);
+    return ZNodePaths.joinZNode(this.peersZNode, id);
   }
 }

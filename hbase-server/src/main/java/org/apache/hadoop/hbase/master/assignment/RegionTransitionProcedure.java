@@ -42,19 +42,21 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProto
 
 /**
  * Base class for the Assign and Unassign Procedure.
- * There can only be one RegionTransitionProcedure per region running at a time
- * since each procedure takes a lock on the region (see MasterProcedureScheduler).
+ *
+ * Locking:
+ * Takes exclusive lock on the region being assigned/unassigned. Thus, there can only be one
+ * RegionTransitionProcedure per region running at a time (see MasterProcedureScheduler).
  *
  * <p>This procedure is asynchronous and responds to external events.
  * The AssignmentManager will notify this procedure when the RS completes
  * the operation and reports the transitioned state
- * (see the Assign and Unassign class for more detail).
+ * (see the Assign and Unassign class for more detail).</p>
  *
  * <p>Procedures move from the REGION_TRANSITION_QUEUE state when they are
  * first submitted, to the REGION_TRANSITION_DISPATCH state when the request
  * to remote server is sent and the Procedure is suspended waiting on external
  * event to be woken again. Once the external event is triggered, Procedure
- * moves to the REGION_TRANSITION_FINISH state.
+ * moves to the REGION_TRANSITION_FINISH state.</p>
  *
  * <p>NOTE: {@link AssignProcedure} and {@link UnassignProcedure} should not be thought of
  * as being asymmetric, at least currently.
@@ -67,12 +69,13 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProto
  * AssignProcedure#handleFailure(MasterProcedureEnv, RegionStateNode) re-attempts the
  * assignment by setting the procedure state to REGION_TRANSITION_QUEUE and forces
  * assignment to a different target server by setting {@link AssignProcedure#forceNewPlan}. When
- * the number of attempts reach hreshold configuration 'hbase.assignment.maximum.attempts',
+ * the number of attempts reaches threshold configuration 'hbase.assignment.maximum.attempts',
  * the procedure is aborted. For {@link UnassignProcedure}, similar re-attempts are
  * intentionally not implemented. It is a 'one shot' procedure. See its class doc for how it
  * handles failure.
  * </li>
  * </ul>
+ * </p>
  *
  * <p>TODO: Considering it is a priority doing all we can to get make a region available as soon as possible,
  * re-attempting with any target makes sense if specified target fails in case of
@@ -88,21 +91,18 @@ public abstract class RegionTransitionProcedure
 
   protected final AtomicBoolean aborted = new AtomicBoolean(false);
 
-  private RegionTransitionState transitionState =
-      RegionTransitionState.REGION_TRANSITION_QUEUE;
+  private RegionTransitionState transitionState = RegionTransitionState.REGION_TRANSITION_QUEUE;
   private RegionInfo regionInfo;
   private volatile boolean lock = false;
 
-  public RegionTransitionProcedure() {
-    // Required by the Procedure framework to create the procedure on replay
-    super();
-  }
+  // Required by the Procedure framework to create the procedure on replay
+  public RegionTransitionProcedure() {}
 
   public RegionTransitionProcedure(final RegionInfo regionInfo) {
     this.regionInfo = regionInfo;
   }
 
-  public RegionInfo getRegionInfo() {
+  protected RegionInfo getRegionInfo() {
     return regionInfo;
   }
 
@@ -131,15 +131,14 @@ public abstract class RegionTransitionProcedure
   }
 
   public RegionStateNode getRegionState(final MasterProcedureEnv env) {
-    return env.getAssignmentManager().getRegionStates().
-        getOrCreateRegionNode(getRegionInfo());
+    return env.getAssignmentManager().getRegionStates().getOrCreateRegionStateNode(getRegionInfo());
   }
 
-  protected void setTransitionState(final RegionTransitionState state) {
+  void setTransitionState(final RegionTransitionState state) {
     this.transitionState = state;
   }
 
-  protected RegionTransitionState getTransitionState() {
+  RegionTransitionState getTransitionState() {
     return transitionState;
   }
 
@@ -190,7 +189,7 @@ public abstract class RegionTransitionProcedure
       // NOTE: This call to wakeEvent puts this Procedure back on the scheduler.
       // Thereafter, another Worker can be in here so DO NOT MESS WITH STATE beyond
       // this method. Just get out of this current processing quickly.
-      env.getProcedureScheduler().wakeEvent(regionNode.getProcedureEvent());
+      regionNode.getProcedureEvent().wake(env.getProcedureScheduler());
     }
     // else leave the procedure in suspended state; it is waiting on another call to this callback
   }
@@ -200,7 +199,7 @@ public abstract class RegionTransitionProcedure
    * and this procedure has been set into a suspended state OR, we failed and
    * this procedure has been put back on the scheduler ready for another worker
    * to pick it up. In both cases, we need to exit the current Worker processing
-   * toute de suite!
+   * immediately!
    * @return True if we successfully dispatched the call and false if we failed;
    * if failed, we need to roll back any setup done for the dispatch.
    */
@@ -214,10 +213,10 @@ public abstract class RegionTransitionProcedure
 
     // Put this procedure into suspended mode to wait on report of state change
     // from remote regionserver. Means Procedure associated ProcedureEvent is marked not 'ready'.
-    env.getProcedureScheduler().suspendEvent(getRegionState(env).getProcedureEvent());
+    getRegionState(env).getProcedureEvent().suspend();
 
     // Tricky because the below call to addOperationToNode can fail. If it fails, we need to
-    // backtrack on stuff like the 'suspend' done above -- tricky as the 'wake' requeues us -- and
+    // backtrack on stuff like the 'suspend' done above -- tricky as the 'wake' requests us -- and
     // ditto up in the caller; it needs to undo state changes. Inside in remoteCallFailed, it does
     // wake to undo the above suspend.
     if (!env.getRemoteDispatcher().addOperationToNode(targetServer, this)) {
@@ -253,7 +252,7 @@ public abstract class RegionTransitionProcedure
     // processing to the next stage. At an extreme, the other worker may run in
     // parallel so DO  NOT CHANGE any state hereafter! This should be last thing
     // done in this processing step.
-    env.getProcedureScheduler().wakeEvent(regionNode.getProcedureEvent());
+    regionNode.getProcedureEvent().wake(env.getProcedureScheduler());
   }
 
   protected boolean isServerOnline(final MasterProcedureEnv env, final RegionStateNode regionNode) {
@@ -298,7 +297,7 @@ public abstract class RegionTransitionProcedure
               return null;
             }
             transitionState = RegionTransitionState.REGION_TRANSITION_DISPATCH;
-            if (env.getProcedureScheduler().waitEvent(regionNode.getProcedureEvent(), this)) {
+            if (regionNode.getProcedureEvent().suspendIfNotReady(this)) {
               // Why this suspend? Because we want to ensure Store happens before proceed?
               throw new ProcedureSuspendedException();
             }
@@ -315,7 +314,7 @@ public abstract class RegionTransitionProcedure
               retry = true;
               break;
             }
-            if (env.getProcedureScheduler().waitEvent(regionNode.getProcedureEvent(), this)) {
+            if (regionNode.getProcedureEvent().suspendIfNotReady(this)) {
               throw new ProcedureSuspendedException();
             }
             break;

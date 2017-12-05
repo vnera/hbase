@@ -30,7 +30,7 @@ import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.ReplicationPeerNotFoundException;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.hadoop.hbase.replication.BaseReplicationEndpoint;
 import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationFactory;
@@ -39,7 +39,7 @@ import org.apache.hadoop.hbase.replication.ReplicationPeerDescription;
 import org.apache.hadoop.hbase.replication.ReplicationPeers;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesClient;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesClientArguments;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.yetus.audience.InterfaceAudience;
 
 /**
  * Manages and performs all replication admin operations.
@@ -49,11 +49,11 @@ import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 public class ReplicationManager {
 
   private final Configuration conf;
-  private final ZooKeeperWatcher zkw;
+  private final ZKWatcher zkw;
   private final ReplicationQueuesClient replicationQueuesClient;
   private final ReplicationPeers replicationPeers;
 
-  public ReplicationManager(Configuration conf, ZooKeeperWatcher zkw, Abortable abortable)
+  public ReplicationManager(Configuration conf, ZKWatcher zkw, Abortable abortable)
       throws IOException {
     this.conf = conf;
     this.zkw = zkw;
@@ -69,12 +69,10 @@ public class ReplicationManager {
     }
   }
 
-  public void addReplicationPeer(String peerId, ReplicationPeerConfig peerConfig)
+  public void addReplicationPeer(String peerId, ReplicationPeerConfig peerConfig, boolean enabled)
       throws ReplicationException, IOException {
-    checkNamespacesAndTableCfsConfigConflict(peerConfig.getNamespaces(),
-      peerConfig.getTableCFsMap());
-    checkConfiguredWALEntryFilters(peerConfig);
-    replicationPeers.registerPeer(peerId, peerConfig);
+    checkPeerConfig(peerConfig);
+    replicationPeers.registerPeer(peerId, peerConfig, enabled);
     replicationPeers.peerConnected(peerId);
   }
 
@@ -102,9 +100,7 @@ public class ReplicationManager {
 
   public void updatePeerConfig(String peerId, ReplicationPeerConfig peerConfig)
       throws ReplicationException, IOException {
-    checkNamespacesAndTableCfsConfigConflict(peerConfig.getNamespaces(),
-      peerConfig.getTableCFsMap());
-    checkConfiguredWALEntryFilters(peerConfig);
+    checkPeerConfig(peerConfig);
     this.replicationPeers.updatePeerConfig(peerId, peerConfig);
   }
 
@@ -120,6 +116,21 @@ public class ReplicationManager {
       }
     }
     return peers;
+  }
+
+  private void checkPeerConfig(ReplicationPeerConfig peerConfig) throws ReplicationException,
+      IOException {
+    if (peerConfig.replicateAllUserTables()) {
+      if ((peerConfig.getNamespaces() != null && !peerConfig.getNamespaces().isEmpty())
+          || (peerConfig.getTableCFsMap() != null && !peerConfig.getTableCFsMap().isEmpty())) {
+        throw new ReplicationException(
+          "Need clean namespaces or table-cfs config fisrtly when you want replicate all cluster");
+      }
+    } else {
+      checkNamespacesAndTableCfsConfigConflict(peerConfig.getNamespaces(),
+        peerConfig.getTableCFsMap());
+    }
+    checkConfiguredWALEntryFilters(peerConfig);
   }
 
   /**
@@ -150,8 +161,6 @@ public class ReplicationManager {
             "Table-cfs config conflict with namespaces config in peer");
       }
     }
-
-
   }
 
   private void checkConfiguredWALEntryFilters(ReplicationPeerConfig peerConfig)

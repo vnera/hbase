@@ -47,7 +47,7 @@ pipeline {
     AUTHOR_IGNORE_LIST = 'src/main/asciidoc/_chapters/developer.adoc,dev-support/test-patch.sh'
     WHITESPACE_IGNORE_LIST = '.*/generated/.*'
     // output from surefire; sadly the archive function in yetus only works on file names.
-    ARCHIVE_PATTERN_LIST = 'TEST-*.xml,org.apache.h*.txt'
+    ARCHIVE_PATTERN_LIST = 'TEST-*.xml,org.apache.h*.txt,*.dumpstream,*.dump'
     // These tests currently have known failures. Once they burn down to 0, remove from here so that new problems will cause a failure.
     TESTS_FILTER = 'cc,checkstyle,javac,javadoc,pylint,shellcheck,whitespace,perlcritic,ruby-lint,rubocop,mvnsite'
     BRANCH_SPECIFIC_DOCKERFILE = "${env.BASEDIR}/dev-support/docker/Dockerfile"
@@ -127,6 +127,11 @@ curl -L  -o personality.sh "${env.PROJET_PERSONALITY}"
       }
       steps {
         unstash 'yetus'
+        sh '''#!/usr/bin/env bash
+          rm -rf "${OUTPUTDIR}" && mkdir "${OUTPUTDIR}"
+          rm -rf "${OUTPUTDIR}/machine" && mkdir "${OUTPUTDIR}/machine"
+          "${BASEDIR}/dev-support/gather_machine_environment.sh" "${OUTPUT_RELATIVE}/machine"
+'''
         // TODO should this be a download from master, similar to how the personality is?
         sh "${env.BASEDIR}/dev-support/hbase_nightly_yetus.sh"
       }
@@ -159,6 +164,11 @@ curl -L  -o personality.sh "${env.PROJET_PERSONALITY}"
       }
       steps {
         unstash 'yetus'
+        sh '''#!/usr/bin/env bash
+          rm -rf "${OUTPUTDIR}" && mkdir "${OUTPUTDIR}"
+          rm -rf "${OUTPUTDIR}/machine" && mkdir "${OUTPUTDIR}/machine"
+          "${BASEDIR}/dev-support/gather_machine_environment.sh" "${OUTPUT_RELATIVE}/machine"
+'''
         sh """#!/usr/bin/env bash
           # for branch-1.1 we don't do jdk8 findbugs, so do it here
           if [ "${env.BRANCH_NAME}" == "branch-1.1" ]; then
@@ -215,6 +225,11 @@ curl -L  -o personality.sh "${env.PROJET_PERSONALITY}"
       }
       steps {
         unstash 'yetus'
+        sh '''#!/usr/bin/env bash
+          rm -rf "${OUTPUTDIR}" && mkdir "${OUTPUTDIR}"
+          rm -rf "${OUTPUTDIR}/machine" && mkdir "${OUTPUTDIR}/machine"
+          "${BASEDIR}/dev-support/gather_machine_environment.sh" "${OUTPUT_RELATIVE}/machine"
+'''
         sh "${env.BASEDIR}/dev-support/hbase_nightly_yetus.sh"
       }
       post {
@@ -265,12 +280,17 @@ curl -L  -o personality.sh "${env.PROJET_PERSONALITY}"
           rm -rf ".m2-for-repo" && mkdir ".m2-for-repo"
           rm -rf ".m2-for-src" && mkdir ".m2-for-src"
 '''
+        sh '''#!/usr/bin/env bash
+          rm -rf "output-srctarball/machine" && mkdir "output-srctarball/machine"
+          "${BASEDIR}/dev-support/gather_machine_environment.sh" "output-srctarball/machine"
+'''
         sh """#!/bin/bash -e
           ${env.BASEDIR}/dev-support/hbase_nightly_source-artifact.sh \
               --intermediate-file-dir output-srctarball \
               --unpack-temp-dir unpacked_src_tarball \
               --maven-m2-initial .m2-for-repo \
               --maven-m2-src-build .m2-for-src \
+              --clean-source-checkout \
               ${env.BASEDIR}
 """
       }

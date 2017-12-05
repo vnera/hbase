@@ -790,7 +790,12 @@ public final class HConstants {
   /**
    * Default value of {@link #HBASE_CLIENT_RETRIES_NUMBER}.
    */
-  public static final int DEFAULT_HBASE_CLIENT_RETRIES_NUMBER = 35;
+  public static final int DEFAULT_HBASE_CLIENT_RETRIES_NUMBER = 10;
+
+  public static final String HBASE_CLIENT_SERVERSIDE_RETRIES_MULTIPLIER =
+      "hbase.client.serverside.retries.multiplier";
+
+  public static final int DEFAULT_HBASE_CLIENT_SERVERSIDE_RETRIES_MULTIPLIER = 3;
 
   /**
    * Parameter name to set the default scanner caching for all clients.
@@ -1013,13 +1018,6 @@ public final class HConstants {
 
   public static final String LOCALHOST_IP = "127.0.0.1";
 
-  /** Conf key that enables unflushed WAL edits directly being replayed to region servers */
-  public static final String DISTRIBUTED_LOG_REPLAY_KEY = "hbase.master.distributed.log.replay";
-  public static final boolean DEFAULT_DISTRIBUTED_LOG_REPLAY_CONFIG = false;
-  public static final String DISALLOW_WRITES_IN_RECOVERING =
-      "hbase.regionserver.disallow.writes.when.recovering";
-  public static final boolean DEFAULT_DISALLOW_WRITES_IN_RECOVERING_CONFIG = false;
-
   public static final String REGION_SERVER_HANDLER_COUNT = "hbase.regionserver.handler.count";
   public static final int DEFAULT_REGION_SERVER_HANDLER_COUNT = 30;
 
@@ -1237,6 +1235,11 @@ public final class HConstants {
   public static final String REPLICATION_SOURCE_MAXTHREADS_KEY =
       "hbase.replication.source.maxthreads";
 
+  /** Drop edits for tables that been deleted from the replication source and target */
+  public static final String REPLICATION_DROP_ON_DELETED_TABLE_KEY =
+      "hbase.replication.drop.on.deleted.table";
+
+  /** Maximum number of threads used by the replication source for shipping edits to the sinks */
   public static final int REPLICATION_SOURCE_MAXTHREADS_DEFAULT = 10;
 
   /** Configuration key for SplitLog manager timeout */

@@ -26,6 +26,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -37,24 +38,24 @@ import org.apache.hadoop.hbase.ChoreService;
 import org.apache.hadoop.hbase.CoordinatedStateManager;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
-import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.SplitLogCounters;
 import org.apache.hadoop.hbase.SplitLogTask;
 import org.apache.hadoop.hbase.Waiter;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.coordination.ZkCoordinatedStateManager;
 import org.apache.hadoop.hbase.executor.ExecutorService;
 import org.apache.hadoop.hbase.executor.ExecutorType;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.ZooKeeperProtos.SplitLogTask.RecoveryMode;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.RegionServerTests;
 import org.apache.hadoop.hbase.util.CancelableProgressable;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKSplitLog;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
@@ -75,17 +76,16 @@ public class TestSplitLogWorker {
   private final static HBaseTestingUtility TEST_UTIL =
     new HBaseTestingUtility();
   private DummyServer ds;
-  private ZooKeeperWatcher zkw;
+  private ZKWatcher zkw;
   private SplitLogWorker slw;
   private ExecutorService executorService;
-  private RecoveryMode mode;
 
   class DummyServer implements Server {
-    private ZooKeeperWatcher zkw;
+    private ZKWatcher zkw;
     private Configuration conf;
     private CoordinatedStateManager cm;
 
-    public DummyServer(ZooKeeperWatcher zkw, Configuration conf) {
+    public DummyServer(ZKWatcher zkw, Configuration conf) {
       this.zkw = zkw;
       this.conf = conf;
       cm = new ZkCoordinatedStateManager(this);
@@ -115,7 +115,7 @@ public class TestSplitLogWorker {
     }
 
     @Override
-    public ZooKeeperWatcher getZooKeeper() {
+    public ZKWatcher getZooKeeper() {
       return zkw;
     }
 
@@ -159,6 +159,11 @@ public class TestSplitLogWorker {
     public boolean isStopping() {
       return false;
     }
+
+    @Override
+    public Connection createConnection(Configuration conf) throws IOException {
+      return null;
+    }
   }
 
   private void waitForCounter(LongAdder ctr, long oldval, long newval, long timems)
@@ -195,7 +200,7 @@ public class TestSplitLogWorker {
   public void setup() throws Exception {
     TEST_UTIL.startMiniZKCluster();
     Configuration conf = TEST_UTIL.getConfiguration();
-    zkw = new ZooKeeperWatcher(TEST_UTIL.getConfiguration(),
+    zkw = new ZKWatcher(TEST_UTIL.getConfiguration(),
         "split-log-worker-tests", null);
     ds = new DummyServer(zkw, conf);
     ZKUtil.deleteChildrenRecursively(zkw, zkw.znodePaths.baseZNode);
@@ -212,8 +217,6 @@ public class TestSplitLogWorker {
     SplitLogCounters.resetCounters();
     executorService = new ExecutorService("TestSplitLogWorker");
     executorService.startExecutorService(ExecutorType.RS_LOG_REPLAY_OPS, 10);
-    this.mode = (conf.getBoolean(HConstants.DISTRIBUTED_LOG_REPLAY_KEY, false) ?
-        RecoveryMode.LOG_REPLAY : RecoveryMode.LOG_SPLITTING);
   }
 
   @After
@@ -228,7 +231,7 @@ public class TestSplitLogWorker {
     new SplitLogWorker.TaskExecutor() {
 
       @Override
-      public Status exec(String name, RecoveryMode mode, CancelableProgressable p) {
+      public Status exec(String name, CancelableProgressable p) {
         while (true) {
           try {
             Thread.sleep(1000);
@@ -251,7 +254,7 @@ public class TestSplitLogWorker {
     final ServerName RS = ServerName.valueOf("rs,1,1");
     RegionServerServices mockedRS = getRegionServer(RS);
     zkw.getRecoverableZooKeeper().create(ZKSplitLog.getEncodedNodeName(zkw, TATAS),
-      new SplitLogTask.Unassigned(ServerName.valueOf("mgr,1,1"), this.mode).toByteArray(),
+      new SplitLogTask.Unassigned(ServerName.valueOf("mgr,1,1")).toByteArray(),
         Ids.OPEN_ACL_UNSAFE,
         CreateMode.PERSISTENT);
 
@@ -287,7 +290,7 @@ public class TestSplitLogWorker {
     final ServerName SVR1 = ServerName.valueOf("svr1,1,1");
     final ServerName SVR2 = ServerName.valueOf("svr2,1,1");
     zkw.getRecoverableZooKeeper().create(ZKSplitLog.getEncodedNodeName(zkw, TRFT),
-      new SplitLogTask.Unassigned(MANAGER, this.mode).toByteArray(),
+      new SplitLogTask.Unassigned(MANAGER).toByteArray(),
         Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
     RegionServerServices mockedRS1 = getRegionServer(SVR1);
     RegionServerServices mockedRS2 = getRegionServer(SVR2);
@@ -330,7 +333,7 @@ public class TestSplitLogWorker {
 
       // this time create a task node after starting the splitLogWorker
       zkw.getRecoverableZooKeeper().create(PATH,
-        new SplitLogTask.Unassigned(MANAGER, this.mode).toByteArray(),
+        new SplitLogTask.Unassigned(MANAGER).toByteArray(),
         Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 
       waitForCounter(SplitLogCounters.tot_wkr_task_acquired, 0, 1, WAIT_TIME);
@@ -338,7 +341,7 @@ public class TestSplitLogWorker {
       byte [] bytes = ZKUtil.getData(zkw, PATH);
       SplitLogTask slt = SplitLogTask.parseFrom(bytes);
       assertTrue(slt.isOwned(SRV));
-      slt = new SplitLogTask.Owned(MANAGER, this.mode);
+      slt = new SplitLogTask.Owned(MANAGER);
       ZKUtil.setData(zkw, PATH, slt.toByteArray());
       waitForCounter(SplitLogCounters.tot_wkr_preempt_task, 0, 1, WAIT_TIME);
     } finally {
@@ -362,7 +365,7 @@ public class TestSplitLogWorker {
       waitForCounter(SplitLogCounters.tot_wkr_task_grabing, 0, 1, WAIT_TIME);
 
       SplitLogTask unassignedManager =
-        new SplitLogTask.Unassigned(MANAGER, this.mode);
+        new SplitLogTask.Unassigned(MANAGER);
       zkw.getRecoverableZooKeeper().create(PATH1, unassignedManager.toByteArray(),
         Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 
@@ -376,7 +379,7 @@ public class TestSplitLogWorker {
 
       // preempt the first task, have it owned by another worker
       final ServerName anotherWorker = ServerName.valueOf("another-worker,1,1");
-      SplitLogTask slt = new SplitLogTask.Owned(anotherWorker, this.mode);
+      SplitLogTask slt = new SplitLogTask.Owned(anotherWorker);
       ZKUtil.setData(zkw, PATH1, slt.toByteArray());
       waitForCounter(SplitLogCounters.tot_wkr_preempt_task, 0, 1, WAIT_TIME);
 
@@ -402,7 +405,7 @@ public class TestSplitLogWorker {
     Thread.sleep(100);
 
     String task = ZKSplitLog.getEncodedNodeName(zkw, "task");
-    SplitLogTask slt = new SplitLogTask.Unassigned(MANAGER, this.mode);
+    SplitLogTask slt = new SplitLogTask.Unassigned(MANAGER);
     zkw.getRecoverableZooKeeper().create(task,slt.toByteArray(), Ids.OPEN_ACL_UNSAFE,
       CreateMode.PERSISTENT);
 
@@ -434,7 +437,7 @@ public class TestSplitLogWorker {
       if (node.startsWith("RESCAN")) {
         String name = ZKSplitLog.getEncodedNodeName(zkw, node);
         String fn = ZKSplitLog.getFileName(name);
-        byte [] data = ZKUtil.getData(zkw, ZKUtil.joinZNode(zkw.znodePaths.splitLogZNode, fn));
+        byte [] data = ZKUtil.getData(zkw, ZNodePaths.joinZNode(zkw.znodePaths.splitLogZNode, fn));
         slt = SplitLogTask.parseFrom(data);
         assertTrue(slt.toString(), slt.isDone(SRV));
       }
@@ -454,7 +457,7 @@ public class TestSplitLogWorker {
     RegionServerServices mockedRS = getRegionServer(RS);
     for (int i = 0; i < maxTasks; i++) {
       zkw.getRecoverableZooKeeper().create(ZKSplitLog.getEncodedNodeName(zkw, TATAS + i),
-        new SplitLogTask.Unassigned(ServerName.valueOf("mgr,1,1"), this.mode).toByteArray(),
+        new SplitLogTask.Unassigned(ServerName.valueOf("mgr,1,1")).toByteArray(),
           Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
     }
 
@@ -490,14 +493,14 @@ public class TestSplitLogWorker {
     RegionServerServices mockedRS = getRegionServer(RS);
 
     // create two RS nodes
-    String rsPath = ZKUtil.joinZNode(zkw.znodePaths.rsZNode, RS.getServerName());
+    String rsPath = ZNodePaths.joinZNode(zkw.znodePaths.rsZNode, RS.getServerName());
     zkw.getRecoverableZooKeeper().create(rsPath, null, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-    rsPath = ZKUtil.joinZNode(zkw.znodePaths.rsZNode, RS2.getServerName());
+    rsPath = ZNodePaths.joinZNode(zkw.znodePaths.rsZNode, RS2.getServerName());
     zkw.getRecoverableZooKeeper().create(rsPath, null, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 
     for (int i = 0; i < maxTasks; i++) {
       zkw.getRecoverableZooKeeper().create(ZKSplitLog.getEncodedNodeName(zkw, TATAS + i),
-        new SplitLogTask.Unassigned(ServerName.valueOf("mgr,1,1"), this.mode).toByteArray(),
+        new SplitLogTask.Unassigned(ServerName.valueOf("mgr,1,1")).toByteArray(),
           Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
     }
 
@@ -521,8 +524,6 @@ public class TestSplitLogWorker {
 
   /**
    * Create a mocked region server service instance
-   * @param server
-   * @return
    */
   private RegionServerServices getRegionServer(ServerName name) {
 

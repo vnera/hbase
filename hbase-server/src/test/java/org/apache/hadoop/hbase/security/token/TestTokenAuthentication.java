@@ -39,6 +39,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.ChoreService;
 import org.apache.hadoop.hbase.ClusterId;
 import org.apache.hadoop.hbase.CoordinatedStateManager;
+import org.apache.hadoop.hbase.ExtendedCellBuilder;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.Server;
@@ -76,7 +77,7 @@ import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.util.Writables;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.hadoop.net.DNS;
 import org.apache.hadoop.security.authorize.PolicyProvider;
 import org.apache.hadoop.security.authorize.Service;
@@ -127,7 +128,7 @@ public class TestTokenAuthentication {
     private HBaseTestingUtility TEST_UTIL;
     private RpcServerInterface rpcServer;
     private InetSocketAddress isa;
-    private ZooKeeperWatcher zookeeper;
+    private ZKWatcher zookeeper;
     private Sleeper sleeper;
     private boolean started = false;
     private boolean aborted = false;
@@ -220,7 +221,7 @@ public class TestTokenAuthentication {
     }
 
     @Override
-    public ZooKeeperWatcher getZooKeeper() {
+    public ZKWatcher getZooKeeper() {
       return zookeeper;
     }
 
@@ -261,7 +262,7 @@ public class TestTokenAuthentication {
       // ZK configuration must _not_ have hbase.security.authentication or it will require SASL auth
       Configuration zkConf = new Configuration(conf);
       zkConf.set(User.HBASE_SECURITY_CONF_KEY, "simple");
-      this.zookeeper = new ZooKeeperWatcher(zkConf, TokenServer.class.getSimpleName(),
+      this.zookeeper = new ZKWatcher(zkConf, TokenServer.class.getSimpleName(),
           this, true);
       this.rpcServer.start();
 
@@ -277,12 +278,6 @@ public class TestTokenAuthentication {
         public OnlineRegions getOnlineRegions() {
           return null;
         }
-
-        @Override
-        public void startup() throws IOException {}
-
-        @Override
-        public void shutdown() {}
 
         @Override
         public ConcurrentMap<String, Object> getSharedData() { return null; }
@@ -327,6 +322,16 @@ public class TestTokenAuthentication {
 
         @Override
         public Connection getConnection() {
+          return null;
+        }
+
+        @Override
+        public Connection createConnection(Configuration conf) throws IOException {
+          return null;
+        }
+
+        @Override
+        public ExtendedCellBuilder getCellBuilder() {
           return null;
         }
       });
@@ -414,6 +419,11 @@ public class TestTokenAuthentication {
     @Override
     public ClusterConnection getClusterConnection() {
       // TODO Auto-generated method stub
+      return null;
+    }
+
+    @Override
+    public Connection createConnection(Configuration conf) throws IOException {
       return null;
     }
   }

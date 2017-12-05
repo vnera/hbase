@@ -37,7 +37,6 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.Tag;
-import org.apache.hadoop.hbase.TagUtil;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
@@ -52,7 +51,7 @@ import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.SecurityTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.zookeeper.MiniZooKeeperCluster;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.junit.Before;
 import org.junit.experimental.categories.Category;
 
@@ -77,7 +76,6 @@ public class TestVisibilityLabelReplicationWithExpAsString extends TestVisibilit
         + "\\\"" + "\u0027&\\\\" + "\")";
     // setup configuration
     conf = HBaseConfiguration.create();
-    conf.setBoolean(HConstants.DISTRIBUTED_LOG_REPLAY_KEY, false);
     conf.setInt("hfile.format.version", 3);
     conf.set(HConstants.ZOOKEEPER_ZNODE_PARENT, "/1");
     conf.setInt("replication.source.size.capacity", 10240);
@@ -110,7 +108,7 @@ public class TestVisibilityLabelReplicationWithExpAsString extends TestVisibilit
     TEST_UTIL = new HBaseTestingUtility(conf);
     TEST_UTIL.startMiniZKCluster();
     MiniZooKeeperCluster miniZK = TEST_UTIL.getZkCluster();
-    zkw1 = new ZooKeeperWatcher(conf, "cluster1", null, true);
+    zkw1 = new ZKWatcher(conf, "cluster1", null, true);
     admin = TEST_UTIL.getAdmin();
 
     // Base conf2 on conf1 so it gets the right zk cluster.
@@ -125,7 +123,7 @@ public class TestVisibilityLabelReplicationWithExpAsString extends TestVisibilit
     setVisibilityLabelServiceImpl(conf1, ExpAsStringVisibilityLabelServiceImpl.class);
     TEST_UTIL1 = new HBaseTestingUtility(conf1);
     TEST_UTIL1.setZkCluster(miniZK);
-    zkw2 = new ZooKeeperWatcher(conf1, "cluster2", null, true);
+    zkw2 = new ZKWatcher(conf1, "cluster2", null, true);
 
     TEST_UTIL.startMiniCluster(1);
     // Wait for the labels table to become available
@@ -182,7 +180,7 @@ public class TestVisibilityLabelReplicationWithExpAsString extends TestVisibilit
           boolean foundNonVisTag = false;
           for(Tag t : TestCoprocessorForTagsAtSink.tags) {
             if(t.getType() == NON_VIS_TAG_TYPE) {
-              assertEquals(TEMP, Bytes.toString(TagUtil.cloneValue(t)));
+              assertEquals(TEMP, Bytes.toString(Tag.cloneValue(t)));
               foundNonVisTag = true;
               break;
             }

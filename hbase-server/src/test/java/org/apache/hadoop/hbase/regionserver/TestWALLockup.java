@@ -41,6 +41,7 @@ import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.Durability;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.regionserver.wal.DamagedWALException;
@@ -56,7 +57,7 @@ import org.apache.hadoop.hbase.wal.WAL;
 import org.apache.hadoop.hbase.wal.WALKey;
 import org.apache.hadoop.hbase.wal.WALProvider.Writer;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -505,7 +506,7 @@ public class TestWALLockup {
     }
 
     @Override
-    public ZooKeeperWatcher getZooKeeper() {
+    public ZKWatcher getZooKeeper() {
       return null;
     }
 
@@ -569,9 +570,14 @@ public class TestWALLockup {
     public boolean isStopping() {
       return false;
     }
+
+    @Override
+    public Connection createConnection(Configuration conf) throws IOException {
+      return null;
+    }
   }
 
-  static class DummyWALActionsListener extends WALActionsListener.Base {
+  static class DummyWALActionsListener implements WALActionsListener {
 
     @Override
     public void visitLogEntryBeforeWrite(WALKey logKey, WALEdit logEdit)

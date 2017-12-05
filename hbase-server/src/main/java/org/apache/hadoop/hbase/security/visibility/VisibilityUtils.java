@@ -31,6 +31,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
@@ -39,11 +40,9 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ArrayBackedTag;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.TagType;
-import org.apache.hadoop.hbase.TagUtil;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.filter.Filter;
@@ -217,7 +216,7 @@ public class VisibilityUtils {
     while (tagsIterator.hasNext()) {
       Tag tag = tagsIterator.next();
       if (tag.getType() == TagType.VISIBILITY_EXP_SERIALIZATION_FORMAT_TAG_TYPE) {
-        serializationFormat = TagUtil.getValueAsByte(tag);
+        serializationFormat = Tag.getValueAsByte(tag);
       } else if (tag.getType() == VISIBILITY_TAG_TYPE) {
         tags.add(tag);
       }
@@ -244,7 +243,7 @@ public class VisibilityUtils {
     while (tagsIterator.hasNext()) {
       Tag tag = tagsIterator.next();
       if (tag.getType() == TagType.VISIBILITY_EXP_SERIALIZATION_FORMAT_TAG_TYPE) {
-        serializationFormat = TagUtil.getValueAsByte(tag);
+        serializationFormat = Tag.getValueAsByte(tag);
       } else if (tag.getType() == VISIBILITY_TAG_TYPE) {
         visTags.add(tag);
       } else {
@@ -284,7 +283,13 @@ public class VisibilityUtils {
    * @throws IOException When there is IOE in getting the system user (During non-RPC handling).
    */
   public static User getActiveUser() throws IOException {
-    User user = RpcServer.getRequestUser().orElse(User.getCurrent());
+    Optional<User> optionalUser = RpcServer.getRequestUser();
+    User user;
+    if (optionalUser.isPresent()) {
+      user = optionalUser.get();
+    } else {
+      user = User.getCurrent();
+    }
     if (LOG.isTraceEnabled()) {
       LOG.trace("Current active user name is " + user.getShortName());
     }

@@ -22,6 +22,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -38,12 +39,14 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -66,7 +69,7 @@ public class TestReplicationTrackerZKImpl {
   private static HBaseTestingUtility utility;
 
   // Each one of the below variables are reinitialized before every test case
-  private ZooKeeperWatcher zkw;
+  private ZKWatcher zkw;
   private ReplicationPeers rp;
   private ReplicationTracker rt;
   private AtomicInteger rsRemovedCount;
@@ -81,14 +84,14 @@ public class TestReplicationTrackerZKImpl {
     utility = new HBaseTestingUtility();
     utility.startMiniZKCluster();
     conf = utility.getConfiguration();
-    ZooKeeperWatcher zk = HBaseTestingUtility.getZooKeeperWatcher(utility);
+    ZKWatcher zk = HBaseTestingUtility.getZooKeeperWatcher(utility);
     ZKUtil.createWithParents(zk, zk.znodePaths.rsZNode);
   }
 
   @Before
   public void setUp() throws Exception {
     zkw = HBaseTestingUtility.getZooKeeperWatcher(utility);
-    String fakeRs1 = ZKUtil.joinZNode(zkw.znodePaths.rsZNode, "hostname1.example.org:1234");
+    String fakeRs1 = ZNodePaths.joinZNode(zkw.znodePaths.rsZNode, "hostname1.example.org:1234");
     try {
       ZKClusterId.setClusterId(zkw, new ClusterId());
       rp = ReplicationFactory.getReplicationPeers(zkw, conf, zkw);
@@ -117,31 +120,34 @@ public class TestReplicationTrackerZKImpl {
 
     // 1 region server
     ZKUtil.createWithParents(zkw,
-      ZKUtil.joinZNode(zkw.znodePaths.rsZNode, "hostname1.example.org:1234"));
+      ZNodePaths.joinZNode(zkw.znodePaths.rsZNode, "hostname1.example.org:1234"));
     assertEquals(1, rt.getListOfRegionServers().size());
 
     // 2 region servers
     ZKUtil.createWithParents(zkw,
-      ZKUtil.joinZNode(zkw.znodePaths.rsZNode, "hostname2.example.org:1234"));
+      ZNodePaths.joinZNode(zkw.znodePaths.rsZNode, "hostname2.example.org:1234"));
     assertEquals(2, rt.getListOfRegionServers().size());
 
     // 1 region server
-    ZKUtil.deleteNode(zkw, ZKUtil.joinZNode(zkw.znodePaths.rsZNode, "hostname2.example.org:1234"));
+    ZKUtil.deleteNode(zkw,
+      ZNodePaths.joinZNode(zkw.znodePaths.rsZNode, "hostname2.example.org:1234"));
     assertEquals(1, rt.getListOfRegionServers().size());
 
     // 0 region server
-    ZKUtil.deleteNode(zkw, ZKUtil.joinZNode(zkw.znodePaths.rsZNode, "hostname1.example.org:1234"));
+    ZKUtil.deleteNode(zkw,
+      ZNodePaths.joinZNode(zkw.znodePaths.rsZNode, "hostname1.example.org:1234"));
     assertEquals(0, rt.getListOfRegionServers().size());
   }
 
   @Test(timeout = 30000)
   public void testRegionServerRemovedEvent() throws Exception {
     ZKUtil.createAndWatch(zkw,
-      ZKUtil.joinZNode(zkw.znodePaths.rsZNode, "hostname2.example.org:1234"),
+      ZNodePaths.joinZNode(zkw.znodePaths.rsZNode, "hostname2.example.org:1234"),
       HConstants.EMPTY_BYTE_ARRAY);
     rt.registerListener(new DummyReplicationListener());
     // delete one
-    ZKUtil.deleteNode(zkw, ZKUtil.joinZNode(zkw.znodePaths.rsZNode, "hostname2.example.org:1234"));
+    ZKUtil.deleteNode(zkw,
+      ZNodePaths.joinZNode(zkw.znodePaths.rsZNode, "hostname2.example.org:1234"));
     // wait for event
     while (rsRemovedCount.get() < 1) {
       Thread.sleep(5);
@@ -189,7 +195,7 @@ public class TestReplicationTrackerZKImpl {
     int exists = 0;
     int hyphen = 0;
     rp.registerPeer("6", new ReplicationPeerConfig().setClusterKey(utility.getClusterKey()));
-    
+
     try{
       rp.registerPeer("6", new ReplicationPeerConfig().setClusterKey(utility.getClusterKey()));
     }catch(IllegalArgumentException e){
@@ -203,11 +209,11 @@ public class TestReplicationTrackerZKImpl {
     }
     assertEquals(1, exists);
     assertEquals(1, hyphen);
-    
+
     // clean up
     rp.unregisterPeer("6");
   }
-  
+
   private class DummyReplicationListener implements ReplicationListener {
 
     @Override
@@ -248,7 +254,7 @@ public class TestReplicationTrackerZKImpl {
     }
 
     @Override
-    public ZooKeeperWatcher getZooKeeper() {
+    public ZKWatcher getZooKeeper() {
       return zkw;
     }
 
@@ -312,6 +318,11 @@ public class TestReplicationTrackerZKImpl {
     @Override
     public boolean isStopping() {
       return false;
+    }
+
+    @Override
+    public Connection createConnection(Configuration conf) throws IOException {
+      return null;
     }
   }
 }

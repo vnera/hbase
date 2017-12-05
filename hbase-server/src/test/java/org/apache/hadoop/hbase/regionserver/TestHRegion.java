@@ -1,4 +1,4 @@
-/**
+/*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -42,12 +42,12 @@ import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.math.BigDecimal;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -113,6 +113,7 @@ import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.exceptions.FailedSanityCheckException;
+import org.apache.hadoop.hbase.filter.BigDecimalComparator;
 import org.apache.hadoop.hbase.filter.BinaryComparator;
 import org.apache.hadoop.hbase.filter.ColumnCountGetFilter;
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
@@ -129,10 +130,10 @@ import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.monitoring.MonitoredRPCHandler;
 import org.apache.hadoop.hbase.monitoring.MonitoredTask;
 import org.apache.hadoop.hbase.monitoring.TaskMonitor;
+import org.apache.hadoop.hbase.regionserver.HRegion.MutationBatchOperation;
 import org.apache.hadoop.hbase.regionserver.HRegion.RegionScannerImpl;
 import org.apache.hadoop.hbase.regionserver.Region.RowLock;
 import org.apache.hadoop.hbase.regionserver.TestHStore.FaultyFileSystem;
-import org.apache.hadoop.hbase.regionserver.handler.FinishRegionRecoveringHandler;
 import org.apache.hadoop.hbase.regionserver.wal.FSHLog;
 import org.apache.hadoop.hbase.regionserver.wal.MetricsWAL;
 import org.apache.hadoop.hbase.regionserver.wal.MetricsWALSource;
@@ -165,6 +166,7 @@ import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.junit.rules.ExpectedException;
 import org.junit.rules.TestName;
 import org.junit.rules.TestRule;
 import org.mockito.ArgumentCaptor;
@@ -174,7 +176,6 @@ import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
 import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Maps;
 import org.apache.hadoop.hbase.shaded.com.google.protobuf.ByteString;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.CompactionDescriptor;
@@ -201,6 +202,7 @@ public class TestHRegion {
   @ClassRule
   public static final TestRule timeout =
       CategoryBasedTimeout.forClass(TestHRegion.class);
+  @Rule public final ExpectedException thrown = ExpectedException.none();
 
   private static final String COLUMN_FAMILY = "MyCF";
   private static final byte [] COLUMN_FAMILY_BYTES = Bytes.toBytes(COLUMN_FAMILY);
@@ -216,9 +218,11 @@ public class TestHRegion {
   // Test names
   protected TableName tableName;
   protected String method;
+  protected final byte[] qual = Bytes.toBytes("qual");
   protected final byte[] qual1 = Bytes.toBytes("qual1");
   protected final byte[] qual2 = Bytes.toBytes("qual2");
   protected final byte[] qual3 = Bytes.toBytes("qual3");
+  protected final byte[] value = Bytes.toBytes("value");
   protected final byte[] value1 = Bytes.toBytes("value1");
   protected final byte[] value2 = Bytes.toBytes("value2");
   protected final byte[] row = Bytes.toBytes("rowA");
@@ -372,52 +376,6 @@ public class TestHRegion {
     return (new WALFactory(walConf,
         Collections.<WALActionsListener>singletonList(new MetricsWAL()), callingMethod))
         .getWAL(tableName.toBytes(), tableName.getNamespace());
-  }
-
-  /**
-   * Test for HBASE-14229: Flushing canceled by coprocessor still leads to memstoreSize set down
-   */
-  @Test
-  public void testMemstoreSizeWithFlushCanceling() throws IOException {
-    FileSystem fs = FileSystem.get(CONF);
-    Path rootDir = new Path(dir + "testMemstoreSizeWithFlushCanceling");
-    FSHLog hLog = new FSHLog(fs, rootDir, "testMemstoreSizeWithFlushCanceling", CONF);
-    HRegion region = initHRegion(tableName, null, null, false, Durability.SYNC_WAL, hLog,
-        COLUMN_FAMILY_BYTES);
-    HStore store = region.getStore(COLUMN_FAMILY_BYTES);
-    assertEquals(0, region.getMemStoreSize());
-
-    // Put some value and make sure flush could be completed normally
-    byte [] value = Bytes.toBytes(method);
-    Put put = new Put(value);
-    put.addColumn(COLUMN_FAMILY_BYTES, Bytes.toBytes("abc"), value);
-    region.put(put);
-    long onePutSize = region.getMemStoreSize();
-    assertTrue(onePutSize > 0);
-    region.flush(true);
-    assertEquals("memstoreSize should be zero", 0, region.getMemStoreSize());
-    assertEquals("flushable size should be zero", 0, store.getFlushableSize().getDataSize());
-
-    // save normalCPHost and replaced by mockedCPHost, which will cancel flush requests
-    RegionCoprocessorHost normalCPHost = region.getCoprocessorHost();
-    RegionCoprocessorHost mockedCPHost = Mockito.mock(RegionCoprocessorHost.class);
-    when(mockedCPHost.preFlush(Mockito.isA(HStore.class), Mockito.isA(InternalScanner.class),
-      Mockito.isA(FlushLifeCycleTracker.class))).thenReturn(null);
-    when(mockedCPHost.preFlushScannerOpen(Mockito.isA(HStore.class),
-      Mockito.isA(FlushLifeCycleTracker.class))).thenReturn(store.getScanInfo());
-    region.setCoprocessorHost(mockedCPHost);
-    region.put(put);
-    region.flush(true);
-    assertEquals("memstoreSize should NOT be zero", onePutSize, region.getMemStoreSize());
-    assertEquals("flushable size should NOT be zero", onePutSize,
-        store.getFlushableSize().getDataSize());
-
-    // set normalCPHost and flush again, the snapshot will be flushed
-    region.setCoprocessorHost(normalCPHost);
-    region.flush(true);
-    assertEquals("memstoreSize should be zero", 0, region.getMemStoreSize());
-    assertEquals("flushable size should be zero", 0, store.getFlushableSize().getDataSize());
-    HBaseTestingUtility.closeRegionAndWAL(region);
   }
 
   @Test
@@ -1523,21 +1481,10 @@ public class TestHRegion {
 
   @Test
   public void testBatchPut_whileNoRowLocksHeld() throws IOException {
-    byte[] cf = Bytes.toBytes(COLUMN_FAMILY);
-    byte[] qual = Bytes.toBytes("qual");
-    byte[] val = Bytes.toBytes("val");
-    this.region = initHRegion(tableName, method, CONF, cf);
+    final Put[] puts = new Put[10];
     MetricsWALSource source = CompatibilitySingletonFactory.getInstance(MetricsWALSource.class);
     try {
-      long syncs = metricsAssertHelper.getCounter("syncTimeNumOps", source);
-      metricsAssertHelper.assertCounter("syncTimeNumOps", syncs, source);
-
-      LOG.info("First a batch put with all valid puts");
-      final Put[] puts = new Put[10];
-      for (int i = 0; i < 10; i++) {
-        puts[i] = new Put(Bytes.toBytes("row_" + i));
-        puts[i].addColumn(cf, qual, val);
-      }
+      long syncs = prepareRegionForBachPut(puts, source, false);
 
       OperationStatus[] codes = this.region.batchMutate(puts);
       assertEquals(10, codes.length);
@@ -1547,7 +1494,7 @@ public class TestHRegion {
       metricsAssertHelper.assertCounter("syncTimeNumOps", syncs + 1, source);
 
       LOG.info("Next a batch put with one invalid family");
-      puts[5].addColumn(Bytes.toBytes("BAD_CF"), qual, val);
+      puts[5].addColumn(Bytes.toBytes("BAD_CF"), qual, value);
       codes = this.region.batchMutate(puts);
       assertEquals(10, codes.length);
       for (int i = 0; i < 10; i++) {
@@ -1564,28 +1511,18 @@ public class TestHRegion {
 
   @Test
   public void testBatchPut_whileMultipleRowLocksHeld() throws Exception {
-    byte[] cf = Bytes.toBytes(COLUMN_FAMILY);
-    byte[] qual = Bytes.toBytes("qual");
-    byte[] val = Bytes.toBytes("val");
-    this.region = initHRegion(tableName, method, CONF, cf);
+    final Put[] puts = new Put[10];
     MetricsWALSource source = CompatibilitySingletonFactory.getInstance(MetricsWALSource.class);
     try {
-      long syncs = metricsAssertHelper.getCounter("syncTimeNumOps", source);
-      metricsAssertHelper.assertCounter("syncTimeNumOps", syncs, source);
+      long syncs = prepareRegionForBachPut(puts, source, false);
 
-      final Put[] puts = new Put[10];
-      for (int i = 0; i < 10; i++) {
-        puts[i] = new Put(Bytes.toBytes("row_" + i));
-        puts[i].addColumn(cf, qual, val);
-      }
-      puts[5].addColumn(Bytes.toBytes("BAD_CF"), qual, val);
+      puts[5].addColumn(Bytes.toBytes("BAD_CF"), qual, value);
 
       LOG.info("batchPut will have to break into four batches to avoid row locks");
       RowLock rowLock1 = region.getRowLock(Bytes.toBytes("row_2"));
       RowLock rowLock2 = region.getRowLock(Bytes.toBytes("row_1"));
       RowLock rowLock3 = region.getRowLock(Bytes.toBytes("row_3"));
       RowLock rowLock4 = region.getRowLock(Bytes.toBytes("row_3"), true);
-
 
       MultithreadedTestUtil.TestContext ctx = new MultithreadedTestUtil.TestContext(CONF);
       final AtomicReference<OperationStatus[]> retFromThread = new AtomicReference<>();
@@ -1659,31 +1596,89 @@ public class TestHRegion {
       Thread.sleep(100);
       if (System.currentTimeMillis() - startWait > 10000) {
         fail(String.format("Timed out waiting for '%s' >= '%s', currentCount=%s", metricName,
-          expectedCount, currentCount));
+            expectedCount, currentCount));
       }
     }
   }
 
   @Test
-  public void testBatchPutWithTsSlop() throws Exception {
-    byte[] cf = Bytes.toBytes(COLUMN_FAMILY);
-    byte[] qual = Bytes.toBytes("qual");
-    byte[] val = Bytes.toBytes("val");
+  public void testAtomicBatchPut() throws IOException {
+    final Put[] puts = new Put[10];
+    MetricsWALSource source = CompatibilitySingletonFactory.getInstance(MetricsWALSource.class);
+    try {
+      long syncs = prepareRegionForBachPut(puts, source, false);
 
+      // 1. Straight forward case, should succeed
+      MutationBatchOperation batchOp = new MutationBatchOperation(region, puts, true,
+          HConstants.NO_NONCE, HConstants.NO_NONCE);
+      OperationStatus[] codes = this.region.batchMutate(batchOp);
+      assertEquals(10, codes.length);
+      for (int i = 0; i < 10; i++) {
+        assertEquals(OperationStatusCode.SUCCESS, codes[i].getOperationStatusCode());
+      }
+      metricsAssertHelper.assertCounter("syncTimeNumOps", syncs + 1, source);
+
+      // 2. Failed to get lock
+      RowLock lock = region.getRowLock(Bytes.toBytes("row_" + 3));
+      // Method {@link HRegion#getRowLock(byte[])} is reentrant. As 'row_3' is locked in this
+      // thread, need to run {@link HRegion#batchMutate(HRegion.BatchOperation)} in different thread
+      MultithreadedTestUtil.TestContext ctx = new MultithreadedTestUtil.TestContext(CONF);
+      final AtomicReference<IOException> retFromThread = new AtomicReference<>();
+      final CountDownLatch finishedPuts = new CountDownLatch(1);
+      final MutationBatchOperation finalBatchOp = new MutationBatchOperation(region, puts, true,
+          HConstants
+          .NO_NONCE,
+          HConstants.NO_NONCE);
+      TestThread putter = new TestThread(ctx) {
+        @Override
+        public void doWork() throws IOException {
+          try {
+            region.batchMutate(finalBatchOp);
+          } catch (IOException ioe) {
+            LOG.error("test failed!", ioe);
+            retFromThread.set(ioe);
+          }
+          finishedPuts.countDown();
+        }
+      };
+      LOG.info("...starting put thread while holding locks");
+      ctx.addThread(putter);
+      ctx.startThreads();
+      LOG.info("...waiting for batch puts while holding locks");
+      try {
+        finishedPuts.await();
+      } catch (InterruptedException e) {
+        LOG.error("Interrupted!", e);
+      } finally {
+        if (lock != null) {
+          lock.release();
+        }
+      }
+      assertNotNull(retFromThread.get());
+      metricsAssertHelper.assertCounter("syncTimeNumOps", syncs + 1, source);
+
+      // 3. Exception thrown in validation
+      LOG.info("Next a batch put with one invalid family");
+      puts[5].addColumn(Bytes.toBytes("BAD_CF"), qual, value);
+      batchOp = new MutationBatchOperation(region, puts, true, HConstants.NO_NONCE,
+          HConstants.NO_NONCE);
+      thrown.expect(NoSuchColumnFamilyException.class);
+      this.region.batchMutate(batchOp);
+    } finally {
+      HBaseTestingUtility.closeRegionAndWAL(this.region);
+      this.region = null;
+    }
+  }
+
+  @Test
+  public void testBatchPutWithTsSlop() throws Exception {
     // add data with a timestamp that is too recent for range. Ensure assert
     CONF.setInt("hbase.hregion.keyvalue.timestamp.slop.millisecs", 1000);
-    this.region = initHRegion(tableName, method, CONF, cf);
+    final Put[] puts = new Put[10];
+    MetricsWALSource source = CompatibilitySingletonFactory.getInstance(MetricsWALSource.class);
 
     try {
-      MetricsWALSource source = CompatibilitySingletonFactory.getInstance(MetricsWALSource.class);
-      long syncs = metricsAssertHelper.getCounter("syncTimeNumOps", source);
-      metricsAssertHelper.assertCounter("syncTimeNumOps", syncs, source);
-
-      final Put[] puts = new Put[10];
-      for (int i = 0; i < 10; i++) {
-        puts[i] = new Put(Bytes.toBytes("row_" + i), Long.MAX_VALUE - 100);
-        puts[i].addColumn(cf, qual, val);
-      }
+      long syncs = prepareRegionForBachPut(puts, source, true);
 
       OperationStatus[] codes = this.region.batchMutate(puts);
       assertEquals(10, codes.length);
@@ -1691,12 +1686,29 @@ public class TestHRegion {
         assertEquals(OperationStatusCode.SANITY_CHECK_FAILURE, codes[i].getOperationStatusCode());
       }
       metricsAssertHelper.assertCounter("syncTimeNumOps", syncs, source);
-
     } finally {
       HBaseTestingUtility.closeRegionAndWAL(this.region);
       this.region = null;
     }
+  }
 
+  /**
+   * @return syncs initial syncTimeNumOps
+   */
+  private long prepareRegionForBachPut(final Put[] puts, final MetricsWALSource source,
+      boolean slop) throws IOException {
+    this.region = initHRegion(tableName, method, CONF, COLUMN_FAMILY_BYTES);
+
+    LOG.info("First a batch put with all valid puts");
+    for (int i = 0; i < puts.length; i++) {
+      puts[i] = slop ? new Put(Bytes.toBytes("row_" + i), Long.MAX_VALUE - 100) :
+          new Put(Bytes.toBytes("row_" + i));
+      puts[i].addColumn(COLUMN_FAMILY_BYTES, qual, value);
+    }
+
+    long syncs = metricsAssertHelper.getCounter("syncTimeNumOps", source);
+    metricsAssertHelper.assertCounter("syncTimeNumOps", syncs, source);
+    return syncs;
   }
 
   // ////////////////////////////////////////////////////////////////////////////
@@ -1783,6 +1795,8 @@ public class TestHRegion {
     byte[] qf1 = Bytes.toBytes("qualifier");
     byte[] val1 = Bytes.toBytes("value1");
     byte[] val2 = Bytes.toBytes("value2");
+    BigDecimal bd1 = new BigDecimal(Double.MAX_VALUE);
+    BigDecimal bd2 = new BigDecimal(Double.MIN_VALUE);
 
     // Setting up region
     this.region = initHRegion(tableName, method, CONF, fam1);
@@ -1803,6 +1817,25 @@ public class TestHRegion {
       res = region.checkAndMutate(row1, fam1, qf1, CompareOperator.EQUAL, new BinaryComparator(val2),
           put, true);
       assertEquals(false, res);
+
+      // Putting data in key
+      put = new Put(row1);
+      put.addColumn(fam1, qf1, Bytes.toBytes(bd1));
+      region.put(put);
+
+      // checkAndPut with wrong value
+      res =
+          region.checkAndMutate(row1, fam1, qf1, CompareOperator.EQUAL, new BigDecimalComparator(
+              bd2), put, true);
+      assertEquals(false, res);
+
+      // checkAndDelete with wrong value
+      delete = new Delete(row1);
+      delete.addFamily(fam1);
+      res =
+          region.checkAndMutate(row1, fam1, qf1, CompareOperator.EQUAL, new BigDecimalComparator(
+              bd2), put, true);
+      assertEquals(false, res);
     } finally {
       HBaseTestingUtility.closeRegionAndWAL(this.region);
       this.region = null;
@@ -1815,6 +1848,7 @@ public class TestHRegion {
     byte[] fam1 = Bytes.toBytes("fam1");
     byte[] qf1 = Bytes.toBytes("qualifier");
     byte[] val1 = Bytes.toBytes("value1");
+    BigDecimal bd1 = new BigDecimal(Double.MIN_VALUE);
 
     // Setting up region
     this.region = initHRegion(tableName, method, CONF, fam1);
@@ -1834,6 +1868,25 @@ public class TestHRegion {
       delete.addColumn(fam1, qf1);
       res = region.checkAndMutate(row1, fam1, qf1, CompareOperator.EQUAL, new BinaryComparator(val1),
           delete, true);
+      assertEquals(true, res);
+
+      // Putting data in key
+      put = new Put(row1);
+      put.addColumn(fam1, qf1, Bytes.toBytes(bd1));
+      region.put(put);
+
+      // checkAndPut with correct value
+      res =
+          region.checkAndMutate(row1, fam1, qf1, CompareOperator.EQUAL, new BigDecimalComparator(
+              bd1), put, true);
+      assertEquals(true, res);
+
+      // checkAndDelete with correct value
+      delete = new Delete(row1);
+      delete.addColumn(fam1, qf1);
+      res =
+          region.checkAndMutate(row1, fam1, qf1, CompareOperator.EQUAL, new BigDecimalComparator(
+              bd1), delete, true);
       assertEquals(true, res);
     } finally {
       HBaseTestingUtility.closeRegionAndWAL(this.region);
@@ -5856,93 +5909,6 @@ public class TestHRegion {
     for (HStoreFile sf : storefiles) {
       assertFalse("Tags should not be present "
           ,sf.getReader().getHFileReader().getFileContext().isIncludesTags());
-    }
-  }
-
-  @Test
-  public void testOpenRegionWrittenToWALForLogReplay() throws Exception {
-    // similar to the above test but with distributed log replay
-    final ServerName serverName = ServerName.valueOf(name.getMethodName(), 100, 42);
-    final RegionServerServices rss = spy(TEST_UTIL.createMockRegionServerService(serverName));
-
-    HTableDescriptor htd = new HTableDescriptor(TableName.valueOf(name.getMethodName()));
-    htd.addFamily(new HColumnDescriptor(fam1));
-    htd.addFamily(new HColumnDescriptor(fam2));
-
-    HRegionInfo hri = new HRegionInfo(htd.getTableName(),
-      HConstants.EMPTY_BYTE_ARRAY, HConstants.EMPTY_BYTE_ARRAY);
-
-    // open the region w/o rss and wal and flush some files
-    HRegion region =
-         HBaseTestingUtility.createRegionAndWAL(hri, TEST_UTIL.getDataTestDir(), TEST_UTIL
-             .getConfiguration(), htd);
-    assertNotNull(region);
-
-    // create a file in fam1 for the region before opening in OpenRegionHandler
-    region.put(new Put(Bytes.toBytes("a")).addColumn(fam1, fam1, fam1));
-    region.flush(true);
-    HBaseTestingUtility.closeRegionAndWAL(region);
-
-    ArgumentCaptor<WALEdit> editCaptor = ArgumentCaptor.forClass(WALEdit.class);
-
-    // capture append() calls
-    WAL wal = mockWAL();
-    when(rss.getWAL((HRegionInfo) any())).thenReturn(wal);
-
-    // add the region to recovering regions
-    HashMap<String, HRegion> recoveringRegions = Maps.newHashMap();
-    recoveringRegions.put(region.getRegionInfo().getEncodedName(), null);
-    when(rss.getRecoveringRegions()).thenReturn(recoveringRegions);
-
-    try {
-      Configuration conf = new Configuration(TEST_UTIL.getConfiguration());
-      conf.set(HConstants.REGION_IMPL, HRegionWithSeqId.class.getName());
-      region = HRegion.openHRegion(hri, htd, rss.getWAL(hri),
-        conf, rss, null);
-
-      // verify that we have not appended region open event to WAL because this region is still
-      // recovering
-      verify(wal, times(0)).append((HRegionInfo)any(), (WALKey)any()
-        , editCaptor.capture(), anyBoolean());
-
-      // not put the region out of recovering state
-      new FinishRegionRecoveringHandler(rss, region.getRegionInfo().getEncodedName(), "/foo")
-        .prepare().process();
-
-      // now we should have put the entry
-      verify(wal, times(1)).append((HRegionInfo)any(), (WALKey)any()
-        , editCaptor.capture(), anyBoolean());
-
-      WALEdit edit = editCaptor.getValue();
-      assertNotNull(edit);
-      assertNotNull(edit.getCells());
-      assertEquals(1, edit.getCells().size());
-      RegionEventDescriptor desc = WALEdit.getRegionEventDescriptor(edit.getCells().get(0));
-      assertNotNull(desc);
-
-      LOG.info("RegionEventDescriptor from WAL: " + desc);
-
-      assertEquals(RegionEventDescriptor.EventType.REGION_OPEN, desc.getEventType());
-      assertTrue(Bytes.equals(desc.getTableName().toByteArray(), htd.getTableName().toBytes()));
-      assertTrue(Bytes.equals(desc.getEncodedRegionName().toByteArray(),
-        hri.getEncodedNameAsBytes()));
-      assertTrue(desc.getLogSequenceNumber() > 0);
-      assertEquals(serverName, ProtobufUtil.toServerName(desc.getServer()));
-      assertEquals(2, desc.getStoresCount());
-
-      StoreDescriptor store = desc.getStores(0);
-      assertTrue(Bytes.equals(store.getFamilyName().toByteArray(), fam1));
-      assertEquals(store.getStoreHomeDir(), Bytes.toString(fam1));
-      assertEquals(1, store.getStoreFileCount()); // 1store file
-      assertFalse(store.getStoreFile(0).contains("/")); // ensure path is relative
-
-      store = desc.getStores(1);
-      assertTrue(Bytes.equals(store.getFamilyName().toByteArray(), fam2));
-      assertEquals(store.getStoreHomeDir(), Bytes.toString(fam2));
-      assertEquals(0, store.getStoreFileCount()); // no store files
-
-    } finally {
-      HBaseTestingUtility.closeRegionAndWAL(region);
     }
   }
 

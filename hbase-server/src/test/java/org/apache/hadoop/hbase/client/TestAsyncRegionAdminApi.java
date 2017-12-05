@@ -20,6 +20,7 @@ package org.apache.hadoop.hbase.client;
 import static org.apache.hadoop.hbase.TableName.META_TABLE_NAME;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -47,6 +48,7 @@ import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.JVMClusterUtil;
 import org.apache.hadoop.hbase.util.Threads;
 import org.junit.Assert;
@@ -69,12 +71,12 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
     TEST_UTIL.createMultiRegionTable(tableName, HConstants.CATALOG_FAMILY);
     AsyncTableRegionLocator locator = ASYNC_CONN.getRegionLocator(tableName);
     HRegionLocation regionLocation = locator.getRegionLocation(Bytes.toBytes("mmm")).get();
-    RegionInfo region = regionLocation.getRegionInfo();
-    byte[] regionName = regionLocation.getRegionInfo().getRegionName();
+    RegionInfo region = regionLocation.getRegion();
+    byte[] regionName = regionLocation.getRegion().getRegionName();
     HRegionLocation location = rawAdmin.getRegionLocation(regionName).get();
-    assertTrue(Bytes.equals(regionName, location.getRegionInfo().getRegionName()));
+    assertTrue(Bytes.equals(regionName, location.getRegion().getRegionName()));
     location = rawAdmin.getRegionLocation(region.getEncodedNameAsBytes()).get();
-    assertTrue(Bytes.equals(regionName, location.getRegionInfo().getRegionName()));
+    assertTrue(Bytes.equals(regionName, location.getRegion().getRegionName()));
   }
 
   @Test
@@ -138,34 +140,6 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
     }
   }
 
-  @Ignore @Test
-  // Turning off this tests in AMv2. Doesn't make sense.Offlining means something
-  // different now.
-  // You can't 'offline' a region unless you know what you are doing
-  // Will cause the Master to tell the regionserver to shut itself down because
-  // regionserver is reporting the state as OPEN.
-  public void testOfflineRegion() throws Exception {
-    RegionInfo hri = createTableAndGetOneRegion(tableName);
-
-    RegionStates regionStates =
-        TEST_UTIL.getHBaseCluster().getMaster().getAssignmentManager().getRegionStates();
-    admin.offline(hri.getRegionName()).get();
-
-    long timeoutTime = System.currentTimeMillis() + 3000;
-    while (true) {
-      if (regionStates.getRegionByStateOfTable(tableName).get(RegionState.State.OFFLINE)
-          .stream().anyMatch(r -> RegionInfo.COMPARATOR.compare(r, hri) == 0)) break;
-      long now = System.currentTimeMillis();
-      if (now > timeoutTime) {
-        fail("Failed to offline the region in time");
-        break;
-      }
-      Thread.sleep(10);
-    }
-    RegionState regionState = regionStates.getRegionState(hri);
-    assertTrue(regionState.isOffline());
-  }
-
   @Test
   public void testGetRegionByStateOfTable() throws Exception {
     RegionInfo hri = createTableAndGetOneRegion(tableName);
@@ -180,7 +154,7 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
 
   @Test
   public void testMoveRegion() throws Exception {
-    admin.setBalancerOn(false).join();
+    admin.balancerSwitch(false).join();
 
     RegionInfo hri = createTableAndGetOneRegion(tableName);
     RawAsyncHBaseAdmin rawAdmin = (RawAsyncHBaseAdmin) ASYNC_CONN.getAdmin();
@@ -214,7 +188,7 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
       }
       Thread.sleep(100);
     }
-    admin.setBalancerOn(true).join();
+    admin.balancerSwitch(true).join();
   }
 
   @Test
@@ -230,7 +204,7 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
           rs -> {
             ServerName serverName = rs.getServerName();
             try {
-              Assert.assertEquals(admin.getOnlineRegions(serverName).get().size(), rs
+              Assert.assertEquals(admin.getRegions(serverName).get().size(), rs
                   .getRegions().size());
             } catch (Exception e) {
               fail("admin.getOnlineRegions() method throws a exception: " + e.getMessage());
@@ -252,7 +226,7 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
             .filter(rs -> rs.getServerName().equals(serverName)).findFirst().get();
 
     // write a put into the specific region
-    ASYNC_CONN.getRawTable(tableName)
+    ASYNC_CONN.getTable(tableName)
         .put(new Put(hri.getStartKey()).addColumn(FAMILY, FAMILY_0, Bytes.toBytes("value-1")))
         .join();
     Assert.assertTrue(regionServer.getOnlineRegion(hri.getRegionName()).getMemStoreSize() > 0);
@@ -268,7 +242,7 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
     Assert.assertEquals(regionServer.getOnlineRegion(hri.getRegionName()).getMemStoreSize(), 0);
 
     // write another put into the specific region
-    ASYNC_CONN.getRawTable(tableName)
+    ASYNC_CONN.getTable(tableName)
         .put(new Put(hri.getStartKey()).addColumn(FAMILY, FAMILY_0, Bytes.toBytes("value-2")))
         .join();
     Assert.assertTrue(regionServer.getOnlineRegion(hri.getRegionName()).getMemStoreSize() > 0);
@@ -288,24 +262,24 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
     final int rows = 10000;
     loadData(tableName, families, rows);
 
-    RawAsyncTable metaTable = ASYNC_CONN.getRawTable(META_TABLE_NAME);
+    AsyncTable<AdvancedScanResultConsumer> metaTable = ASYNC_CONN.getTable(META_TABLE_NAME);
     List<HRegionLocation> regionLocations =
         AsyncMetaTableAccessor.getTableHRegionLocations(metaTable, Optional.of(tableName)).get();
     int originalCount = regionLocations.size();
 
     initSplitMergeSwitch();
-    assertTrue(admin.setSplitOn(false).get());
+    assertTrue(admin.splitSwitch(false).get());
     try {
       admin.split(tableName, Bytes.toBytes(rows / 2)).join();
     } catch (Exception e){
       //Expected
     }
-    int count = admin.getTableRegions(tableName).get().size();
+    int count = admin.getRegions(tableName).get().size();
     assertTrue(originalCount == count);
 
-    assertFalse(admin.setSplitOn(true).get());
+    assertFalse(admin.splitSwitch(true).get());
     admin.split(tableName).join();
-    while ((count = admin.getTableRegions(tableName).get().size()) == originalCount) {
+    while ((count = admin.getRegions(tableName).get().size()) == originalCount) {
       Threads.sleep(100);
     }
     assertTrue(originalCount < count);
@@ -319,7 +293,7 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
     byte[][] families = { FAMILY };
     loadData(tableName, families, 1000);
 
-    RawAsyncTable metaTable = ASYNC_CONN.getRawTable(META_TABLE_NAME);
+    AsyncTable<AdvancedScanResultConsumer> metaTable = ASYNC_CONN.getTable(META_TABLE_NAME);
     List<HRegionLocation> regionLocations =
         AsyncMetaTableAccessor.getTableHRegionLocations(metaTable, Optional.of(tableName)).get();
     int originalCount = regionLocations.size();
@@ -327,36 +301,36 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
     initSplitMergeSwitch();
     admin.split(tableName).join();
     int postSplitCount = originalCount;
-    while ((postSplitCount = admin.getTableRegions(tableName).get().size()) == originalCount) {
+    while ((postSplitCount = admin.getRegions(tableName).get().size()) == originalCount) {
       Threads.sleep(100);
     }
     assertTrue("originalCount=" + originalCount + ", postSplitCount=" + postSplitCount,
       originalCount != postSplitCount);
 
     // Merge switch is off so merge should NOT succeed.
-    assertTrue(admin.setMergeOn(false).get());
-    List<RegionInfo> regions = admin.getTableRegions(tableName).get();
+    assertTrue(admin.mergeSwitch(false).get());
+    List<RegionInfo> regions = admin.getRegions(tableName).get();
     assertTrue(regions.size() > 1);
     admin.mergeRegions(regions.get(0).getRegionName(), regions.get(1).getRegionName(), true).join();
-    int count = admin.getTableRegions(tableName).get().size();
+    int count = admin.getRegions(tableName).get().size();
     assertTrue("postSplitCount=" + postSplitCount + ", count=" + count, postSplitCount == count);
 
     // Merge switch is on so merge should succeed.
-    assertFalse(admin.setMergeOn(true).get());
+    assertFalse(admin.mergeSwitch(true).get());
     admin.mergeRegions(regions.get(0).getRegionName(), regions.get(1).getRegionName(), true).join();
-    count = admin.getTableRegions(tableName).get().size();
+    count = admin.getRegions(tableName).get().size();
     assertTrue((postSplitCount / 2) == count);
   }
 
   private void initSplitMergeSwitch() throws Exception {
-    if (!admin.isSplitOn().get()) {
-      admin.setSplitOn(true).get();
+    if (!admin.isSplitEnabled().get()) {
+      admin.splitSwitch(true).get();
     }
-    if (!admin.isMergeOn().get()) {
-      admin.setMergeOn(true).get();
+    if (!admin.isMergeEnabled().get()) {
+      admin.mergeSwitch(true).get();
     }
-    assertTrue(admin.isSplitOn().get());
-    assertTrue(admin.isMergeOn().get());
+    assertTrue(admin.isSplitEnabled().get());
+    assertTrue(admin.isMergeEnabled().get());
   }
 
   @Test
@@ -364,7 +338,7 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
     byte[][] splitRows = new byte[][] { Bytes.toBytes("3"), Bytes.toBytes("6") };
     createTableWithDefaultConf(tableName, splitRows);
 
-    RawAsyncTable metaTable = ASYNC_CONN.getRawTable(META_TABLE_NAME);
+    AsyncTable<AdvancedScanResultConsumer> metaTable = ASYNC_CONN.getTable(META_TABLE_NAME);
     List<HRegionLocation> regionLocations =
         AsyncMetaTableAccessor.getTableHRegionLocations(metaTable, Optional.of(tableName)).get();
     RegionInfo regionA;
@@ -372,16 +346,16 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
 
     // merge with full name
     assertEquals(3, regionLocations.size());
-    regionA = regionLocations.get(0).getRegionInfo();
-    regionB = regionLocations.get(1).getRegionInfo();
+    regionA = regionLocations.get(0).getRegion();
+    regionB = regionLocations.get(1).getRegion();
     admin.mergeRegions(regionA.getRegionName(), regionB.getRegionName(), false).get();
 
     regionLocations =
         AsyncMetaTableAccessor.getTableHRegionLocations(metaTable, Optional.of(tableName)).get();
     assertEquals(2, regionLocations.size());
     // merge with encoded name
-    regionA = regionLocations.get(0).getRegionInfo();
-    regionB = regionLocations.get(1).getRegionInfo();
+    regionA = regionLocations.get(0).getRegion();
+    regionB = regionLocations.get(1).getRegion();
     admin.mergeRegions(regionA.getRegionName(), regionB.getRegionName(), false).get();
 
     regionLocations =
@@ -404,12 +378,12 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
     // create table
     createTableWithDefaultConf(tableName);
 
-    RawAsyncTable metaTable = ASYNC_CONN.getRawTable(META_TABLE_NAME);
+    AsyncTable<AdvancedScanResultConsumer> metaTable = ASYNC_CONN.getTable(META_TABLE_NAME);
     List<HRegionLocation> regionLocations =
         AsyncMetaTableAccessor.getTableHRegionLocations(metaTable, Optional.of(tableName)).get();
     assertEquals(1, regionLocations.size());
 
-    RawAsyncTable table = ASYNC_CONN.getRawTable(tableName);
+    AsyncTable<?> table = ASYNC_CONN.getTable(tableName);
     List<Put> puts = new ArrayList<>();
     for (int i = 0; i < rowCount; i++) {
       Put put = new Put(Bytes.toBytes(i));
@@ -420,9 +394,9 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
 
     if (isSplitRegion) {
       if (splitPoint == null) {
-        admin.splitRegion(regionLocations.get(0).getRegionInfo().getRegionName()).get();
+        admin.splitRegion(regionLocations.get(0).getRegion().getRegionName()).get();
       } else {
-        admin.splitRegion(regionLocations.get(0).getRegionInfo().getRegionName(), splitPoint).get();
+        admin.splitRegion(regionLocations.get(0).getRegion().getRegionName(), splitPoint).get();
       }
     } else {
       if (splitPoint == null) {
@@ -448,6 +422,42 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
       }
     }
     assertEquals(count, 2);
+  }
+
+  private void waitUntilMobCompactionFinished(TableName tableName)
+      throws ExecutionException, InterruptedException {
+    long finished = EnvironmentEdgeManager.currentTime() + 60000;
+    CompactionState state = admin.getCompactionState(tableName, CompactType.MOB).get();
+    while (EnvironmentEdgeManager.currentTime() < finished) {
+      if (state == CompactionState.NONE) {
+        break;
+      }
+      Thread.sleep(10);
+      state = admin.getCompactionState(tableName, CompactType.MOB).get();
+    }
+    assertEquals(CompactionState.NONE, state);
+  }
+
+  @Test
+  public void testCompactMob() throws Exception {
+    ColumnFamilyDescriptor columnDescriptor =
+        ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes("mob"))
+            .setMobEnabled(true).setMobThreshold(0).build();
+
+    TableDescriptor tableDescriptor = TableDescriptorBuilder.newBuilder(tableName)
+        .addColumnFamily(columnDescriptor).build();
+
+    admin.createTable(tableDescriptor).get();
+
+    byte[][] families = { Bytes.toBytes("mob") };
+    loadData(tableName, families, 3000, 8);
+
+    admin.majorCompact(tableName, CompactType.MOB).get();
+
+    CompactionState state = admin.getCompactionState(tableName, CompactType.MOB).get();
+    assertNotEquals(CompactionState.NONE, state);
+
+    waitUntilMobCompactionFinished(tableName);
   }
 
   @Test
@@ -585,7 +595,7 @@ public class TestAsyncRegionAdminApi extends TestAsyncAdminBase {
 
   private static void loadData(final TableName tableName, final byte[][] families, final int rows,
       final int flushes) throws IOException {
-    RawAsyncTable table = ASYNC_CONN.getRawTable(tableName);
+    AsyncTable<?> table = ASYNC_CONN.getTable(tableName);
     List<Put> puts = new ArrayList<>(rows);
     byte[] qualifier = Bytes.toBytes("val");
     for (int i = 0; i < flushes; i++) {

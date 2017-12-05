@@ -42,6 +42,8 @@ public class ReplicationPeerConfig {
   private Map<TableName, ? extends Collection<String>> tableCFsMap = null;
   private Set<String> namespaces = null;
   private long bandwidth = 0;
+  // Default value is true, means replicate all user tables to peer cluster.
+  private boolean replicateAllUserTables = true;
 
   public ReplicationPeerConfig() {
     this.peerData = new TreeMap<>(Bytes.BYTES_COMPARATOR);
@@ -110,10 +112,20 @@ public class ReplicationPeerConfig {
     return this;
   }
 
+  public boolean replicateAllUserTables() {
+    return this.replicateAllUserTables;
+  }
+
+  public ReplicationPeerConfig setReplicateAllUserTables(boolean replicateAllUserTables) {
+    this.replicateAllUserTables = replicateAllUserTables;
+    return this;
+  }
+
   @Override
   public String toString() {
     StringBuilder builder = new StringBuilder("clusterKey=").append(clusterKey).append(",");
     builder.append("replicationEndpointImpl=").append(replicationEndpointImpl).append(",");
+    builder.append("replicateAllUserTables=").append(replicateAllUserTables).append(",");
     if (namespaces != null) {
       builder.append("namespaces=").append(namespaces.toString()).append(",");
     }
@@ -122,5 +134,25 @@ public class ReplicationPeerConfig {
     }
     builder.append("bandwidth=").append(bandwidth);
     return builder.toString();
+  }
+
+  /**
+   * Decide whether the table need replicate to the peer cluster
+   * @param table name of the table
+   * @return true if the table need replicate to the peer cluster
+   */
+  public boolean needToReplicate(TableName table) {
+    // If null means user has explicitly not configured any namespaces and table CFs
+    // so all the tables data are applicable for replication
+    if (namespaces == null && tableCFsMap == null) {
+      return true;
+    }
+    if (namespaces != null && namespaces.contains(table.getNamespaceAsString())) {
+      return true;
+    }
+    if (tableCFsMap != null && tableCFsMap.containsKey(table)) {
+      return true;
+    }
+    return false;
   }
 }

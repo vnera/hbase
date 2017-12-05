@@ -162,6 +162,7 @@ public class TestHRegionInfo {
     assertTrue(HRegionInfo.FIRST_META_REGIONINFO.isMetaRegion());
   }
 
+  @SuppressWarnings("SelfComparison")
   @Test
   public void testComparator() {
     final TableName tableName = TableName.valueOf(name.getMethodName());
@@ -305,7 +306,7 @@ public class TestHRegionInfo {
     Assert.assertArrayEquals(HRegionInfo.HIDDEN_START_KEY,
         HRegionInfo.getStartKeyForDisplay(h, conf));
 
-    RegionState state = new RegionState(h, RegionState.State.OPEN);
+    RegionState state = RegionState.createForTesting(h, RegionState.State.OPEN);
     String descriptiveNameForDisplay =
         HRegionInfo.getDescriptiveNameFromRegionStateForDisplay(state, conf);
     checkDescriptiveNameEquality(descriptiveNameForDisplay,state.toDescriptiveString(), startKey);

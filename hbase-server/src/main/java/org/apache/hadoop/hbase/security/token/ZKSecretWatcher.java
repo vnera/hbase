@@ -25,19 +25,20 @@ import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hbase.zookeeper.ZKListener;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.util.Writables;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperListener;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.apache.zookeeper.KeeperException;
 
 /**
  * Synchronizes token encryption keys across cluster nodes.
  */
 @InterfaceAudience.Private
-public class ZKSecretWatcher extends ZooKeeperListener {
+public class ZKSecretWatcher extends ZKListener {
   private static final String DEFAULT_ROOT_NODE = "tokenauth";
   private static final String DEFAULT_KEYS_PARENT = "keys";
   private static final Log LOG = LogFactory.getLog(ZKSecretWatcher.class);
@@ -47,13 +48,13 @@ public class ZKSecretWatcher extends ZooKeeperListener {
   private String keysParentZNode;
 
   public ZKSecretWatcher(Configuration conf,
-      ZooKeeperWatcher watcher,
+      ZKWatcher watcher,
       AuthenticationTokenSecretManager secretManager) {
     super(watcher);
     this.secretManager = secretManager;
     String keyZNodeParent = conf.get("zookeeper.znode.tokenauth.parent", DEFAULT_ROOT_NODE);
-    this.baseKeyZNode = ZKUtil.joinZNode(watcher.znodePaths.baseZNode, keyZNodeParent);
-    this.keysParentZNode = ZKUtil.joinZNode(baseKeyZNode, DEFAULT_KEYS_PARENT);
+    this.baseKeyZNode = ZNodePaths.joinZNode(watcher.znodePaths.baseZNode, keyZNodeParent);
+    this.keysParentZNode = ZNodePaths.joinZNode(baseKeyZNode, DEFAULT_KEYS_PARENT);
   }
 
   public void start() throws KeeperException {
@@ -159,7 +160,7 @@ public class ZKSecretWatcher extends ZooKeeperListener {
   }
 
   private String getKeyNode(int keyId) {
-    return ZKUtil.joinZNode(keysParentZNode, Integer.toString(keyId));
+    return ZNodePaths.joinZNode(keysParentZNode, Integer.toString(keyId));
   }
 
   public void removeKeyFromZK(AuthenticationKey key) {
@@ -213,7 +214,7 @@ public class ZKSecretWatcher extends ZooKeeperListener {
       watcher.abort("Failed serializing key "+key.getKeyId(), ioe);
     }
   }
-  
+
   /**
    * refresh keys
    */
@@ -227,7 +228,7 @@ public class ZKSecretWatcher extends ZooKeeperListener {
       watcher.abort("Error reading changed keys from zookeeper", ke);
     }
   }
-  
+
   /**
    * get token keys parent node
    * @return token keys parent node

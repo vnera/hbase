@@ -77,7 +77,8 @@ import org.apache.hadoop.hbase.regionserver.DisabledRegionSplitPolicy;
 import org.apache.hadoop.hbase.security.access.AccessControlLists;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
 
@@ -140,7 +141,7 @@ class RSGroupInfoManagerImpl implements RSGroupInfoManager {
   private final MasterServices masterServices;
   private Table rsGroupTable;
   private final ClusterConnection conn;
-  private final ZooKeeperWatcher watcher;
+  private final ZKWatcher watcher;
   private final RSGroupStartupWorker rsGroupStartupWorker = new RSGroupStartupWorker();
   // contains list of groups that were last flushed to persistent store
   private Set<String> prevRSGroups = new HashSet<>();
@@ -308,6 +309,32 @@ class RSGroupInfoManagerImpl implements RSGroupInfoManager {
     flushConfig(newGroupMap);
   }
 
+  @Override
+  public synchronized void removeServers(Set<Address> servers) throws IOException {
+    Map<String, RSGroupInfo> rsGroupInfos = new HashMap<String, RSGroupInfo>();
+    for (Address el: servers) {
+      RSGroupInfo rsGroupInfo = getRSGroupOfServer(el);
+      if (rsGroupInfo != null) {
+        RSGroupInfo newRsGroupInfo = rsGroupInfos.get(rsGroupInfo.getName());
+        if (newRsGroupInfo == null) {
+          rsGroupInfo.removeServer(el);
+          rsGroupInfos.put(rsGroupInfo.getName(), rsGroupInfo);
+        } else {
+          newRsGroupInfo.removeServer(el);
+          rsGroupInfos.put(newRsGroupInfo.getName(), newRsGroupInfo);
+        }
+      }else {
+        LOG.warn("Server " + el + " does not belong to any rsgroup.");
+      }
+    }
+
+    if (rsGroupInfos.size() > 0) {
+      Map<String, RSGroupInfo> newGroupMap = Maps.newHashMap(rsGroupMap);
+      newGroupMap.putAll(rsGroupInfos);
+      flushConfig(newGroupMap);
+    }
+  }
+
   List<RSGroupInfo> retrieveGroupListFromGroupTable() throws IOException {
     List<RSGroupInfo> rsGroupInfoList = Lists.newArrayList();
     for (Result result : rsGroupTable.getScanner(new Scan())) {
@@ -319,13 +346,13 @@ class RSGroupInfoManagerImpl implements RSGroupInfoManager {
   }
 
   List<RSGroupInfo> retrieveGroupListFromZookeeper() throws IOException {
-    String groupBasePath = ZKUtil.joinZNode(watcher.znodePaths.baseZNode, rsGroupZNode);
+    String groupBasePath = ZNodePaths.joinZNode(watcher.znodePaths.baseZNode, rsGroupZNode);
     List<RSGroupInfo> RSGroupInfoList = Lists.newArrayList();
     //Overwrite any info stored by table, this takes precedence
     try {
       if(ZKUtil.checkExists(watcher, groupBasePath) != -1) {
         for(String znode: ZKUtil.listChildrenAndWatchForNewChildren(watcher, groupBasePath)) {
-          byte[] data = ZKUtil.getData(watcher, ZKUtil.joinZNode(groupBasePath, znode));
+          byte[] data = ZKUtil.getData(watcher, ZNodePaths.joinZNode(groupBasePath, znode));
           if(data.length > 0) {
             ProtobufUtil.expectPBMagicPrefix(data);
             ByteArrayInputStream bis = new ByteArrayInputStream(
@@ -469,20 +496,20 @@ class RSGroupInfoManagerImpl implements RSGroupInfoManager {
     resetRSGroupAndTableMaps(newGroupMap, newTableMap);
 
     try {
-      String groupBasePath = ZKUtil.joinZNode(watcher.znodePaths.baseZNode, rsGroupZNode);
+      String groupBasePath = ZNodePaths.joinZNode(watcher.znodePaths.baseZNode, rsGroupZNode);
       ZKUtil.createAndFailSilent(watcher, groupBasePath, ProtobufMagic.PB_MAGIC);
 
       List<ZKUtil.ZKUtilOp> zkOps = new ArrayList<>(newGroupMap.size());
       for(String groupName : prevRSGroups) {
         if(!newGroupMap.containsKey(groupName)) {
-          String znode = ZKUtil.joinZNode(groupBasePath, groupName);
+          String znode = ZNodePaths.joinZNode(groupBasePath, groupName);
           zkOps.add(ZKUtil.ZKUtilOp.deleteNodeFailSilent(znode));
         }
       }
 
 
       for (RSGroupInfo RSGroupInfo : newGroupMap.values()) {
-        String znode = ZKUtil.joinZNode(groupBasePath, RSGroupInfo.getName());
+        String znode = ZNodePaths.joinZNode(groupBasePath, RSGroupInfo.getName());
         RSGroupProtos.RSGroupInfo proto = RSGroupProtobufUtil.toProtoGroupInfo(RSGroupInfo);
         LOG.debug("Updating znode: "+znode);
         ZKUtil.createAndFailSilent(watcher, znode);

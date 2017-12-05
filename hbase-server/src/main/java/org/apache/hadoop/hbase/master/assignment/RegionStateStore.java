@@ -38,7 +38,6 @@ import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.master.MasterServices;
-import org.apache.hadoop.hbase.master.RegionState;
 import org.apache.hadoop.hbase.master.RegionState.State;
 import org.apache.hadoop.hbase.procedure2.util.StringUtils;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -48,6 +47,7 @@ import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
 
+import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
 
 /**
@@ -90,10 +90,15 @@ public class RegionStateStore {
       @Override
       public boolean visit(final Result r) throws IOException {
         if (r !=  null && !r.isEmpty()) {
-          long st = System.currentTimeMillis();
+          long st = 0;
+          if (LOG.isTraceEnabled()) {
+            st = System.currentTimeMillis();
+          }
           visitMetaEntry(visitor, r);
-          long et = System.currentTimeMillis();
-          LOG.info("[T] LOAD META PERF " + StringUtils.humanTimeDiff(et - st));
+          if (LOG.isTraceEnabled()) {
+            long et = System.currentTimeMillis();
+            LOG.trace("[T] LOAD META PERF " + StringUtils.humanTimeDiff(et - st));
+          }
         } else if (isDebugEnabled) {
           LOG.debug("NULL result from meta - ignoring but this is strange.");
         }
@@ -132,21 +137,17 @@ public class RegionStateStore {
     }
   }
 
-  public void updateRegionLocation(final RegionInfo regionInfo, final State state,
-      final ServerName regionLocation, final ServerName lastHost, final long openSeqNum,
-      final long pid)
+  public void updateRegionLocation(RegionStates.RegionStateNode regionStateNode)
       throws IOException {
-    if (regionInfo.isMetaRegion()) {
-      updateMetaLocation(regionInfo, regionLocation);
+    if (regionStateNode.getRegionInfo().isMetaRegion()) {
+      updateMetaLocation(regionStateNode.getRegionInfo(), regionStateNode.getRegionLocation());
     } else {
-      updateUserRegionLocation(regionInfo, state, regionLocation, lastHost, openSeqNum, pid);
+      long openSeqNum = regionStateNode.getState() == State.OPEN ?
+          regionStateNode.getOpenSeqNum() : HConstants.NO_SEQNUM;
+      updateUserRegionLocation(regionStateNode.getRegionInfo(), regionStateNode.getState(),
+          regionStateNode.getRegionLocation(), regionStateNode.getLastHost(), openSeqNum,
+          regionStateNode.getProcedure().getProcId());
     }
-  }
-
-  public void updateRegionState(final long openSeqNum, final long pid,
-      final RegionState newState, final RegionState oldState) throws IOException {
-    updateRegionLocation(newState.getRegion(), newState.getState(), newState.getServerName(),
-        oldState != null ? oldState.getServerName() : null, openSeqNum, pid);
   }
 
   protected void updateMetaLocation(final RegionInfo regionInfo, final ServerName serverName)
@@ -310,12 +311,16 @@ public class RegionStateStore {
   /**
    * Pull the region state from a catalog table {@link Result}.
    * @param r Result to pull the region state from
-   * @return the region state, or OPEN if there's no value written.
+   * @return the region state, or null if unknown.
    */
-  protected State getRegionState(final Result r, int replicaId) {
+  @VisibleForTesting
+  public static State getRegionState(final Result r, int replicaId) {
     Cell cell = r.getColumnLatestCell(HConstants.CATALOG_FAMILY, getStateColumn(replicaId));
-    if (cell == null || cell.getValueLength() == 0) return State.OPENING;
-    return State.valueOf(Bytes.toString(cell.getValueArray(), cell.getValueOffset(), cell.getValueLength()));
+    if (cell == null || cell.getValueLength() == 0) {
+      return null;
+    }
+    return State.valueOf(Bytes.toString(cell.getValueArray(), cell.getValueOffset(),
+        cell.getValueLength()));
   }
 
   private static byte[] getStateColumn(int replicaId) {

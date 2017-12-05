@@ -23,7 +23,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -32,6 +31,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.locking.EntityLock;
 import org.apache.hadoop.hbase.executor.ExecutorService;
@@ -54,7 +54,7 @@ import org.apache.hadoop.hbase.regionserver.throttle.ThroughputController;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.wal.WAL;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.zookeeper.KeeperException;
 
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos;
@@ -71,18 +71,18 @@ public class MockRegionServerServices implements RegionServerServices {
     new ConcurrentSkipListMap<>(Bytes.BYTES_COMPARATOR);
   private HFileSystem hfs = null;
   private final Configuration conf;
-  private ZooKeeperWatcher zkw = null;
+  private ZKWatcher zkw = null;
   private ServerName serverName = null;
   private RpcServerInterface rpcServer = null;
   private volatile boolean abortRequested;
   private volatile boolean stopping = false;
   private final AtomicBoolean running = new AtomicBoolean(true);
 
-  MockRegionServerServices(ZooKeeperWatcher zkw) {
+  MockRegionServerServices(ZKWatcher zkw) {
     this(zkw, null);
   }
 
-  MockRegionServerServices(ZooKeeperWatcher zkw, ServerName serverName) {
+  MockRegionServerServices(ZKWatcher zkw, ServerName serverName) {
     this.zkw = zkw;
     this.serverName = serverName;
     this.conf = (zkw == null ? new Configuration() : zkw.getConfiguration());
@@ -167,7 +167,7 @@ public class MockRegionServerServices implements RegionServerServices {
   }
 
   @Override
-  public ZooKeeperWatcher getZooKeeper() {
+  public ZKWatcher getZooKeeper() {
     return zkw;
   }
 
@@ -265,12 +265,6 @@ public class MockRegionServerServices implements RegionServerServices {
   }
 
   @Override
-  public Map<String, HRegion> getRecoveringRegions() {
-    // TODO Auto-generated method stub
-    return null;
-  }
-
-  @Override
   public ServerNonceManager getNonceManager() {
     // TODO Auto-generated method stub
     return null;
@@ -334,6 +328,11 @@ public class MockRegionServerServices implements RegionServerServices {
 
   @Override
   public RegionServerSpaceQuotaManager getRegionServerSpaceQuotaManager() {
+    return null;
+  }
+
+  @Override
+  public Connection createConnection(Configuration conf) throws IOException {
     return null;
   }
 }

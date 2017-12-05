@@ -40,6 +40,7 @@ import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
@@ -55,7 +56,7 @@ import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.hadoop.hbase.zookeeper.RecoverableZooKeeper;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Stat;
 import org.junit.After;
@@ -240,7 +241,7 @@ public class TestReplicationHFileCleaner {
 
     // when zk is working both files should be returned
     cleaner = new ReplicationHFileCleaner();
-    ZooKeeperWatcher zkw = new ZooKeeperWatcher(conf, "testZooKeeperAbort-normal", null);
+    ZKWatcher zkw = new ZKWatcher(conf, "testZooKeeperAbort-normal", null);
     try {
       cleaner.setConf(conf, zkw);
       Iterable<FileStatus> filesToDelete = cleaner.getDeletableFiles(dummyFiles);
@@ -263,9 +264,9 @@ public class TestReplicationHFileCleaner {
     }
 
     @Override
-    public ZooKeeperWatcher getZooKeeper() {
+    public ZKWatcher getZooKeeper() {
       try {
-        return new ZooKeeperWatcher(getConfiguration(), "dummy server", this);
+        return new ZKWatcher(getConfiguration(), "dummy server", this);
       } catch (IOException e) {
         e.printStackTrace();
       }
@@ -330,9 +331,14 @@ public class TestReplicationHFileCleaner {
     public boolean isStopping() {
       return false;
     }
+
+    @Override
+    public Connection createConnection(Configuration conf) throws IOException {
+      return null;
+    }
   }
 
-  static class FaultyZooKeeperWatcher extends ZooKeeperWatcher {
+  static class FaultyZooKeeperWatcher extends ZKWatcher {
     private RecoverableZooKeeper zk;
     public FaultyZooKeeperWatcher(Configuration conf, String identifier, Abortable abortable)
         throws ZooKeeperConnectionException, IOException {

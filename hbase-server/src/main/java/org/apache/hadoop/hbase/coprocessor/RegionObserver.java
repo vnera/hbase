@@ -119,12 +119,6 @@ public interface RegionObserver {
   default void postOpen(ObserverContext<RegionCoprocessorEnvironment> c) {}
 
   /**
-   * Called after the log replay on the region is over.
-   * @param c the environment provided by the region server
-   */
-  default void postLogReplay(ObserverContext<RegionCoprocessorEnvironment> c) {}
-
-  /**
    * Called before the memstore is flushed to disk.
    * @param c the environment provided by the region server
    * @param tracker tracker used to track the life cycle of a flush
@@ -316,9 +310,6 @@ public interface RegionObserver {
    * Called before the client performs a Get
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * @param c the environment provided by the region server
    * @param get the Get request
    * @param result The result to return to the client if default processing
@@ -330,9 +321,6 @@ public interface RegionObserver {
 
   /**
    * Called after the client performs a Get
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells in 'result' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
@@ -347,9 +335,6 @@ public interface RegionObserver {
    * Called before the client tests for existence using a Get.
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * @param c the environment provided by the region server
    * @param get the Get request
    * @param exists the result returned by the region server
@@ -362,9 +347,6 @@ public interface RegionObserver {
 
   /**
    * Called after the client tests for existence using a Get.
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * @param c the environment provided by the region server
    * @param get the Get request
    * @param exists the result returned by the region server
@@ -380,9 +362,6 @@ public interface RegionObserver {
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
    * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
-   * <p>
    * Note: Do not retain references to any Cells in 'put' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
    * @param c the environment provided by the region server
@@ -395,9 +374,6 @@ public interface RegionObserver {
 
   /**
    * Called after the client stores a value.
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells in 'put' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
@@ -414,9 +390,6 @@ public interface RegionObserver {
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
    * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
-   * <p>
    * Note: Do not retain references to any Cells in 'delete' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
    * @param c the environment provided by the region server
@@ -431,8 +404,6 @@ public interface RegionObserver {
    * Called before the server updates the timestamp for version delete with latest timestamp.
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained coprocessors
    * @param c the environment provided by the region server
    * @param mutation - the parent mutation associated with this delete cell
    * @param cell - The deleteColumn with latest version cell
@@ -448,9 +419,6 @@ public interface RegionObserver {
 
   /**
    * Called after the client deletes a value.
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells in 'delete' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
@@ -529,9 +497,6 @@ public interface RegionObserver {
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
    * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
-   * <p>
    * Note: Do not retain references to any Cells in 'put' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
    * @param c the environment provided by the region server
@@ -560,9 +525,6 @@ public interface RegionObserver {
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
    * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
-   * <p>
    * Note: Do not retain references to any Cells in 'put' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
    * @param c the environment provided by the region server
@@ -584,9 +546,6 @@ public interface RegionObserver {
 
   /**
    * Called after checkAndPut
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells in 'put' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
@@ -610,9 +569,6 @@ public interface RegionObserver {
    * Called before checkAndDelete.
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells in 'delete' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
@@ -641,9 +597,6 @@ public interface RegionObserver {
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
    * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
-   * <p>
    * Note: Do not retain references to any Cells in 'delete' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
    * @param c the environment provided by the region server
@@ -664,9 +617,6 @@ public interface RegionObserver {
 
   /**
    * Called after checkAndDelete
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells in 'delete' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
@@ -691,9 +641,6 @@ public interface RegionObserver {
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
    * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
-   * <p>
    * Note: Do not retain references to any Cells in 'append' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
    * @param c the environment provided by the region server
@@ -714,9 +661,6 @@ public interface RegionObserver {
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
    * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
-   * <p>
    * Note: Do not retain references to any Cells in 'append' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
    * @param c the environment provided by the region server
@@ -730,9 +674,6 @@ public interface RegionObserver {
 
   /**
    * Called after Append
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells in 'append' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
@@ -750,9 +691,6 @@ public interface RegionObserver {
    * Called before Increment.
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells in 'increment' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
@@ -774,8 +712,6 @@ public interface RegionObserver {
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
    * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained coprocessors
-   * <p>
    * Note: Do not retain references to any Cells in 'increment' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
    *
@@ -794,9 +730,6 @@ public interface RegionObserver {
   /**
    * Called after increment
    * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
-   * <p>
    * Note: Do not retain references to any Cells in 'increment' beyond the life of this invocation.
    * If need a Cell reference for later use, copy the cell and use that.
    * @param c the environment provided by the region server
@@ -812,9 +745,6 @@ public interface RegionObserver {
   /**
    * Called before the client opens a new scanner.
    * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
-   * <p>
    * Note: Do not retain references to any Cells returned by scanner, beyond the life of this
    * invocation. If need a Cell reference for later use, copy the cell and use that.
    * @param c the environment provided by the region server
@@ -826,9 +756,6 @@ public interface RegionObserver {
 
   /**
    * Called after the client opens a new scanner.
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells returned by scanner, beyond the life of this
    * invocation. If need a Cell reference for later use, copy the cell and use that.
@@ -846,9 +773,6 @@ public interface RegionObserver {
    * Called before the client asks for the next row on a scanner.
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells returned by scanner, beyond the life of this
    * invocation. If need a Cell reference for later use, copy the cell and use that.
@@ -868,9 +792,6 @@ public interface RegionObserver {
 
   /**
    * Called after the client asks for the next row on a scanner.
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * <p>
    * Note: Do not retain references to any Cells returned by scanner, beyond the life of this
    * invocation. If need a Cell reference for later use, copy the cell and use that.
@@ -916,9 +837,6 @@ public interface RegionObserver {
    * Called before the client closes a scanner.
    * <p>
    * Call CoprocessorEnvironment#bypass to skip default actions
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * @param c the environment provided by the region server
    * @param s the scanner
    */
@@ -927,9 +845,6 @@ public interface RegionObserver {
 
   /**
    * Called after the client closes a scanner.
-   * <p>
-   * Call CoprocessorEnvironment#complete to skip any subsequent chained
-   * coprocessors
    * @param ctx the environment provided by the region server
    * @param s the scanner
    */
@@ -965,6 +880,7 @@ public interface RegionObserver {
    * @param info the RegionInfo for this region
    * @param edits the file of recovered edits
    */
+  // todo: what about these?
   default void preReplayWALs(ObserverContext<? extends RegionCoprocessorEnvironment> ctx,
     RegionInfo info, Path edits) throws IOException {}
 

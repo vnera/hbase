@@ -18,7 +18,6 @@
  */
 package org.apache.hadoop.hbase.master;
 
-import com.google.common.base.Enums;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -157,10 +156,11 @@ import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.replication.ReplicationPeerDescription;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesZKImpl;
-import org.apache.hadoop.hbase.replication.master.TableCFsUpdater;
+import org.apache.hadoop.hbase.replication.master.ReplicationPeerConfigUpgrader;
 import org.apache.hadoop.hbase.replication.regionserver.Replication;
 import org.apache.hadoop.hbase.security.AccessDeniedException;
 import org.apache.hadoop.hbase.security.UserProvider;
+import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.hadoop.hbase.util.Addressing;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CompressionTest;
@@ -174,16 +174,14 @@ import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.util.VersionInfo;
 import org.apache.hadoop.hbase.util.ZKDataMigrator;
-import org.apache.hadoop.hbase.zookeeper.DrainingServerTracker;
 import org.apache.hadoop.hbase.zookeeper.LoadBalancerTracker;
 import org.apache.hadoop.hbase.zookeeper.MasterAddressTracker;
 import org.apache.hadoop.hbase.zookeeper.MasterMaintenanceModeTracker;
 import org.apache.hadoop.hbase.zookeeper.RegionNormalizerTracker;
-import org.apache.hadoop.hbase.zookeeper.RegionServerTracker;
-import org.apache.hadoop.hbase.zookeeper.SplitOrMergeTracker;
 import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
 import org.eclipse.jetty.server.Server;
@@ -469,6 +467,7 @@ public class HMaster extends HRegionServer implements MasterServices {
   public HMaster(final Configuration conf)
       throws IOException, KeeperException {
     super(conf);
+    TraceUtil.initTracer(conf);
     try {
       this.rsFatals = new MemoryBoundedLogMessageBuffer(
           conf.getLong("hbase.master.buffer.for.rs.fatals", 1 * 1024 * 1024));
@@ -799,9 +798,9 @@ public class HMaster extends HRegionServer implements MasterServices {
     // This is for backwards compatibility
     // See HBASE-11393
     status.setStatus("Update TableCFs node in ZNode");
-    TableCFsUpdater tableCFsUpdater = new TableCFsUpdater(zooKeeper,
+    ReplicationPeerConfigUpgrader tableCFsUpdater = new ReplicationPeerConfigUpgrader(zooKeeper,
             conf, this.clusterConnection);
-    tableCFsUpdater.update();
+    tableCFsUpdater.copyTableCFs();
 
     // Add the Observer to delete space quotas on table deletion before starting all CPs by
     // default with quota support, avoiding if user specifically asks to not load this Observer.
@@ -909,6 +908,7 @@ public class HMaster extends HRegionServer implements MasterServices {
     this.masterFinishedInitializationTime = System.currentTimeMillis();
     configurationManager.registerObserver(this.balancer);
     configurationManager.registerObserver(this.hfileCleaner);
+    configurationManager.registerObserver(this.logCleaner);
 
     // Set master as 'initialized'.
     setInitialized(true);
@@ -1337,7 +1337,7 @@ public class HMaster extends HRegionServer implements MasterServices {
     // Throttling by max number regions in transition
     while (!interrupted
         && maxRegionsInTransition > 0
-        && this.assignmentManager.getRegionStates().getRegionsInTransition().size()
+        && this.assignmentManager.getRegionStates().getRegionsInTransitionCount()
         >= maxRegionsInTransition && System.currentTimeMillis() <= cutoffTime) {
       try {
         // sleep if the number of regions in transition exceeds the limit
@@ -1980,7 +1980,7 @@ public class HMaster extends HRegionServer implements MasterServices {
   }
 
   private void startActiveMasterManager(int infoPort) throws KeeperException {
-    String backupZNode = ZKUtil.joinZNode(
+    String backupZNode = ZNodePaths.joinZNode(
       zooKeeper.znodePaths.backupMasterAddressesZNode, serverName.toString());
     /*
     * Add a ZNode for ourselves in the backup master directory since we
@@ -2511,7 +2511,7 @@ public class HMaster extends HRegionServer implements MasterServices {
         try {
           byte [] bytes;
           try {
-            bytes = ZKUtil.getData(this.zooKeeper, ZKUtil.joinZNode(
+            bytes = ZKUtil.getData(this.zooKeeper, ZNodePaths.joinZNode(
                 this.zooKeeper.znodePaths.backupMasterAddressesZNode, s));
           } catch (InterruptedException e) {
             throw new InterruptedIOException();
@@ -2634,7 +2634,7 @@ public class HMaster extends HRegionServer implements MasterServices {
   }
 
   @Override
-  public ZooKeeperWatcher getZooKeeper() {
+  public ZKWatcher getZooKeeper() {
     return zooKeeper;
   }
 
@@ -3323,14 +3323,14 @@ public class HMaster extends HRegionServer implements MasterServices {
   }
 
   @Override
-  public void addReplicationPeer(String peerId, ReplicationPeerConfig peerConfig)
+  public void addReplicationPeer(String peerId, ReplicationPeerConfig peerConfig, boolean enabled)
       throws ReplicationException, IOException {
     if (cpHost != null) {
       cpHost.preAddReplicationPeer(peerId, peerConfig);
     }
     LOG.info(getClientIdAuditPrefix() + " creating replication peer, id=" + peerId + ", config="
-        + peerConfig);
-    this.replicationManager.addReplicationPeer(peerId, peerConfig);
+        + peerConfig + ", state=" + (enabled ? "ENABLED" : "DISABLED"));
+    this.replicationManager.addReplicationPeer(peerId, peerConfig, enabled);
     if (cpHost != null) {
       cpHost.postAddReplicationPeer(peerId, peerConfig);
     }
@@ -3429,7 +3429,7 @@ public class HMaster extends HRegionServer implements MasterServices {
     String parentZnode = getZooKeeper().znodePaths.drainingZNode;
     for (ServerName server : servers) {
       try {
-        String node = ZKUtil.joinZNode(parentZnode, server.getServerName());
+        String node = ZNodePaths.joinZNode(parentZnode, server.getServerName());
         ZKUtil.createAndFailSilent(getZooKeeper(), node);
       } catch (KeeperException ke) {
         throw new HBaseIOException(
@@ -3476,7 +3476,7 @@ public class HMaster extends HRegionServer implements MasterServices {
       final List<byte[]> encodedRegionNames) throws HBaseIOException {
     // Remove the server from decommissioned (draining) server list.
     String parentZnode = getZooKeeper().znodePaths.drainingZNode;
-    String node = ZKUtil.joinZNode(parentZnode, server.getServerName());
+    String node = ZNodePaths.joinZNode(parentZnode, server.getServerName());
     try {
       ZKUtil.deleteNodeFailSilent(getZooKeeper(), node);
     } catch (KeeperException ke) {

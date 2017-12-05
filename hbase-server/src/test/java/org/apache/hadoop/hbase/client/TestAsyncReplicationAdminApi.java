@@ -41,10 +41,8 @@ import org.apache.hadoop.hbase.replication.ReplicationPeerDescription;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.junit.BeforeClass;
-import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
-import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
@@ -151,6 +149,8 @@ public class TestAsyncReplicationAdminApi extends TestAsyncAdminBase {
 
     // Add a valid peer
     admin.addReplicationPeer(ID_ONE, rpc1).join();
+    rpc1.setReplicateAllUserTables(false);
+    admin.updateReplicationPeerConfig(ID_ONE, rpc1).join();
 
     Map<TableName, List<String>> tableCFs = new HashMap<>();
 
@@ -250,6 +250,9 @@ public class TestAsyncReplicationAdminApi extends TestAsyncAdminBase {
     final TableName tableName4 = TableName.valueOf(tableName.getNameAsString() + "t4");
     // Add a valid peer
     admin.addReplicationPeer(ID_ONE, rpc1).join();
+    rpc1.setReplicateAllUserTables(false);
+    admin.updateReplicationPeerConfig(ID_ONE, rpc1).join();
+
     Map<TableName, List<String>> tableCFs = new HashMap<>();
     try {
       tableCFs.put(tableName3, null);
@@ -330,6 +333,8 @@ public class TestAsyncReplicationAdminApi extends TestAsyncAdminBase {
     ReplicationPeerConfig rpc = new ReplicationPeerConfig();
     rpc.setClusterKey(KEY_ONE);
     admin.addReplicationPeer(ID_ONE, rpc).join();
+    rpc.setReplicateAllUserTables(false);
+    admin.updateReplicationPeerConfig(ID_ONE, rpc).join();
 
     // add ns1 and ns2 to peer config
     rpc = admin.getReplicationPeerConfig(ID_ONE).get();
@@ -366,6 +371,8 @@ public class TestAsyncReplicationAdminApi extends TestAsyncAdminBase {
     ReplicationPeerConfig rpc = new ReplicationPeerConfig();
     rpc.setClusterKey(KEY_ONE);
     admin.addReplicationPeer(ID_ONE, rpc).join();
+    rpc.setReplicateAllUserTables(false);
+    admin.updateReplicationPeerConfig(ID_ONE, rpc).join();
 
     rpc = admin.getReplicationPeerConfig(ID_ONE).get();
     Set<String> namespaces = new HashSet<String>();

@@ -360,6 +360,7 @@ Shell.load_command_group(
     clear_compaction_queues
     list_deadservers
     clear_deadservers
+    clear_block_cache
   ],
   # TODO: remove older hlog_roll command
   aliases: {
@@ -376,6 +377,7 @@ Shell.load_command_group(
     list_peers
     enable_peer
     disable_peer
+    set_peer_replicate_all
     set_peer_namespaces
     append_peer_namespaces
     remove_peer_namespaces
@@ -478,8 +480,11 @@ Shell.load_command_group(
     balance_rsgroup
     move_servers_rsgroup
     move_tables_rsgroup
+    move_namespaces_rsgroup
     move_servers_tables_rsgroup
+    move_servers_namespaces_rsgroup
     get_server_rsgroup
     get_table_rsgroup
+    remove_servers_rsgroup
   ]
 )

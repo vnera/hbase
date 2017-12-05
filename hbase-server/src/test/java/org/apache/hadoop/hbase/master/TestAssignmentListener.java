@@ -47,10 +47,9 @@ import org.apache.hadoop.hbase.testclassification.MasterTests;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.JVMClusterUtil;
-import org.apache.hadoop.hbase.zookeeper.DrainingServerTracker;
-import org.apache.hadoop.hbase.zookeeper.RegionServerTracker;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -318,11 +317,11 @@ public class TestAssignmentListener {
     // are properly added to the ServerManager.drainingServers when they
     // register with the ServerManager under these circumstances.
     Configuration conf = TEST_UTIL.getConfiguration();
-    ZooKeeperWatcher zooKeeper = new ZooKeeperWatcher(conf,
+    ZKWatcher zooKeeper = new ZKWatcher(conf,
         "zkWatcher-NewServerDrainTest", abortable, true);
     String baseZNode = conf.get(HConstants.ZOOKEEPER_ZNODE_PARENT,
         HConstants.DEFAULT_ZOOKEEPER_ZNODE_PARENT);
-    String drainingZNode = ZKUtil.joinZNode(baseZNode,
+    String drainingZNode = ZNodePaths.joinZNode(baseZNode,
         conf.get("zookeeper.znode.draining.rs", "draining"));
 
     HMaster master = Mockito.mock(HMaster.class);
@@ -348,7 +347,7 @@ public class TestAssignmentListener {
     // Create draining znodes for the draining servers, which would have been
     // performed when the previous HMaster was running.
     for (ServerName sn : drainingServers) {
-      String znode = ZKUtil.joinZNode(drainingZNode, sn.getServerName());
+      String znode = ZNodePaths.joinZNode(drainingZNode, sn.getServerName());
       ZKUtil.createAndFailSilent(zooKeeper, znode);
     }
 

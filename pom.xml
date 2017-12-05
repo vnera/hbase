@@ -61,6 +61,7 @@
   </licenses>
 
   <modules>
+    <module>hbase-build-support</module>
     <module>hbase-build-configuration</module>
     <module>hbase-replication</module>
     <module>hbase-mapreduce</module>
@@ -90,7 +91,7 @@
     <module>hbase-metrics-api</module>
     <module>hbase-metrics</module>
     <module>hbase-spark-it</module>
-    <module>hbase-backup</module>
+    <module>hbase-zookeeper</module>
   </modules>
   <!--Add apache snapshots in case we want to use unreleased versions of plugins:
       e.g. surefire 2.18-SNAPSHOT-->
@@ -1380,7 +1381,7 @@
     <httpclient.version>4.5.3</httpclient.version>
     <httpcore.version>4.4.6</httpcore.version>
     <metrics-core.version>3.2.1</metrics-core.version>
-    <jackson.version>2.9.1</jackson.version>
+    <jackson.version>2.9.2</jackson.version>
     <jaxb-api.version>2.2.12</jaxb-api.version>
     <jetty.version>${cdh.jetty9.version}</jetty.version>
     <jetty-jsp.version>9.2.19.v20160908</jetty-jsp.version>
@@ -1393,7 +1394,8 @@
     <jruby.version>9.1.10.0</jruby.version>
     <junit.version>4.12</junit.version>
     <hamcrest.version>1.3</hamcrest.version>
-    <htrace.version>3.2.0-incubating</htrace.version>
+    <htrace.version>4.2.0-incubating</htrace.version>
+    <htrace-hadoop.version>3.2.0-incubating</htrace-hadoop.version>
     <log4j.version>1.2.17</log4j.version>
     <mockito-core.version>2.1.0</mockito-core.version>
     <!--Internally we use a different version of protobuf. See hbase-protocol-shaded-->
@@ -1429,6 +1431,7 @@
     <buildnumber.maven.version>1.4</buildnumber.maven.version>
     <checkstyle.version>6.18</checkstyle.version>
     <exec.maven.version>1.6.0</exec.maven.version>
+    <error-prone.version>2.1.1</error-prone.version>
     <findbugs-annotations>1.3.9-1</findbugs-annotations>
     <findbugs.maven.version>3.0.4</findbugs.maven.version>
     <jamon.plugin.version>2.4.2</jamon.plugin.version>
@@ -1447,6 +1450,7 @@
     <maven.site.version>3.4</maven.site.version>
     <maven.source.version>3.0.1</maven.source.version>
     <os.maven.version>1.5.0.Final</os.maven.version>
+    <plexus.errorprone.javac.version>2.8.2</plexus.errorprone.javac.version>
     <scala.maven.version>3.2.2</scala.maven.version>
     <scalatest.maven.version>1.0</scalatest.maven.version>
     <spotbugs.version>3.1.0-RC3</spotbugs.version>
@@ -1725,6 +1729,21 @@
         <type>test-jar</type>
         <scope>test</scope>
       </dependency>
+      <dependency>
+        <artifactId>hbase-rest</artifactId>
+        <groupId>org.apache.hbase</groupId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <artifactId>hbase-resource-bundle</artifactId>
+        <groupId>org.apache.hbase</groupId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <artifactId>hbase-zookeeper</artifactId>
+        <groupId>org.apache.hbase</groupId>
+        <version>${project.version}</version>
+      </dependency>
       <!-- General dependencies -->
       <dependency>
         <groupId>com.github.stephenc.findbugs</groupId>
@@ -2001,7 +2020,7 @@
       </dependency>
       <dependency>
         <groupId>org.apache.htrace</groupId>
-        <artifactId>htrace-core</artifactId>
+        <artifactId>htrace-core4</artifactId>
         <version>${htrace.version}</version>
       </dependency>
       <dependency>
@@ -2440,6 +2459,10 @@
             <artifactId>hadoop-hdfs</artifactId>
             <exclusions>
               <exclusion>
+                <groupId>org.apache.htrace</groupId>
+                <artifactId>htrace-core</artifactId>
+              </exclusion>
+              <exclusion>
                 <groupId>javax.servlet.jsp</groupId>
                 <artifactId>jsp-api</artifactId>
               </exclusion>
@@ -2477,6 +2500,10 @@
             <type>test-jar</type>
             <scope>test</scope>
             <exclusions>
+              <exclusion>
+                <groupId>org.apache.htrace</groupId>
+                <artifactId>htrace-core</artifactId>
+              </exclusion>
               <exclusion>
                 <groupId>javax.servlet.jsp</groupId>
                 <artifactId>jsp-api</artifactId>
@@ -2517,6 +2544,10 @@
             <artifactId>hadoop-common</artifactId>
             <version>${hadoop-two.version}</version>
             <exclusions>
+              <exclusion>
+                <groupId>org.apache.htrace</groupId>
+                <artifactId>htrace-core</artifactId>
+              </exclusion>
               <exclusion>
                 <groupId>commons-beanutils</groupId>
                 <artifactId>commons-beanutils</artifactId>
@@ -2567,10 +2598,14 @@
             <artifactId>hadoop-minicluster</artifactId>
             <version>${hadoop-two.version}</version>
             <exclusions>
-            <exclusion>
-              <groupId>commons-httpclient</groupId>
-              <artifactId>commons-httpclient</artifactId>
-            </exclusion>
+              <exclusion>
+                <groupId>org.apache.htrace</groupId>
+                <artifactId>htrace-core</artifactId>
+              </exclusion>
+              <exclusion>
+                <groupId>commons-httpclient</groupId>
+                <artifactId>commons-httpclient</artifactId>
+              </exclusion>
               <exclusion>
                 <groupId>javax.servlet.jsp</groupId>
                 <artifactId>jsp-api</artifactId>
@@ -2677,6 +2712,10 @@
            <artifactId>hadoop-hdfs</artifactId>
            <exclusions>
              <exclusion>
+               <groupId>org.apache.htrace</groupId>
+               <artifactId>htrace-core</artifactId>
+             </exclusion>
+             <exclusion>
                <groupId>javax.servlet.jsp</groupId>
                <artifactId>jsp-api</artifactId>
              </exclusion>
@@ -2710,6 +2749,10 @@
            <type>test-jar</type>
            <scope>test</scope>
            <exclusions>
+             <exclusion>
+               <groupId>org.apache.htrace</groupId>
+               <artifactId>htrace-core</artifactId>
+             </exclusion>
              <exclusion>
                <groupId>javax.servlet.jsp</groupId>
                <artifactId>jsp-api</artifactId>
@@ -2752,6 +2795,14 @@
            <artifactId>hadoop-common</artifactId>
            <version>${hadoop-three.version}</version>
            <exclusions>
+             <exclusion>
+               <groupId>org.apache.htrace</groupId>
+               <artifactId>htrace-core</artifactId>
+             </exclusion>
+             <exclusion>
+               <groupId>commons-beanutils</groupId>
+               <artifactId>commons-beanutils</artifactId>
+             </exclusion>
              <exclusion>
                <groupId>javax.servlet.jsp</groupId>
                <artifactId>jsp-api</artifactId>
@@ -2803,10 +2854,14 @@
            <artifactId>hadoop-minicluster</artifactId>
            <version>${hadoop-three.version}</version>
            <exclusions>
-            <exclusion>
-              <groupId>commons-httpclient</groupId>
-              <artifactId>commons-httpclient</artifactId>
-            </exclusion>
+             <exclusion>
+               <groupId>org.apache.htrace</groupId>
+               <artifactId>htrace-core</artifactId>
+             </exclusion>
+             <exclusion>
+               <groupId>commons-httpclient</groupId>
+               <artifactId>commons-httpclient</artifactId>
+             </exclusion>
              <exclusion>
                <groupId>javax.servlet.jsp</groupId>
                <artifactId>jsp-api</artifactId>
@@ -3173,6 +3228,21 @@
         <surefire.secondPartGroups></surefire.secondPartGroups>
       </properties>
     </profile>
+    <profile>
+      <id>runZKTests</id>
+      <activation>
+        <activeByDefault>false</activeByDefault>
+      </activation>
+      <properties>
+        <surefire.firstPartForkCount>1</surefire.firstPartForkCount>
+        <surefire.secondPartForkCount>1</surefire.secondPartForkCount>
+        <surefire.skipFirstPart>false</surefire.skipFirstPart>
+        <surefire.skipSecondPart>true</surefire.skipSecondPart>
+        <surefire.firstPartGroups>org.apache.hadoop.hbase.testclassification.ZKTests
+        </surefire.firstPartGroups>
+        <surefire.secondPartGroups></surefire.secondPartGroups>
+      </properties>
+    </profile>
 
     <profile>
       <!-- Use it to launch tests locally-->
@@ -3333,7 +3403,7 @@
                 <exclude>**/protobuf/*</exclude>
                 <exclude>**/*.scala</exclude>
               </sourceFileExcludes>
-              <excludePackageNames>org.apache.hadoop.hbase.tmpl.common:com.google.protobuf:org.apache.hadoop.hbase.spark:org.apache.hadoop.hbase.generated*</excludePackageNames>
+              <excludePackageNames>org.apache.hadoop.hbase.tmpl.common:com.google.protobuf:org.apache.hadoop.hbase.generated*</excludePackageNames>
               <show>private</show> <!-- (shows all classes and members) -->
               <quiet>true</quiet>
               <linksource>true</linksource>
@@ -3376,7 +3446,7 @@
                 <exclude>**/protobuf/*</exclude>
                 <exclude>**/*.scala</exclude>
               </sourceFileExcludes>
-              <excludePackageNames>org.apache.hadoop.hbase.tmpl.common:com.google.protobuf:org.apache.hadoop.hbase.spark:org.apache.hadoop.hbase.generated*</excludePackageNames>
+              <excludePackageNames>org.apache.hadoop.hbase.tmpl.common:com.google.protobuf:org.apache.hadoop.hbase.generated*</excludePackageNames>
               <show>private</show> <!-- (shows all classes and members) -->
               <quiet>true</quiet>
               <linksource>true</linksource>

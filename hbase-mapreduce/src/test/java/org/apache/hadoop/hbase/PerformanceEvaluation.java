@@ -18,6 +18,11 @@
  */
 package org.apache.hadoop.hbase;
 
+import com.codahale.metrics.Histogram;
+import com.codahale.metrics.UniformReservoir;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.reflect.Constructor;
@@ -31,10 +36,10 @@ import java.util.Date;
 import java.util.LinkedList;
 import java.util.Locale;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Queue;
 import java.util.Random;
 import java.util.TreeMap;
-import java.util.NoSuchElementException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -48,7 +53,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.AsyncConnection;
@@ -62,7 +66,6 @@ import org.apache.hadoop.hbase.client.Durability;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Increment;
 import org.apache.hadoop.hbase.client.Put;
-import org.apache.hadoop.hbase.client.RawAsyncTable;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.RowMutations;
@@ -83,7 +86,13 @@ import org.apache.hadoop.hbase.regionserver.BloomType;
 import org.apache.hadoop.hbase.regionserver.CompactingMemStore;
 import org.apache.hadoop.hbase.trace.HBaseHTraceConfiguration;
 import org.apache.hadoop.hbase.trace.SpanReceiverHost;
-import org.apache.hadoop.hbase.util.*;
+import org.apache.hadoop.hbase.trace.TraceUtil;
+import org.apache.hadoop.hbase.util.ByteArrayHashKey;
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.Hash;
+import org.apache.hadoop.hbase.util.MurmurHash;
+import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.util.YammerHistogramUtils;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -93,17 +102,13 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.mapreduce.lib.reduce.LongSumReducer;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
-import org.apache.htrace.Sampler;
-import org.apache.htrace.Trace;
-import org.apache.htrace.TraceScope;
-import org.apache.htrace.impl.ProbabilitySampler;
+import org.apache.htrace.core.ProbabilitySampler;
+import org.apache.htrace.core.Sampler;
+import org.apache.htrace.core.TraceScope;
+import org.apache.yetus.audience.InterfaceAudience;
+
 import org.apache.hadoop.hbase.shaded.com.google.common.base.MoreObjects;
 import org.apache.hadoop.hbase.shaded.com.google.common.util.concurrent.ThreadFactoryBuilder;
-
-import com.codahale.metrics.Histogram;
-import com.codahale.metrics.UniformReservoir;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.MapperFeature;
 
 /**
  * Script used evaluating HBase performance and scalability.  Runs a HBase
@@ -1034,7 +1039,7 @@ public class PerformanceEvaluation extends Configured implements Tool {
     protected final TestOptions opts;
 
     private final Status status;
-    private final Sampler<?> traceSampler;
+    private final Sampler traceSampler;
     private final SpanReceiverHost receiverHost;
 
     private String testName;
@@ -1068,9 +1073,13 @@ public class PerformanceEvaluation extends Configured implements Tool {
     }
 
     int getValueLength(final Random r) {
-      if (this.opts.isValueRandom()) return Math.abs(r.nextInt() % opts.valueSize);
-      else if (this.opts.isValueZipf()) return Math.abs(this.zipf.nextInt());
-      else return opts.valueSize;
+      if (this.opts.isValueRandom()) {
+        return r.nextInt(opts.valueSize);
+      } else if (this.opts.isValueZipf()) {
+        return Math.abs(this.zipf.nextInt());
+      } else {
+        return opts.valueSize;
+      }
     }
 
     void updateValueSize(final Result [] rs) throws IOException {
@@ -1178,17 +1187,15 @@ public class PerformanceEvaluation extends Configured implements Tool {
     void testTimed() throws IOException, InterruptedException {
       int startRow = getStartRow();
       int lastRow = getLastRow();
+      TraceUtil.addSampler(traceSampler);
       // Report on completion of 1/10th of total.
       for (int ii = 0; ii < opts.cycles; ii++) {
         if (opts.cycles > 1) LOG.info("Cycle=" + ii + " of " + opts.cycles);
         for (int i = startRow; i < lastRow; i++) {
           if (i % everyN != 0) continue;
           long startTime = System.nanoTime();
-          TraceScope scope = Trace.startSpan("test row", traceSampler);
-          try {
+          try (TraceScope scope = TraceUtil.createTrace("test row");){
             testRow(i);
-          } finally {
-            scope.close();
           }
           if ( (i - startRow) > opts.measureAfter) {
             // If multiget is enabled, say set to 10, testRow() returns immediately first 9 times
@@ -1295,7 +1302,7 @@ public class PerformanceEvaluation extends Configured implements Tool {
   }
 
   static abstract class AsyncTableTest extends AsyncTest {
-    protected RawAsyncTable table;
+    protected AsyncTable<?> table;
 
     AsyncTableTest(AsyncConnection con, TestOptions options, Status status) {
       super(con, options, status);
@@ -1303,7 +1310,7 @@ public class PerformanceEvaluation extends Configured implements Tool {
 
     @Override
     void onStartup() throws IOException {
-      this.table = connection.getRawTable(TableName.valueOf(opts.tableName));
+      this.table = connection.getTable(TableName.valueOf(opts.tableName));
     }
 
     @Override
@@ -1428,7 +1435,7 @@ public class PerformanceEvaluation extends Configured implements Tool {
 
   static class AsyncScanTest extends AsyncTableTest {
     private ResultScanner testScanner;
-    private AsyncTable asyncTable;
+    private AsyncTable<?> asyncTable;
 
     AsyncScanTest(AsyncConnection con, TestOptions options, Status status) {
       super(con, options, status);

@@ -30,6 +30,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationPeers;
@@ -38,7 +39,7 @@ import org.apache.hadoop.hbase.replication.ReplicationQueuesClient;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesClientArguments;
 import org.apache.hadoop.hbase.replication.ReplicationStateZKBase;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.apache.zookeeper.KeeperException;
 
 /**
@@ -47,12 +48,12 @@ import org.apache.zookeeper.KeeperException;
 @InterfaceAudience.Private
 public class ReplicationZKNodeCleaner {
   private static final Log LOG = LogFactory.getLog(ReplicationZKNodeCleaner.class);
-  private final ZooKeeperWatcher zkw;
+  private final ZKWatcher zkw;
   private final ReplicationQueuesClient queuesClient;
   private final ReplicationPeers replicationPeers;
   private final ReplicationQueueDeletor queueDeletor;
 
-  public ReplicationZKNodeCleaner(Configuration conf, ZooKeeperWatcher zkw, Abortable abortable)
+  public ReplicationZKNodeCleaner(Configuration conf, ZKWatcher zkw, Abortable abortable)
       throws IOException {
     try {
       this.zkw = zkw;
@@ -129,7 +130,7 @@ public class ReplicationZKNodeCleaner {
 
   private class ReplicationQueueDeletor extends ReplicationStateZKBase {
 
-    public ReplicationQueueDeletor(ZooKeeperWatcher zk, Configuration conf, Abortable abortable) {
+    public ReplicationQueueDeletor(ZKWatcher zk, Configuration conf, Abortable abortable) {
       super(zk, conf, abortable);
     }
 
@@ -139,8 +140,8 @@ public class ReplicationZKNodeCleaner {
      * @throws IOException
      */
     public void removeQueue(final String replicator, final String queueId) throws IOException {
-      String queueZnodePath = ZKUtil.joinZNode(ZKUtil.joinZNode(this.queuesZNode, replicator),
-        queueId);
+      String queueZnodePath =
+        ZNodePaths.joinZNode(ZNodePaths.joinZNode(this.queuesZNode, replicator), queueId);
       try {
         ReplicationQueueInfo queueInfo = new ReplicationQueueInfo(queueId);
         if (!replicationPeers.getAllPeerIds().contains(queueInfo.getPeerId())) {
@@ -159,7 +160,7 @@ public class ReplicationZKNodeCleaner {
      * @throws IOException
      */
     public void removeHFileRefsQueue(final String hfileRefsQueueId) throws IOException {
-      String node = ZKUtil.joinZNode(this.hfileRefsZNode, hfileRefsQueueId);
+      String node = ZNodePaths.joinZNode(this.hfileRefsZNode, hfileRefsQueueId);
       try {
         if (!replicationPeers.getAllPeerIds().contains(hfileRefsQueueId)) {
           ZKUtil.deleteNodeRecursively(this.zookeeper, node);

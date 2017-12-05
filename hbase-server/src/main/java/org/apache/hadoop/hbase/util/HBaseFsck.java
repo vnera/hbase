@@ -130,7 +130,8 @@ import org.apache.hadoop.hbase.wal.WALFactory;
 import org.apache.hadoop.hbase.wal.WALSplitter;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.apache.hadoop.hdfs.protocol.AlreadyBeingCreatedException;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -315,7 +316,7 @@ public class HBaseFsck extends Configured implements Closeable {
 
   private Map<TableName, Set<String>> skippedRegions = new HashMap<>();
 
-  private ZooKeeperWatcher zkw = null;
+  private ZKWatcher zkw = null;
   private String hbckEphemeralNodePath = null;
   private boolean hbckZodeCreated = false;
 
@@ -703,7 +704,7 @@ public class HBaseFsck extends Configured implements Closeable {
    */
   private boolean setMasterInMaintenanceMode() throws IOException {
     RetryCounter retryCounter = createZNodeRetryCounterFactory.create();
-    hbckEphemeralNodePath = ZKUtil.joinZNode(
+    hbckEphemeralNodePath = ZNodePaths.joinZNode(
       zkw.znodePaths.masterMaintZNode,
       "hbck-" + Long.toString(EnvironmentEdgeManager.currentTime()));
     do {
@@ -1917,8 +1918,8 @@ public class HBaseFsck extends Configured implements Closeable {
     return true;
   }
 
-  private ZooKeeperWatcher createZooKeeperWatcher() throws IOException {
-    return new ZooKeeperWatcher(getConf(), "hbase Fsck", new Abortable() {
+  private ZKWatcher createZooKeeperWatcher() throws IOException {
+    return new ZKWatcher(getConf(), "hbase Fsck", new Abortable() {
       @Override
       public void abort(String why, Throwable e) {
         LOG.error(why, e);

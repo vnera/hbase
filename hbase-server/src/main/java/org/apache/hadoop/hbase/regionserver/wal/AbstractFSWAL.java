@@ -21,6 +21,8 @@ import static org.apache.hadoop.hbase.shaded.com.google.common.base.Precondition
 import static org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions.checkNotNull;
 import static org.apache.hadoop.hbase.wal.AbstractFSWALProvider.WAL_FILE_NAME_DELIMITER;
 
+import com.lmax.disruptor.RingBuffer;
+
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.lang.management.MemoryType;
@@ -59,6 +61,7 @@ import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.exceptions.TimeoutIOException;
 import org.apache.hadoop.hbase.io.util.MemorySizeUtil;
 import org.apache.hadoop.hbase.regionserver.MultiVersionConcurrencyControl;
+import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CollectionUtils;
 import org.apache.hadoop.hbase.util.CommonFSUtils;
@@ -72,15 +75,10 @@ import org.apache.hadoop.hbase.wal.WALKey;
 import org.apache.hadoop.hbase.wal.WALProvider.WriterBase;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.util.StringUtils;
-import org.apache.htrace.NullScope;
-import org.apache.htrace.Span;
-import org.apache.htrace.Trace;
-import org.apache.htrace.TraceScope;
+import org.apache.htrace.core.TraceScope;
 import org.apache.yetus.audience.InterfaceAudience;
 
 import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-
-import com.lmax.disruptor.RingBuffer;
 
 /**
  * Implementation of {@link WAL} to go against {@link FileSystem}; i.e. keep WALs in HDFS. Only one
@@ -681,8 +679,7 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
    * @throws IOException if there is a problem flushing or closing the underlying FS
    */
   Path replaceWriter(Path oldPath, Path newPath, W nextWriter) throws IOException {
-    TraceScope scope = Trace.startSpan("FSHFile.replaceWriter");
-    try {
+    try (TraceScope scope = TraceUtil.createTrace("FSHFile.replaceWriter")) {
       long oldFileLen = doReplaceWriter(oldPath, newPath, nextWriter);
       int oldNumEntries = this.numEntries.getAndSet(0);
       final String newPathString = (null == newPath ? null : CommonFSUtils.getPath(newPath));
@@ -696,16 +693,15 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
         LOG.info("New WAL " + newPathString);
       }
       return newPath;
-    } finally {
-      scope.close();
     }
   }
 
-  protected Span blockOnSync(final SyncFuture syncFuture) throws IOException {
+  protected final void blockOnSync(SyncFuture syncFuture) throws IOException {
     // Now we have published the ringbuffer, halt the current thread until we get an answer back.
     try {
-      syncFuture.get(walSyncTimeoutNs);
-      return syncFuture.getSpan();
+      if (syncFuture != null) {
+        syncFuture.get(walSyncTimeoutNs);
+      }
     } catch (TimeoutIOException tioe) {
       // SyncFuture reuse by thread, if TimeoutIOException happens, ringbuffer
       // still refer to it, so if this thread use it next time may get a wrong
@@ -748,8 +744,7 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
         LOG.debug("WAL closing. Skipping rolling of writer");
         return regionsToFlush;
       }
-      TraceScope scope = Trace.startSpan("FSHLog.rollWriter");
-      try {
+      try (TraceScope scope = TraceUtil.createTrace("FSHLog.rollWriter")) {
         Path oldPath = getOldPath();
         Path newPath = getNewPath();
         // Any exception from here on is catastrophic, non-recoverable so we currently abort.
@@ -774,8 +769,6 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
             "for details.", exception);
       } finally {
         closeBarrier.endOp();
-        assert scope == NullScope.INSTANCE || !scope.isDetached();
-        scope.close();
       }
       return regionsToFlush;
     } finally {
@@ -798,7 +791,8 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
    * Get the backing files associated with this WAL.
    * @return may be null if there are no files.
    */
-  protected FileStatus[] getFiles() throws IOException {
+  @VisibleForTesting
+  FileStatus[] getFiles() throws IOException {
     return CommonFSUtils.listStatus(fs, walDir, ourFiles);
   }
 
@@ -868,13 +862,13 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
     sequenceIdAccounting.updateStore(encodedRegionName, familyName, sequenceid, onlyIfGreater);
   }
 
-  protected SyncFuture getSyncFuture(long sequence, Span span) {
+  protected final SyncFuture getSyncFuture(long sequence) {
     return CollectionUtils
         .computeIfAbsent(syncFuturesByHandler, Thread.currentThread(), SyncFuture::new)
-        .reset(sequence, span);
+        .reset(sequence);
   }
 
-  protected void requestLogRoll(boolean tooFewReplicas) {
+  protected final void requestLogRoll(boolean tooFewReplicas) {
     if (!this.listeners.isEmpty()) {
       for (WALActionsListener i : this.listeners) {
         i.logRollRequested(tooFewReplicas);
@@ -900,7 +894,7 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
     // Noop
   }
 
-  protected boolean append(W writer, FSWALEntry entry) throws IOException {
+  protected final boolean append(W writer, FSWALEntry entry) throws IOException {
     // TODO: WORK ON MAKING THIS APPEND FASTER. DOING WAY TOO MUCH WORK WITH CPs, PBing, etc.
     atHeadOfRingBufferEventHandlerAppend();
     long start = EnvironmentEdgeManager.currentTime();
@@ -946,11 +940,11 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
     return len;
   }
 
-  protected void postSync(final long timeInNanos, final int handlerSyncs) {
+  protected final void postSync(final long timeInNanos, final int handlerSyncs) {
     if (timeInNanos > this.slowSyncNs) {
       String msg = new StringBuilder().append("Slow sync cost: ").append(timeInNanos / 1000000)
           .append(" ms, current pipeline: ").append(Arrays.toString(getPipeline())).toString();
-      Trace.addTimelineAnnotation(msg);
+      TraceUtil.addTimelineAnnotation(msg);
       LOG.info(msg);
     }
     if (!listeners.isEmpty()) {
@@ -960,22 +954,22 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
     }
   }
 
-  protected long stampSequenceIdAndPublishToRingBuffer(RegionInfo hri, WALKey key, WALEdit edits,
-      boolean inMemstore, RingBuffer<RingBufferTruck> ringBuffer)
+  protected final long stampSequenceIdAndPublishToRingBuffer(RegionInfo hri, WALKey key,
+      WALEdit edits, boolean inMemstore, RingBuffer<RingBufferTruck> ringBuffer)
       throws IOException {
     if (this.closed) {
-      throw new IOException("Cannot append; log is closed, regionName = " + hri.getRegionNameAsString());
+      throw new IOException(
+          "Cannot append; log is closed, regionName = " + hri.getRegionNameAsString());
     }
-    TraceScope scope = Trace.startSpan(implClassName + ".append");
     MutableLong txidHolder = new MutableLong();
     MultiVersionConcurrencyControl.WriteEntry we = key.getMvcc().begin(() -> {
       txidHolder.setValue(ringBuffer.next());
     });
     long txid = txidHolder.longValue();
-    try {
+    try (TraceScope scope = TraceUtil.createTrace(implClassName + ".append")) {
       FSWALEntry entry = new FSWALEntry(txid, key, edits, hri, inMemstore);
       entry.stampRegionSequenceId(we);
-      ringBuffer.get(txid).load(entry, scope.detach());
+      ringBuffer.get(txid).load(entry);
     } finally {
       ringBuffer.publish(txid);
     }

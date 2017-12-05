@@ -26,8 +26,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
@@ -35,9 +33,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.client.Admin;
-import org.apache.hadoop.hbase.client.Connection;
-import org.apache.hadoop.hbase.client.ConnectionFactory;
-import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.Result;
@@ -56,17 +51,15 @@ import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.zookeeper.EmptyWatcher;
 import org.apache.hadoop.hbase.zookeeper.ZKConfig;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
-import org.apache.zookeeper.ZooKeeper.States;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Stat;
 import org.junit.After;
 import org.junit.AfterClass;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -130,92 +123,6 @@ public class TestZooKeeper {
     }
   }
 
-  private ZooKeeperWatcher getZooKeeperWatcher(Connection c)
-  throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-    Method getterZK = c.getClass().getDeclaredMethod("getKeepAliveZooKeeperWatcher");
-    getterZK.setAccessible(true);
-    return (ZooKeeperWatcher) getterZK.invoke(c);
-  }
-
-
-  /**
-   * See HBASE-1232 and http://hbase.apache.org/book.html#trouble.zookeeper.
-   * @throws IOException
-   * @throws InterruptedException
-   */
-  // fails frequently, disabled for now, see HBASE-6406
-  //@Test
-  public void testClientSessionExpired() throws Exception {
-    Configuration c = new Configuration(TEST_UTIL.getConfiguration());
-
-    // We don't want to share the connection as we will check its state
-    c.set(HConstants.HBASE_CLIENT_INSTANCE_ID, "1111");
-
-    Connection connection = ConnectionFactory.createConnection(c);
-
-    ZooKeeperWatcher connectionZK = getZooKeeperWatcher(connection);
-    LOG.info("ZooKeeperWatcher= 0x"+ Integer.toHexString(
-      connectionZK.hashCode()));
-    LOG.info("getRecoverableZooKeeper= 0x"+ Integer.toHexString(
-      connectionZK.getRecoverableZooKeeper().hashCode()));
-    LOG.info("session="+Long.toHexString(
-      connectionZK.getRecoverableZooKeeper().getSessionId()));
-
-    TEST_UTIL.expireSession(connectionZK);
-
-    LOG.info("Before using zkw state=" +
-      connectionZK.getRecoverableZooKeeper().getState());
-    // provoke session expiration by doing something with ZK
-    try {
-      connectionZK.getRecoverableZooKeeper().getZooKeeper().exists(
-        "/1/1", false);
-    } catch (KeeperException ignored) {
-    }
-
-    // Check that the old ZK connection is closed, means we did expire
-    States state = connectionZK.getRecoverableZooKeeper().getState();
-    LOG.info("After using zkw state=" + state);
-    LOG.info("session="+Long.toHexString(
-      connectionZK.getRecoverableZooKeeper().getSessionId()));
-
-    // It's asynchronous, so we may have to wait a little...
-    final long limit1 = System.currentTimeMillis() + 3000;
-    while (System.currentTimeMillis() < limit1 && state != States.CLOSED){
-      state = connectionZK.getRecoverableZooKeeper().getState();
-    }
-    LOG.info("After using zkw loop=" + state);
-    LOG.info("ZooKeeper should have timed out");
-    LOG.info("session="+Long.toHexString(
-      connectionZK.getRecoverableZooKeeper().getSessionId()));
-
-    // It's surprising but sometimes we can still be in connected state.
-    // As it's known (even if not understood) we don't make the the test fail
-    // for this reason.)
-    // Assert.assertTrue("state=" + state, state == States.CLOSED);
-
-    // Check that the client recovered
-    ZooKeeperWatcher newConnectionZK = getZooKeeperWatcher(connection);
-
-    States state2 = newConnectionZK.getRecoverableZooKeeper().getState();
-    LOG.info("After new get state=" +state2);
-
-    // As it's an asynchronous event we may got the same ZKW, if it's not
-    //  yet invalidated. Hence this loop.
-    final long limit2 = System.currentTimeMillis() + 3000;
-    while (System.currentTimeMillis() < limit2 &&
-      state2 != States.CONNECTED && state2 != States.CONNECTING) {
-
-      newConnectionZK = getZooKeeperWatcher(connection);
-      state2 = newConnectionZK.getRecoverableZooKeeper().getState();
-    }
-    LOG.info("After new get state loop=" + state2);
-
-    Assert.assertTrue(
-      state2 == States.CONNECTED || state2 == States.CONNECTING);
-
-    connection.close();
-  }
-
   @Test (timeout = 120000)
   public void testRegionServerSessionExpired() throws Exception {
     LOG.info("Starting " + name.getMethodName());
@@ -271,41 +178,14 @@ public class TestZooKeeper {
     table.close();
   }
 
-  @Test
-  public void testMultipleZK()
-  throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-    Table localMeta = TEST_UTIL.getConnection().getTable(TableName.META_TABLE_NAME);
-    Configuration otherConf = new Configuration(TEST_UTIL.getConfiguration());
-    otherConf.set(HConstants.ZOOKEEPER_QUORUM, "127.0.0.1");
-    Connection connection = ConnectionFactory.createConnection(otherConf);
-    Table ipMeta = connection.getTable(TableName.META_TABLE_NAME);
-
-    // dummy, just to open the connection
-    final byte [] row = new byte [] {'r'};
-    localMeta.exists(new Get(row));
-    ipMeta.exists(new Get(row));
-
-    // make sure they aren't the same
-    ZooKeeperWatcher z1 =
-      getZooKeeperWatcher(ConnectionFactory.createConnection(localMeta.getConfiguration()));
-    ZooKeeperWatcher z2 =
-      getZooKeeperWatcher(ConnectionFactory.createConnection(otherConf));
-    assertFalse(z1 == z2);
-    assertFalse(z1.getQuorum().equals(z2.getQuorum()));
-
-    localMeta.close();
-    ipMeta.close();
-    connection.close();
-  }
-
   /**
    * Create a znode with data
    * @throws Exception
    */
   @Test
   public void testCreateWithParents() throws Exception {
-    ZooKeeperWatcher zkw =
-        new ZooKeeperWatcher(new Configuration(TEST_UTIL.getConfiguration()),
+    ZKWatcher zkw =
+        new ZKWatcher(new Configuration(TEST_UTIL.getConfiguration()),
             TestZooKeeper.class.getName(), null);
     byte[] expectedData = new byte[] { 1, 2, 3 };
     ZKUtil.createWithParents(zkw, "/l1/l2/l3/l4/testCreateWithParents", expectedData);
@@ -326,7 +206,7 @@ public class TestZooKeeper {
    */
   @Test
   public void testZNodeDeletes() throws Exception {
-    ZooKeeperWatcher zkw = new ZooKeeperWatcher(
+    ZKWatcher zkw = new ZKWatcher(
       new Configuration(TEST_UTIL.getConfiguration()),
       TestZooKeeper.class.getName(), null);
     ZKUtil.createWithParents(zkw, "/l1/l2/l3/l4");
@@ -367,7 +247,7 @@ public class TestZooKeeper {
 
     // Assumes the  root of the ZooKeeper space is writable as it creates a node
     // wherever the cluster home is defined.
-    ZooKeeperWatcher zk2 = new ZooKeeperWatcher(TEST_UTIL.getConfiguration(),
+    ZKWatcher zk2 = new ZKWatcher(TEST_UTIL.getConfiguration(),
       "testCreateSilentIsReallySilent", null);
 
     // Save the previous ACL
@@ -450,7 +330,7 @@ public class TestZooKeeper {
   @SuppressWarnings("deprecation")
   public void testGetChildDataAndWatchForNewChildrenShouldNotThrowNPE()
       throws Exception {
-    ZooKeeperWatcher zkw = new ZooKeeperWatcher(TEST_UTIL.getConfiguration(), name.getMethodName(), null);
+    ZKWatcher zkw = new ZKWatcher(TEST_UTIL.getConfiguration(), name.getMethodName(), null);
     ZKUtil.getChildDataAndWatchForNewChildren(zkw, "/wrongNode");
   }
 
@@ -465,7 +345,7 @@ public class TestZooKeeper {
     cluster.startRegionServer();
     cluster.waitForActiveAndReadyMaster(10000);
     HMaster m = cluster.getMaster();
-    final ZooKeeperWatcher zkw = m.getZooKeeper();
+    final ZKWatcher zkw = m.getZooKeeper();
     // now the cluster is up. So assign some regions.
     try (Admin admin = TEST_UTIL.getAdmin()) {
       byte[][] SPLIT_KEYS = new byte[][] { Bytes.toBytes("a"), Bytes.toBytes("b"),
@@ -496,14 +376,14 @@ public class TestZooKeeper {
    * Count listeners in zkw excluding listeners, that belongs to workers or other
    * temporary processes.
    */
-  private int countPermanentListeners(ZooKeeperWatcher watcher) {
+  private int countPermanentListeners(ZKWatcher watcher) {
     return countListeners(watcher, ZkSplitLogWorkerCoordination.class);
   }
 
   /**
    * Count listeners in zkw excluding provided classes
    */
-  private int countListeners(ZooKeeperWatcher watcher, Class<?>... exclude) {
+  private int countListeners(ZKWatcher watcher, Class<?>... exclude) {
     int cnt = 0;
     for (Object o : watcher.getListeners()) {
       boolean skip = false;

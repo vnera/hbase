@@ -41,6 +41,7 @@ import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.ByteBufferCell;
+import org.apache.hadoop.hbase.CacheEvictionStats;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellScanner;
@@ -162,6 +163,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.CreateTabl
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.GetCompletedSnapshotsResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.GetTableDescriptorsResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListNamespaceDescriptorsResponse;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.ListTableDescriptorsByNamespaceResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.MajorCompactionTimestampResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ProcedureProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.QuotaProtos;
@@ -436,6 +438,20 @@ public final class ProtobufUtil {
    * @return a list of TableDescriptor
    */
   public static List<TableDescriptor> toTableDescriptorList(GetTableDescriptorsResponse proto) {
+    if (proto == null) {
+      return new ArrayList<>();
+    }
+    return proto.getTableSchemaList().stream().map(ProtobufUtil::toTableDescriptor)
+        .collect(Collectors.toList());
+  }
+
+  /**
+   * Get a list of TableDescriptor from ListTableDescriptorsByNamespaceResponse protobuf
+   * @param proto the ListTableDescriptorsByNamespaceResponse
+   * @return a list of TableDescriptor
+   */
+  public static List<TableDescriptor>
+      toTableDescriptorList(ListTableDescriptorsByNamespaceResponse proto) {
     if (proto == null) return new ArrayList<>();
     return proto.getTableSchemaList().stream().map(ProtobufUtil::toTableDescriptor)
         .collect(Collectors.toList());
@@ -657,7 +673,8 @@ public final class ProtobufUtil {
                       .setTags(allTagsBytes)
                       .build());
             } else {
-              List<Tag> tags = TagUtil.asList(allTagsBytes, 0, (short)allTagsBytes.length);
+              List<Tag> tags =
+                  TagUtil.asList(allTagsBytes, 0, (short) allTagsBytes.length);
               Tag[] tagsArray = new Tag[tags.size()];
               put.addImmutable(family, qualifier, ts, value, tags.toArray(tagsArray));
             }
@@ -1806,7 +1823,7 @@ public final class ProtobufUtil {
       final AdminService.BlockingInterface admin, ServerName server, final org.apache.hadoop.hbase.client.RegionInfo region)
           throws IOException {
     OpenRegionRequest request =
-      RequestConverter.buildOpenRegionRequest(server, region, null, null);
+      RequestConverter.buildOpenRegionRequest(server, region, null);
     try {
       admin.openRegion(controller, request);
     } catch (ServiceException se) {
@@ -3384,5 +3401,19 @@ public final class ProtobufUtil {
     return response.getSnapshotsList().stream().map(ProtobufUtil::createSnapshotDesc)
         .filter(snap -> pattern != null ? pattern.matcher(snap.getName()).matches() : true)
         .collect(Collectors.toList());
+  }
+
+  public static CacheEvictionStats toCacheEvictionStats(HBaseProtos.CacheEvictionStats cacheEvictionStats) {
+    return CacheEvictionStats.builder()
+        .withEvictedBlocks(cacheEvictionStats.getEvictedBlocks())
+        .withMaxCacheSize(cacheEvictionStats.getMaxCacheSize())
+        .build();
+  }
+
+  public static HBaseProtos.CacheEvictionStats toCacheEvictionStats(CacheEvictionStats cacheEvictionStats) {
+    return HBaseProtos.CacheEvictionStats.newBuilder()
+        .setEvictedBlocks(cacheEvictionStats.getEvictedBlocks())
+        .setMaxCacheSize(cacheEvictionStats.getMaxCacheSize())
+        .build();
   }
 }

@@ -17,6 +17,8 @@
  */
 package org.apache.hadoop.hbase.replication.regionserver;
 
+import java.io.IOException;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -31,9 +33,10 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.ClusterConnection;
+import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
@@ -77,7 +80,7 @@ public class ReplicationSyncUp extends Configured implements Tool {
     ReplicationSourceManager manager;
     FileSystem fs;
     Path oldLogDir, logDir, walRootDir;
-    ZooKeeperWatcher zkw;
+    ZKWatcher zkw;
 
     Abortable abortable = new Abortable() {
       @Override
@@ -91,7 +94,7 @@ public class ReplicationSyncUp extends Configured implements Tool {
     };
 
     zkw =
-        new ZooKeeperWatcher(conf, "syncupReplication" + System.currentTimeMillis(), abortable,
+        new ZKWatcher(conf, "syncupReplication" + System.currentTimeMillis(), abortable,
             true);
 
     walRootDir = FSUtils.getWALRootDir(conf);
@@ -123,9 +126,9 @@ public class ReplicationSyncUp extends Configured implements Tool {
 
   static class DummyServer implements Server {
     String hostname;
-    ZooKeeperWatcher zkw;
+    ZKWatcher zkw;
 
-    DummyServer(ZooKeeperWatcher zkw) {
+    DummyServer(ZKWatcher zkw) {
       // an unique name in case the first run fails
       hostname = System.currentTimeMillis() + ".SyncUpTool.replication.org";
       this.zkw = zkw;
@@ -141,7 +144,7 @@ public class ReplicationSyncUp extends Configured implements Tool {
     }
 
     @Override
-    public ZooKeeperWatcher getZooKeeper() {
+    public ZKWatcher getZooKeeper() {
       return zkw;
     }
 
@@ -202,6 +205,11 @@ public class ReplicationSyncUp extends Configured implements Tool {
     @Override
     public boolean isStopping() {
       return false;
+    }
+
+    @Override
+    public Connection createConnection(Configuration conf) throws IOException {
+      return null;
     }
   }
 }

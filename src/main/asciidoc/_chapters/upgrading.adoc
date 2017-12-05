@@ -75,7 +75,7 @@ In addition to the usual API versioning considerations HBase has other compatibi
 * APIs available in a patch version will be available in all later patch versions. However, new APIs may be added which will not be available in earlier patch versions.
 * New APIs introduced in a patch version will only be added in a source compatible way footnote:[See 'Source Compatibility' https://blogs.oracle.com/darcy/entry/kinds_of_compatibility]: i.e. code that implements public APIs will continue to compile.
 ** Example: A user using a newly deprecated API does not need to modify application code with HBase API calls until the next major version.
-* 
+*
 
 .Client Binary compatibility
 * Client code written to APIs available in a given patch release can run unchanged (no recompilation needed) against the new jars of later patch versions.
@@ -325,16 +325,16 @@ Quitting...
 == Upgrade Paths
 
 [[upgrade1.0]]
-=== Upgrading from 0.98.x to 1.0.x
+=== Upgrading from 0.98.x to 1.x
 
-In this section we first note the significant changes that come in with 1.0.0 HBase and then we go over the upgrade process. Be sure to read the significant changes section with care so you avoid surprises.
+In this section we first note the significant changes that come in with 1.0.0+ HBase and then we go over the upgrade process. Be sure to read the significant changes section with care so you avoid surprises.
 
 ==== Changes of Note!
 
-In here we list important changes that are in 1.0.0 since 0.98.x., changes you should be aware that will go into effect once you upgrade.
+In here we list important changes that are in 1.0.0+ since 0.98.x., changes you should be aware that will go into effect once you upgrade.
 
 [[zookeeper.3.4]]
-.ZooKeeper 3.4 is required in HBase 1.0.0
+.ZooKeeper 3.4 is required in HBase 1.0.0+
 See <<zookeeper.requirements>>.
 
 [[default.ports.changed]]
@@ -355,10 +355,6 @@ You may have made use of this configuration if you are using BucketCache. If NOT
 .If you have your own customer filters.
 See the release notes on the issue link:https://issues.apache.org/jira/browse/HBASE-12068[HBASE-12068 [Branch-1\] Avoid need to always do KeyValueUtil#ensureKeyValue for Filter transformCell]; be sure to follow the recommendations therein.
 
-[[dlr]]
-.Distributed Log Replay
-<<distributed.log.replay>> is off by default in HBase 1.0.0. Enabling it can make a big difference improving HBase MTTR. Enable this feature if you are doing a clean stop/start when you are upgrading. You cannot rolling upgrade to this feature (caveat if you are running on a version of HBase in excess of HBase 0.98.4 -- see link:https://issues.apache.org/jira/browse/HBASE-12577[HBASE-12577 Disable distributed log replay by default] for more).
-
 .Mismatch Of `hbase.client.scanner.max.result.size` Between Client and Server
 If either the client or server version is lower than 0.98.11/1.0.0 and the server
 has a smaller value for `hbase.client.scanner.max.result.size` than the client, scan
@@ -366,6 +362,9 @@ requests that reach the server's `hbase.client.scanner.max.result.size` are like
 to miss data. In particular, 0.98.11 defaults `hbase.client.scanner.max.result.size`
 to 2 MB but other versions default to larger values. For this reason, be very careful
 using 0.98.11 servers with any other client version.
+
+.Availability of Date Tiered Compaction.
+The Date Tiered Compaction feature available as of 0.98.19 is available in the 1.y release line starting in release 1.3.0. If you have enabled this feature for any tables you must upgrade to version 1.3.0 or later. If you attempt to use an earlier 1.y release, any tables configured to use date tiered compaction will fail to have their regions open.
 
 [[upgrade1.0.rolling.upgrade]]
 ==== Rolling upgrade from 0.98.x to HBase 1.0.0
@@ -380,9 +379,9 @@ There are no known issues running a <<hbase.rolling.upgrade,rolling upgrade>> fr
 In hbase-1.x, the default Scan caching 'number of rows' changed.
 Where in 0.98.x, it defaulted to 100, in later HBase versions, the
 default became Integer.MAX_VALUE. Not setting a cache size can make
-for Scans that run for a long time server-side, especially if 
+for Scans that run for a long time server-side, especially if
 they are running with stringent filtering.  See
-link:https://issues.apache.org/jira/browse/HBASE-16973[Revisiting default value for hbase.client.scanner.caching]; 
+link:https://issues.apache.org/jira/browse/HBASE-16973[Revisiting default value for hbase.client.scanner.caching];
 for further discussion.
 
 [[upgrade1.0.from.0.94]]

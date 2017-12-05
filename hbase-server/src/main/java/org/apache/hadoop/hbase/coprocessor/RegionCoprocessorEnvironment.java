@@ -19,9 +19,12 @@
 
 package org.apache.hadoop.hbase.coprocessor;
 
+import java.io.IOException;
 import java.util.concurrent.ConcurrentMap;
 
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
+import org.apache.hadoop.hbase.ExtendedCellBuilder;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.Connection;
@@ -62,12 +65,28 @@ public interface RegionCoprocessorEnvironment extends CoprocessorEnvironment<Reg
    *
    * <p>Using a Connection to get at a local resource -- say a Region that is on the local
    * Server or using Admin Interface from a Coprocessor hosted on the Master -- will result in a
-   * short-circuit of the RPC framework to make a direct invocation avoiding RPC (and
-   * protobuf marshalling/unmarshalling).
-   *
+   * short-circuit of the RPC framework to make a direct invocation avoiding RPC.
+   *<p>
+   * Note: If you want to create Connection with your own Configuration and NOT use the RegionServer
+   * Connection (though its cache of locations will be warm, and its life-cycle is not the concern
+   * of the CP), see {@link #createConnection(Configuration)}.
    * @return The host's Connection to the Cluster.
    */
   Connection getConnection();
+
+  /**
+   * Creates a cluster connection using the passed configuration.
+   * <p>Using this Connection to get at a local resource -- say a Region that is on the local
+   * Server or using Admin Interface from a Coprocessor hosted on the Master -- will result in a
+   * short-circuit of the RPC framework to make a direct invocation avoiding RPC.
+   * <p>
+   * Note: HBase will NOT cache/maintain this Connection. If Coprocessors need to cache and reuse
+   * this connection, it has to be done by Coprocessors. Also make sure to close it after use.
+   *
+   * @param conf configuration
+   * @return Connection created using the passed conf.
+   */
+  Connection createConnection(Configuration conf) throws IOException;
 
   /**
    * Returns a MetricRegistry that can be used to track metrics at the region server level. All
@@ -85,4 +104,11 @@ public interface RegionCoprocessorEnvironment extends CoprocessorEnvironment<Reg
   // so we do not want to allow coprocessors to export metrics at the region level. We can allow
   // getMetricRegistryForTable() to allow coprocessors to track metrics per-table, per-regionserver.
   MetricRegistry getMetricRegistryForRegionServer();
+
+  /**
+   * Returns a CellBuilder so that coprocessors can build cells. These cells can also include tags.
+   * Note that this builder does not support updating seqId of the cells
+   * @return the ExtendedCellBuilder
+   */
+  ExtendedCellBuilder getCellBuilder();
 }
