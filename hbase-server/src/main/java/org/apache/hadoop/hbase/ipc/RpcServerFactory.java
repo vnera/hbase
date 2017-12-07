@@ -48,8 +48,8 @@ public class RpcServerFactory {
       final InetSocketAddress bindAddress, Configuration conf,
       RpcScheduler scheduler) throws IOException {
     String rpcServerClass = conf.get(CUSTOM_RPC_SERVER_IMPL_CONF_KEY,
-        SimpleRpcServer.class.getName());
-    StringBuffer servicesList = new StringBuffer();
+        NettyRpcServer.class.getName());
+    StringBuilder servicesList = new StringBuilder();
     for (BlockingServiceAndInterface s: services) {
       ServiceDescriptor sd = s.getBlockingService().getDescriptorForType();
       if (sd == null) continue; // Can be null for certain tests like TestTokenAuthentication

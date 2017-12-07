@@ -1309,7 +1309,7 @@ public class HRegionServer extends HasThread implements
 
     ClusterStatusProtos.ServerLoad.Builder serverLoad = ClusterStatusProtos.ServerLoad.newBuilder();
     serverLoad.setNumberOfRequests((int) regionServerWrapper.getRequestsPerSecond());
-    serverLoad.setTotalNumberOfRequests((int) regionServerWrapper.getTotalRequestCount());
+    serverLoad.setTotalNumberOfRequests(regionServerWrapper.getTotalRequestCount());
     serverLoad.setUsedHeapMB((int)(usedMemory / 1024 / 1024));
     serverLoad.setMaxHeapMB((int) (maxMemory / 1024 / 1024));
     Set<String> coprocessors = getWAL(null).getCoprocessorHost().getCoprocessors();
@@ -1753,7 +1753,7 @@ public class HRegionServer extends HasThread implements
 
     @Override
     protected void chore() {
-      final StringBuffer whyFlush = new StringBuffer();
+      final StringBuilder whyFlush = new StringBuilder();
       for (HRegion r : this.server.onlineRegions.values()) {
         if (r == null) continue;
         if (r.shouldFlush(whyFlush)) {

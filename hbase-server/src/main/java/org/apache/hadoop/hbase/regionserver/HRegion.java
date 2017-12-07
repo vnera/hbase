@@ -2266,7 +2266,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
   /**
    * Should the memstore be flushed now
    */
-  boolean shouldFlush(final StringBuffer whyFlush) {
+  boolean shouldFlush(final StringBuilder whyFlush) {
     whyFlush.setLength(0);
     // This is a rough measure.
     if (this.maxFlushedSeqId > 0
@@ -2876,7 +2876,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
             updateDeleteLatestVersionTimeStamp(cell, get, count, byteNow);
           }
         } else {
-          PrivateCellUtil.updateLatestStamp(cell, byteNow, 0);
+          PrivateCellUtil.updateLatestStamp(cell, byteNow);
         }
       }
     }
@@ -2888,7 +2888,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
 
     if (result.size() < count) {
       // Nothing to delete
-      PrivateCellUtil.updateLatestStamp(cell, byteNow, 0);
+      PrivateCellUtil.updateLatestStamp(cell, byteNow);
       return;
     }
     if (result.size() > count) {
@@ -4104,7 +4104,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       assert cells instanceof RandomAccess;
       int listSize = cells.size();
       for (int i = 0; i < listSize; i++) {
-        PrivateCellUtil.updateLatestStamp(cells.get(i), now, 0);
+        PrivateCellUtil.updateLatestStamp(cells.get(i), now);
       }
     }
   }
@@ -8299,7 +8299,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
 
   //// method for debugging tests
   void throwException(String title, String regionName) {
-    StringBuffer buf = new StringBuffer();
+    StringBuilder buf = new StringBuilder();
     buf.append(title + ", ");
     buf.append(getRegionInfo().toString());
     buf.append(getRegionInfo().isMetaRegion() ? " meta region " : " ");
