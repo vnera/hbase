@@ -16,17 +16,28 @@
 # optional args:
 echo "GIT_COMMIT (hash of push under review):   $GIT_COMMIT"
 echo "GERRIT_BRANCH (branch name to commit to): $GERRIT_BRANCH"
-echo "YETUS_ARGS (optional extra args):         $YETUS_ARGS"
+echo "YETUS_ARGS (env provided args):           $YETUS_ARGS"
 YETUS_VERSION_NUMBER=${YETUS_VERSION_NUMBER:-"0.4.0"}
 WORKSPACE=${WORKSPACE:-"."}
 RUN_IN_DOCKER=${RUN_IN_DOCKER:-"false"}
 DEBUG=${DEBUG:-"true"}
+YETUS_ARGS=${YETUS_ARGS:-'--project=hbase --plugins=all,-hadoopcheck,-asflicense --tests-filter=test4tests'}
+GIT=${GIT:-$(which git)}
+echo "YETUS_ARGS (used args):                   $YETUS_ARGS"
 
-export JAVA8_BUILD=true
-. /opt/toolchain/toolchain.sh
+echo "git version installed by default.  This needs to be v1.7.3+ (NOTE: centos6 defaults to git 1.7.1)"
+$GIT --version
 
-# shellcheck disable=SC2034
-MAVEN_HOME=${MAVEN_3_2_2_HOME}
+# Unit tests exclude list living in ./cloudera
+#
+# Trim out every thing after a '#', then drop all-whitespace lines, and then reformat to
+# EXCLUDED_TESTS expected comma separated list
+sed 's/#.*//' cloudera/excluded.txt |  grep -v '^\w*$' | tr '\n' ',' | sed 's/^/EXCLUDED_TESTS=/' > build.properties
+
+# Assumed from job environment
+export JAVA_HOME=$JAVA_1_8_HOME
+export PATH=${JAVA_HOME}/bin:${MAVEN_3_5_0_HOME}/bin:$PATH
+export YETUS_VERSION_NUMBER=0.4.0
 
 if [[ "true" = "${DEBUG}" ]]; then
   set -x
@@ -39,7 +50,7 @@ whoami
 echo "checking groups"
 groups
 
-COMPONENT=${WORKSPACE}/repos/hbase
+COMPONENT=${WORKSPACE}
 TEST_FRAMEWORK=${WORKSPACE}/test_framework
 
 # defensive check against misbehaving tests
@@ -53,7 +64,9 @@ fi
 mkdir -p "${PATCHPROCESS}"
 
 # First time we call this it's from jenkins, so break it on spaces
-YETUS_ARGS=(${YETUS_ARGS} --jenkins)
+# YETUS_ARGS=(${YETUS_ARGS} --jenkins)
+## HACK avoid --jenkins which enables robot which does a 'git -xdf' that breaks the run
+YETUS_ARGS=(${YETUS_ARGS} --dirty-workspace)
 
 ### Download Yetus
 if [ ! -d "${TEST_FRAMEWORK}" ]; then
@@ -64,6 +77,7 @@ if [ ! -d "${TEST_FRAMEWORK}" ]; then
   mkdir -p "${TEST_FRAMEWORK}/.gpg"
   chmod -R 700 "${TEST_FRAMEWORK}/.gpg"
 
+  # TODO post these curl'ed files on mirrors or artifactory and grab it from there.
   curl -L --fail -o "${TEST_FRAMEWORK}/KEYS_YETUS" https://dist.apache.org/repos/dist/release/yetus/KEYS
   gpg --homedir "${TEST_FRAMEWORK}/.gpg" --import "${TEST_FRAMEWORK}/KEYS_YETUS"
 
@@ -82,9 +96,6 @@ if [ ! -x "${TESTPATCHBIN}" ] && [ -n "${TEST_FRAMEWORK}" ] && [ -d "${TEST_FRAM
   rm -rf "${TEST_FRAMEWORK}"
   exit 1
 fi
-
-# Work around KITCHEN-11523
-GIT="${WORKSPACE}/git/bin/git"
 
 cd "${WORKSPACE}"
 
@@ -148,6 +159,8 @@ CDH_PARENT=`"${GIT}" log --first-parent --oneline | head -2 | tail -1 |  cut -d 
 "${GIT}" branch --set-upstream-to="origin/${GERRIT_BRANCH}" "${GERRIT_BRANCH}"
 cd "${WORKSPACE}"
 
+# TODO override mvn to use mvn-gbn
+
 # invoke test-patch and send results to a known HTML file.
 if ! /bin/bash "${TESTPATCHBIN}" \
         "${YETUS_ARGS[@]}" \
@@ -160,6 +173,7 @@ if ! /bin/bash "${TESTPATCHBIN}" \
         "${PATCHFILE}" ; then
   echo "[ERROR] test patch failed, grabbing test logs into artifact 'test_logs.zip'"
   echo "[DEBUG] If we failed but didn't run any junit tests, zip will fail. We can safely ignore that."
-  find "${COMPONENT}" -path '*/target/surefire-reports/*' | zip "${PATCHPROCESS}/test_logs.zip" -@ || true
+  find "${COMPONENT}" -path '*/target/surefire-reports/*'
+  # find "${COMPONENT}" -path '*/target/surefire-reports/*' | zip "${PATCHPROCESS}/test_logs.zip" -@ || true
   exit 1
 fi
