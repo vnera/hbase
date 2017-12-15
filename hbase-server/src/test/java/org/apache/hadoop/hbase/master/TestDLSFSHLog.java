@@ -15,23 +15,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.hadoop.hbase.master;
 
-package org.apache.hadoop.hbase;
+import org.apache.hadoop.hbase.testclassification.LargeTests;
+import org.apache.hadoop.hbase.testclassification.MasterTests;
+import org.junit.experimental.categories.Category;
 
-import org.apache.yetus.audience.InterfaceAudience;
+@Category({ MasterTests.class, LargeTests.class })
+public class TestDLSFSHLog extends AbstractTestDLS {
 
-/**
- * Thrown when a namespace exists but should not
- */
-@InterfaceAudience.Public
-public class NamespaceExistException extends DoNotRetryIOException {
-
-  private static final long serialVersionUID = -1582357514338825412L;
-
-  public NamespaceExistException() {
-  }
-
-  public NamespaceExistException(String namespace) {
-    super("Namespace " + namespace + " already exists");
+  @Override
+  protected String getWalProvider() {
+    return "filesystem";
   }
 }
