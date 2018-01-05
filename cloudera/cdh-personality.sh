@@ -43,6 +43,15 @@
 
 personality_plugins "all"
 
+if ! declare -f "yetus_info" >/dev/null; then
+
+  function yetus_info
+  {
+    echo "[$(date) INFO]: $*" 1>&2
+  }
+
+fi
+
 ## @description  Globals specific to this personality
 ## @audience     private
 ## @stability    evolving
@@ -80,14 +89,28 @@ function personality_modules
 
   extra="-DHBasePatchProcess"
 
-  if [[ ${repostatus} == branch
-     && ${testtype} == mvninstall ]] ||
-     [[ "${BUILDMODE}" == full ]];then
+  # BUILDMODE value is 'full' when there is no patch to be tested, and we are running checks on
+  # full source code instead. In this case, do full compiles, tests, etc instead of per
+  # module.
+  # Used in nightly runs.
+  # If BUILDMODE is 'patch', for unit and compile testtypes, there is no need to run individual
+  # modules if root is included. HBASE-18505
+  if [[ "${BUILDMODE}" == "full" ]] || \
+     [[ ( "${testtype}" == unit || "${testtype}" == compile ) && "${MODULES[*]}" =~ \. ]]; then
+    MODULES=(.)
+  fi
+
+  if [[ ${testtype} == mvninstall ]]; then
+    # shellcheck disable=SC2086
     personality_enqueue_module . ${extra}
     return
   fi
 
-  if [[ ${testtype} = findbugs ]]; then
+  if [[ ${testtype} == findbugs ]]; then
+    # Run findbugs on each module individually to diff pre-patch and post-patch results and
+    # report new warnings for changed modules only.
+    # For some reason, findbugs on root is not working, but running on individual modules is
+    # working. For time being, let it run on original list of CHANGED_MODULES. HBASE-19491
     for module in "${CHANGED_MODULES[@]}"; do
       # skip findbugs on hbase-shell and hbase-it. hbase-it has nothing
       # in src/main/java where findbugs goes to look
