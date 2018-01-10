@@ -21,16 +21,16 @@ package org.apache.hadoop.hbase.client;
 import java.util.Arrays;
 
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @InterfaceAudience.Private
 public class RegionInfoBuilder {
-  private static final Log LOG = LogFactory.getLog(RegionInfoBuilder.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RegionInfoBuilder.class);
 
   /** A non-capture group so that this can be embedded. */
   public static final String ENCODED_REGION_NAME_REGEX = "(?:[a-f0-9]+)";
@@ -168,7 +168,7 @@ public class RegionInfoBuilder {
         final byte[] endKey, final long regionId,
         final int replicaId, boolean offLine, byte[] regionName) {
       int result = Arrays.hashCode(regionName);
-      result ^= regionId;
+      result = (int) (result ^ regionId);
       result ^= Arrays.hashCode(checkStartKey(startKey));
       result ^= Arrays.hashCode(checkEndKey(endKey));
       result ^= Boolean.valueOf(offLine).hashCode();

@@ -32,12 +32,10 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.AuthUtil;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellBuilder;
+import org.apache.hadoop.hbase.Cell.Type;
 import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellUtil;
@@ -65,9 +63,9 @@ import org.apache.hadoop.hbase.protobuf.generated.AccessControlProtos;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
 import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.security.User;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ArrayListMultimap;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ListMultimap;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.common.collect.ArrayListMultimap;
+import org.apache.hbase.thirdparty.com.google.common.collect.ListMultimap;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.io.Text;
@@ -75,6 +73,8 @@ import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableFactories;
 import org.apache.hadoop.io.WritableUtils;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Maintains lists of permission grants to users and groups to allow for
@@ -119,7 +119,7 @@ public class AccessControlLists {
    * _acl_ table info: column keys */
   public static final char ACL_KEY_DELIMITER = ',';
 
-  private static final Log LOG = LogFactory.getLog(AccessControlLists.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AccessControlLists.class);
 
   /**
    * Stores a new user permission grant in the access control lists table.
@@ -173,7 +173,7 @@ public class AccessControlLists {
         .setFamily(ACL_LIST_FAMILY)
         .setQualifier(key)
         .setTimestamp(p.getTimeStamp())
-        .setType(CellBuilder.DataType.Put)
+        .setType(Type.Put)
         .setValue(value)
         .build());
     if (LOG.isDebugEnabled()) {

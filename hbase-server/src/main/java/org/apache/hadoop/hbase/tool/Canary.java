@@ -47,15 +47,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import org.apache.commons.lang3.time.StopWatch;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.AuthUtil;
 import org.apache.hadoop.hbase.ChoreService;
-import org.apache.hadoop.hbase.ClusterStatus;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
+import org.apache.hadoop.hbase.ClusterMetrics;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
@@ -98,8 +95,10 @@ import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.client.ConnectStringParser;
 import org.apache.zookeeper.data.Stat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 
 /**
  * HBase Canary Tool, that that can be used to do
@@ -540,10 +539,10 @@ public final class Canary implements Tool {
         LOG.debug("The targeted table was disabled.  Assuming success.");
       } catch (DoNotRetryIOException dnrioe) {
         sink.publishReadFailure(tableName.getNameAsString(), serverName);
-        LOG.error(dnrioe);
+        LOG.error(dnrioe.toString(), dnrioe);
       } catch (IOException e) {
         sink.publishReadFailure(tableName.getNameAsString(), serverName);
-        LOG.error(e);
+        LOG.error(e.toString(), e);
       } finally {
         if (table != null) {
           try {
@@ -571,7 +570,7 @@ public final class Canary implements Tool {
   private static final long DEFAULT_TIMEOUT = 600000; // 10 mins
   private static final int MAX_THREADS_NUM = 16; // #threads to contact regions
 
-  private static final Log LOG = LogFactory.getLog(Canary.class);
+  private static final Logger LOG = LoggerFactory.getLogger(Canary.class);
 
   public static final TableName DEFAULT_WRITE_TABLE_NAME = TableName.valueOf(
     NamespaceDescriptor.SYSTEM_NAMESPACE_NAME_STR, "canary");
@@ -1169,8 +1168,7 @@ public final class Canary implements Tool {
     private void checkWriteTableDistribution() throws IOException {
       if (!admin.tableExists(writeTableName)) {
         int numberOfServers =
-            admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers()
-                .size();
+            admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS)).getLiveServerMetrics().size();
         if (numberOfServers == 0) {
           throw new IllegalStateException("No live regionservers");
         }
@@ -1181,10 +1179,10 @@ public final class Canary implements Tool {
         admin.enableTable(writeTableName);
       }
 
-      ClusterStatus status =
-          admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS, Option.MASTER));
-      int numberOfServers = status.getServersSize();
-      if (status.getServers().contains(status.getMaster())) {
+      ClusterMetrics status =
+          admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS, Option.MASTER));
+      int numberOfServers = status.getLiveServerMetrics().size();
+      if (status.getLiveServerMetrics().containsKey(status.getMasterName())) {
         numberOfServers -= 1;
       }
 
@@ -1503,8 +1501,8 @@ public final class Canary implements Tool {
         }
 
         // get any live regionservers not serving any regions
-        for (ServerName rs : this.admin
-            .getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers()) {
+        for (ServerName rs : this.admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS))
+          .getLiveServerMetrics().keySet()) {
           String rsName = rs.getHostname();
           if (!rsAndRMap.containsKey(rsName)) {
             rsAndRMap.put(rsName, Collections.<RegionInfo> emptyList());

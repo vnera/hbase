@@ -29,15 +29,15 @@ import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.InvalidProtocolBufferException;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.UnsafeByteOperations;
+import org.apache.hbase.thirdparty.com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.FilterProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos.CompareType;
 import org.apache.hadoop.hbase.util.Bytes;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
 
 /**
  * This filter is used to filter cells based on value. It takes a {@link CompareFilter.CompareOp}
@@ -278,16 +278,19 @@ public class SingleColumnValueFilter extends FilterBase {
     return CompareFilter.compare(this.op, compareResult);
   }
 
+  @Override
   public boolean filterRow() {
     // If column was found, return false if it was matched, true if it was not
     // If column not found, return true if we filter if missing, false if not
     return this.foundColumn? !this.matchedColumn: this.filterIfMissing;
   }
   
+  @Override
   public boolean hasFilterRow() {
     return true;
   }
 
+  @Override
   public void reset() {
     foundColumn = false;
     matchedColumn = false;
@@ -387,6 +390,7 @@ public class SingleColumnValueFilter extends FilterBase {
   /**
    * @return The filter serialized using pb
    */
+  @Override
   public byte [] toByteArray() {
     return convert().toByteArray();
   }
@@ -425,6 +429,7 @@ public class SingleColumnValueFilter extends FilterBase {
    * @return true if and only if the fields of the filter that are serialized
    * are equal to the corresponding fields in other.  Used for testing.
    */
+  @Override
   boolean areSerializedFieldsEqual(Filter o) {
     if (o == this) return true;
     if (!(o instanceof SingleColumnValueFilter)) return false;
@@ -443,6 +448,7 @@ public class SingleColumnValueFilter extends FilterBase {
    * column in whole scan. If filterIfMissing == false, all families are essential,
    * because of possibility of skipping the rows without any data in filtered CF.
    */
+  @Override
   public boolean isFamilyEssential(byte[] name) {
     return !this.filterIfMissing || Bytes.equals(name, this.columnFamily);
   }

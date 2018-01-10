@@ -41,12 +41,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
 import org.apache.commons.cli.CommandLine;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.ServerName;
@@ -64,6 +61,8 @@ import org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tool for loading/unloading regions to/from given regionserver This tool can be run from Command
@@ -82,7 +81,7 @@ public class RegionMover extends AbstractHBaseTool {
   public static final int DEFAULT_MOVE_RETRIES_MAX = 5;
   public static final int DEFAULT_MOVE_WAIT_MAX = 60;
   public static final int DEFAULT_SERVERSTART_WAIT_MAX = 180;
-  static final Log LOG = LogFactory.getLog(RegionMover.class);
+  static final Logger LOG = LoggerFactory.getLogger(RegionMover.class);
   private RegionMoverBuilder rmbuilder;
   private boolean ack = true;
   private int maxthreads = 1;
@@ -748,7 +747,7 @@ public class RegionMover extends AbstractHBaseTool {
    * @throws IOException
    */
   private void stripMaster(ArrayList<String> regionServers, Admin admin) throws IOException {
-    ServerName master = admin.getClusterStatus(EnumSet.of(Option.MASTER)).getMaster();
+    ServerName master = admin.getClusterMetrics(EnumSet.of(Option.MASTER)).getMasterName();
     String masterHostname = master.getHostname();
     int masterPort = master.getPort();
     try {
@@ -826,7 +825,7 @@ public class RegionMover extends AbstractHBaseTool {
    */
   private ArrayList<String> getServers(Admin admin) throws IOException {
     ArrayList<ServerName> serverInfo = new ArrayList<>(
-        admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers());
+        admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS)).getLiveServerMetrics().keySet());
     ArrayList<String> regionServers = new ArrayList<>(serverInfo.size());
     for (ServerName server : serverInfo) {
       regionServers.add(server.getServerName().toLowerCase());

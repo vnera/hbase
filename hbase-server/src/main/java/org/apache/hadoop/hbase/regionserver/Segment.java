@@ -21,11 +21,11 @@ package org.apache.hadoop.hbase.regionserver;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.SortedSet;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.commons.logging.Log;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellComparator;
 import org.apache.hadoop.hbase.PrivateCellUtil;
@@ -35,8 +35,8 @@ import org.apache.hadoop.hbase.io.TimeRange;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.ClassSize;
 import org.apache.yetus.audience.InterfaceAudience;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.slf4j.Logger;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 
 /**
  * This is an abstraction of a segment maintained in a memstore, e.g., the active
@@ -158,14 +158,25 @@ public abstract class Segment {
   /**
    * If the segment has a memory allocator the cell is being cloned to this space, and returned;
    * otherwise the given cell is returned
+   *
+   * When a cell's size is too big (bigger than maxAlloc), it is not allocated on MSLAB.
+   * Since the process of flattening to CellChunkMap assumes that all cells
+   * are allocated on MSLAB, during this process, the input parameter
+   * forceCloneOfBigCell is set to 'true' and the cell is copied into MSLAB.
+   *
    * @return either the given cell or its clone
    */
-  public Cell maybeCloneWithAllocator(Cell cell) {
+  public Cell maybeCloneWithAllocator(Cell cell, boolean forceCloneOfBigCell) {
     if (this.memStoreLAB == null) {
       return cell;
     }
 
-    Cell cellFromMslab = this.memStoreLAB.copyCellInto(cell);
+    Cell cellFromMslab = null;
+    if (forceCloneOfBigCell) {
+      cellFromMslab = this.memStoreLAB.forceCopyOfBigCellInto(cell);
+    } else {
+      cellFromMslab = this.memStoreLAB.copyCellInto(cell);
+    }
     return (cellFromMslab != null) ? cellFromMslab : cell;
   }
 
@@ -343,21 +354,21 @@ public abstract class Segment {
   /**
    * Dumps all cells of the segment into the given log
    */
-  void dump(Log log) {
+  void dump(Logger log) {
     for (Cell cell: getCellSet()) {
-      log.debug(cell);
+      log.debug(Objects.toString(cell));
     }
   }
 
   @Override
   public String toString() {
-    String res = "Store segment of type "+this.getClass().getName()+"; ";
-    res += "isEmpty "+(isEmpty()?"yes":"no")+"; ";
-    res += "cellsCount "+getCellsCount()+"; ";
-    res += "cellsSize "+keySize()+"; ";
-    res += "totalHeapSize "+heapSize()+"; ";
-    res += "Min ts " + timeRangeTracker.getMin() + "; ";
-    res += "Max ts " + timeRangeTracker.getMax() + "; ";
+    String res = "Type=" + this.getClass().getSimpleName() + ", ";
+    res += "empty=" + (isEmpty()? "yes": "no") + ", ";
+    res += "cellCount=" + getCellsCount() + ", ";
+    res += "cellSize=" + keySize() + ", ";
+    res += "totalHeapSize=" + heapSize() + ", ";
+    res += "min timestamp=" + timeRangeTracker.getMin() + ", ";
+    res += "max timestamp=" + timeRangeTracker.getMax();
     return res;
   }
 }

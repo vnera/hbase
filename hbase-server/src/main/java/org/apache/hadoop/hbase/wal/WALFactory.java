@@ -20,7 +20,7 @@
 
 package org.apache.hadoop.hbase.wal;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -29,12 +29,12 @@ import java.util.List;
 import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 // imports for things that haven't moved from regionserver.wal yet.
 import org.apache.hadoop.hbase.regionserver.wal.MetricsWAL;
 import org.apache.hadoop.hbase.regionserver.wal.ProtobufLogReader;
@@ -67,13 +67,13 @@ import org.apache.hadoop.hbase.wal.WALProvider.Writer;
 @InterfaceAudience.Private
 public class WALFactory implements WALFileLengthProvider {
 
-  private static final Log LOG = LogFactory.getLog(WALFactory.class);
+  private static final Logger LOG = LoggerFactory.getLogger(WALFactory.class);
 
   /**
    * Maps between configuration names for providers and implementation classes.
    */
   static enum Providers {
-    defaultProvider(FSHLogProvider.class),
+    defaultProvider(AsyncFSWALProvider.class),
     filesystem(FSHLogProvider.class),
     multiwal(RegionGroupingProvider.class),
     asyncfs(AsyncFSWALProvider.class);
@@ -87,7 +87,7 @@ public class WALFactory implements WALFileLengthProvider {
   public static final String WAL_PROVIDER = "hbase.wal.provider";
   static final String DEFAULT_WAL_PROVIDER = Providers.defaultProvider.name();
 
-  static final String META_WAL_PROVIDER = "hbase.wal.meta_provider";
+  public static final String META_WAL_PROVIDER = "hbase.wal.meta_provider";
   static final String DEFAULT_META_WAL_PROVIDER = Providers.defaultProvider.name();
 
   final String factoryId;

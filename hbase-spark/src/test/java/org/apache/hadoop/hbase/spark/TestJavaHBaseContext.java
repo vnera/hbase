@@ -61,7 +61,7 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 import scala.Tuple2;
-import org.apache.hadoop.hbase.shaded.com.google.common.io.Files;
+import org.apache.hbase.thirdparty.com.google.common.io.Files;
 
 @Category({MiscTests.class, MediumTests.class})
 public class TestJavaHBaseContext implements Serializable {

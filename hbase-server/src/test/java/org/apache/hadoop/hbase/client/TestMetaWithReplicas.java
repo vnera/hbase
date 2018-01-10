@@ -23,19 +23,17 @@ import static org.apache.hadoop.hbase.util.hbck.HbckTestingUtil.doFsck;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import edu.umd.cs.findbugs.annotations.Nullable;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.CategoryBasedTimeout;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionLocation;
@@ -67,8 +65,8 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.junit.rules.TestRule;
-
-import edu.umd.cs.findbugs.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tests the scenarios where replicas are enabled for the meta table
@@ -79,7 +77,7 @@ public class TestMetaWithReplicas {
       withTimeout(this.getClass()).
       withLookingForStuckThread(true).
       build();
-  private static final Log LOG = LogFactory.getLog(TestMetaWithReplicas.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestMetaWithReplicas.class);
   private final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
 
   @Rule
@@ -207,7 +205,7 @@ public class TestMetaWithReplicas {
           Thread.sleep(conf.getInt(StorefileRefresherChore.REGIONSERVER_STOREFILE_REFRESH_PERIOD,
               30000) * 3);
         }
-        master = util.getHBaseClusterInterface().getClusterStatus().getMaster();
+        master = util.getHBaseClusterInterface().getClusterMetrics().getMasterName();
         // kill the master so that regionserver recovery is not triggered at all
         // for the meta server
         util.getHBaseClusterInterface().stopMaster(master);
@@ -276,7 +274,7 @@ public class TestMetaWithReplicas {
   private void stopMasterAndValidateReplicaCount(final int originalReplicaCount,
       final int newReplicaCount)
       throws Exception {
-    ServerName sn = TEST_UTIL.getHBaseClusterInterface().getClusterStatus().getMaster();
+    ServerName sn = TEST_UTIL.getHBaseClusterInterface().getClusterMetrics().getMasterName();
     TEST_UTIL.getHBaseClusterInterface().stopMaster(sn);
     TEST_UTIL.getHBaseClusterInterface().waitForMasterToStop(sn, 60000);
     List<String> metaZnodes = TEST_UTIL.getZooKeeperWatcher().getMetaReplicaNodes();
@@ -409,7 +407,7 @@ public class TestMetaWithReplicas {
     byte[] data = ZKUtil.getData(zkw, primaryMetaZnode);
     ServerName currentServer = ProtobufUtil.toServerName(data);
     Collection<ServerName> liveServers = TEST_UTIL.getAdmin()
-        .getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers();
+        .getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS)).getLiveServerMetrics().keySet();
     ServerName moveToServer = null;
     for (ServerName s : liveServers) {
       if (!currentServer.equals(s)) {

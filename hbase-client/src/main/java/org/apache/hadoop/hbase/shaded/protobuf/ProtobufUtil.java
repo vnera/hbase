@@ -25,7 +25,6 @@ import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -38,19 +37,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import org.apache.commons.io.input.BoundedInputStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hbase.ByteBufferCell;
+import org.apache.hadoop.hbase.ByteBufferExtendedCell;
 import org.apache.hadoop.hbase.CacheEvictionStats;
 import org.apache.hadoop.hbase.CacheEvictionStatsBuilder;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellBuilder;
+import org.apache.hadoop.hbase.Cell.Type;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellScanner;
 import org.apache.hadoop.hbase.CellUtil;
-import org.apache.hadoop.hbase.ClusterId;
-import org.apache.hadoop.hbase.ClusterStatus;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.ExtendedCellBuilder;
 import org.apache.hadoop.hbase.ExtendedCellBuilderFactory;
@@ -59,7 +57,6 @@ import org.apache.hadoop.hbase.HBaseIOException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
-import org.apache.hadoop.hbase.ServerLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Append;
@@ -89,9 +86,7 @@ import org.apache.hadoop.hbase.client.security.SecurityCapability;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.filter.ByteArrayComparable;
 import org.apache.hadoop.hbase.filter.Filter;
-import org.apache.hadoop.hbase.io.LimitInputStream;
 import org.apache.hadoop.hbase.io.TimeRange;
-import org.apache.hadoop.hbase.master.RegionState;
 import org.apache.hadoop.hbase.protobuf.ProtobufMagic;
 import org.apache.hadoop.hbase.protobuf.ProtobufMessageConverter;
 import org.apache.hadoop.hbase.quotas.QuotaScope;
@@ -111,25 +106,25 @@ import org.apache.hadoop.hbase.util.VersionInfo;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.yetus.audience.InterfaceAudience;
 
-import org.apache.hadoop.hbase.shaded.com.google.gson.JsonArray;
-import org.apache.hadoop.hbase.shaded.com.google.gson.JsonElement;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.ByteString;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.CodedInputStream;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.InvalidProtocolBufferException;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.Message;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcChannel;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.Service;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.TextFormat;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.UnsafeByteOperations;
+import org.apache.hbase.thirdparty.com.google.common.io.ByteStreams;
+import org.apache.hbase.thirdparty.com.google.gson.JsonArray;
+import org.apache.hbase.thirdparty.com.google.gson.JsonElement;
+import org.apache.hbase.thirdparty.com.google.protobuf.ByteString;
+import org.apache.hbase.thirdparty.com.google.protobuf.CodedInputStream;
+import org.apache.hbase.thirdparty.com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.hbase.thirdparty.com.google.protobuf.Message;
+import org.apache.hbase.thirdparty.com.google.protobuf.RpcChannel;
+import org.apache.hbase.thirdparty.com.google.protobuf.RpcController;
+import org.apache.hbase.thirdparty.com.google.protobuf.Service;
+import org.apache.hbase.thirdparty.com.google.protobuf.ServiceException;
+import org.apache.hbase.thirdparty.com.google.protobuf.TextFormat;
+import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.AdminService;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.CloseRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetOnlineRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetOnlineRegionResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetRegionInfoRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetRegionInfoResponse;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetRegionLoadRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetRegionLoadResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetServerInfoRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetServerInfoResponse;
@@ -149,11 +144,8 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.MutationPr
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.MutationProto.MutationType;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.ScanRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos.LiveServerInfo;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos.RegionInTransition;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos.RegionLoad;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ComparatorProtos;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.FSProtos.HBaseVersionFileContent;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.FilterProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos.BytesBytesPair;
@@ -676,7 +668,7 @@ public final class ProtobufUtil {
                   .setFamily(family)
                   .setQualifier(qv.hasQualifier() ? qv.getQualifier().toByteArray() : null)
                   .setTimestamp(ts)
-                  .setType(CellBuilder.DataType.Put)
+                  .setType(Cell.Type.Put)
                   .setValue(qv.hasValue() ? qv.getValue().toByteArray() : null)
                   .setTags(allTagsBytes)
                   .build());
@@ -696,7 +688,7 @@ public final class ProtobufUtil {
                   .setFamily(family)
                   .setQualifier(qv.hasQualifier() ? qv.getQualifier().toByteArray() : null)
                   .setTimestamp(ts)
-                  .setType(CellBuilder.DataType.Put)
+                  .setType(Type.Put)
                   .setValue(qv.hasValue() ? qv.getValue().toByteArray() : null)
                   .build());
             }
@@ -1770,20 +1762,6 @@ public final class ProtobufUtil {
     }
   }
 
-  public static List<org.apache.hadoop.hbase.RegionLoad> getRegionLoad(
-      final RpcController controller, final AdminService.BlockingInterface admin,
-      final TableName tableName) throws IOException {
-    GetRegionLoadRequest request =
-        RequestConverter.buildGetRegionLoadRequest(tableName);
-    GetRegionLoadResponse response;
-    try {
-      response = admin.getRegionLoad(controller, request);
-    } catch (ServiceException se) {
-      throw getRemoteException(se);
-    }
-    return getRegionLoadInfo(response);
-  }
-
   public static List<org.apache.hadoop.hbase.RegionLoad> getRegionLoadInfo(
       GetRegionLoadResponse regionLoadResponse) {
     List<org.apache.hadoop.hbase.RegionLoad> regionLoadList =
@@ -2045,17 +2023,17 @@ public final class ProtobufUtil {
     // Doing this is going to kill us if we do it for all data passed.
     // St.Ack 20121205
     CellProtos.Cell.Builder kvbuilder = CellProtos.Cell.newBuilder();
-    if (kv instanceof ByteBufferCell) {
-      kvbuilder.setRow(wrap(((ByteBufferCell) kv).getRowByteBuffer(),
-        ((ByteBufferCell) kv).getRowPosition(), kv.getRowLength()));
-      kvbuilder.setFamily(wrap(((ByteBufferCell) kv).getFamilyByteBuffer(),
-        ((ByteBufferCell) kv).getFamilyPosition(), kv.getFamilyLength()));
-      kvbuilder.setQualifier(wrap(((ByteBufferCell) kv).getQualifierByteBuffer(),
-        ((ByteBufferCell) kv).getQualifierPosition(), kv.getQualifierLength()));
+    if (kv instanceof ByteBufferExtendedCell) {
+      kvbuilder.setRow(wrap(((ByteBufferExtendedCell) kv).getRowByteBuffer(),
+        ((ByteBufferExtendedCell) kv).getRowPosition(), kv.getRowLength()));
+      kvbuilder.setFamily(wrap(((ByteBufferExtendedCell) kv).getFamilyByteBuffer(),
+        ((ByteBufferExtendedCell) kv).getFamilyPosition(), kv.getFamilyLength()));
+      kvbuilder.setQualifier(wrap(((ByteBufferExtendedCell) kv).getQualifierByteBuffer(),
+        ((ByteBufferExtendedCell) kv).getQualifierPosition(), kv.getQualifierLength()));
       kvbuilder.setCellType(CellProtos.CellType.valueOf(kv.getTypeByte()));
       kvbuilder.setTimestamp(kv.getTimestamp());
-      kvbuilder.setValue(wrap(((ByteBufferCell) kv).getValueByteBuffer(),
-        ((ByteBufferCell) kv).getValuePosition(), kv.getValueLength()));
+      kvbuilder.setValue(wrap(((ByteBufferExtendedCell) kv).getValueByteBuffer(),
+        ((ByteBufferExtendedCell) kv).getValuePosition(), kv.getValueLength()));
       // TODO : Once tags become first class then we may have to set tags to kvbuilder.
     } else {
       kvbuilder.setRow(
@@ -2632,7 +2610,7 @@ public final class ProtobufUtil {
     final int firstByte = in.read();
     if (firstByte != -1) {
       final int size = CodedInputStream.readRawVarint32(firstByte, in);
-      final InputStream limitedInput = new LimitInputStream(in, size);
+      final InputStream limitedInput = ByteStreams.limit(in, size);
       final CodedInputStream codedInput = CodedInputStream.newInstance(limitedInput);
       codedInput.setSizeLimit(size);
       builder.mergeFrom(codedInput);
@@ -2730,23 +2708,14 @@ public final class ProtobufUtil {
   }
 
   public static ReplicationLoadSink toReplicationLoadSink(
-      ClusterStatusProtos.ReplicationLoadSink cls) {
-    return new ReplicationLoadSink(cls.getAgeOfLastAppliedOp(), cls.getTimeStampsOfLastAppliedOp());
+      ClusterStatusProtos.ReplicationLoadSink rls) {
+    return new ReplicationLoadSink(rls.getAgeOfLastAppliedOp(), rls.getTimeStampsOfLastAppliedOp());
   }
 
   public static ReplicationLoadSource toReplicationLoadSource(
-      ClusterStatusProtos.ReplicationLoadSource cls) {
-    return new ReplicationLoadSource(cls.getPeerID(), cls.getAgeOfLastShippedOp(),
-        cls.getSizeOfLogQueue(), cls.getTimeStampOfLastShippedOp(), cls.getReplicationLag());
-  }
-
-  public static List<ReplicationLoadSource> toReplicationLoadSourceList(
-      List<ClusterStatusProtos.ReplicationLoadSource> clsList) {
-    ArrayList<ReplicationLoadSource> rlsList = new ArrayList<>(clsList.size());
-    for (ClusterStatusProtos.ReplicationLoadSource cls : clsList) {
-      rlsList.add(toReplicationLoadSource(cls));
-    }
-    return rlsList;
+      ClusterStatusProtos.ReplicationLoadSource rls) {
+    return new ReplicationLoadSource(rls.getPeerID(), rls.getAgeOfLastShippedOp(),
+      rls.getSizeOfLogQueue(), rls.getTimeStampOfLastShippedOp(), rls.getReplicationLag());
   }
 
   /**
@@ -2982,221 +2951,6 @@ public final class ProtobufUtil {
         snapshotDesc.hasTable() ? TableName.valueOf(snapshotDesc.getTable()) : null,
         createSnapshotType(snapshotDesc.getType()), snapshotDesc.getOwner(),
         snapshotDesc.getCreationTime(), snapshotDesc.getVersion());
-  }
-
-  /**
-   * Convert a protobuf ClusterStatus to a ClusterStatus
-   *
-   * @param proto the protobuf ClusterStatus
-   * @return the converted ClusterStatus
-   */
-  public static ClusterStatus convert(ClusterStatusProtos.ClusterStatus proto) {
-    ClusterStatus.Builder builder = ClusterStatus.newBuilder();
-
-    Map<ServerName, ServerLoad> servers = null;
-    servers = new HashMap<>(proto.getLiveServersList().size());
-    for (LiveServerInfo lsi : proto.getLiveServersList()) {
-      servers.put(ProtobufUtil.toServerName(
-          lsi.getServer()), new ServerLoad(lsi.getServerLoad()));
-    }
-
-    List<ServerName> deadServers = new ArrayList<>(proto.getDeadServersList().size());
-    for (HBaseProtos.ServerName sn : proto.getDeadServersList()) {
-      deadServers.add(ProtobufUtil.toServerName(sn));
-    }
-
-    List<ServerName> backupMasters = new ArrayList<>(proto.getBackupMastersList().size());
-    for (HBaseProtos.ServerName sn : proto.getBackupMastersList()) {
-      backupMasters.add(ProtobufUtil.toServerName(sn));
-    }
-
-    List<RegionState> rit =
-      new ArrayList<>(proto.getRegionsInTransitionList().size());
-    for (RegionInTransition region : proto.getRegionsInTransitionList()) {
-      RegionState value = RegionState.convert(region.getRegionState());
-      rit.add(value);
-    }
-
-    String[] masterCoprocessors = null;
-    final int numMasterCoprocessors = proto.getMasterCoprocessorsCount();
-    masterCoprocessors = new String[numMasterCoprocessors];
-    for (int i = 0; i < numMasterCoprocessors; i++) {
-      masterCoprocessors[i] = proto.getMasterCoprocessors(i).getName();
-    }
-
-    String clusterId = null;
-    if (proto.hasClusterId()) {
-      clusterId = ClusterId.convert(proto.getClusterId()).toString();
-    }
-
-    String hbaseVersion = null;
-    if (proto.hasHbaseVersion()) {
-      hbaseVersion = proto.getHbaseVersion().getVersion();
-    }
-
-    ServerName master = null;
-    if (proto.hasMaster()) {
-      master = ProtobufUtil.toServerName(proto.getMaster());
-    }
-
-    Boolean balancerOn = null;
-    if (proto.hasBalancerOn()) {
-      balancerOn = proto.getBalancerOn();
-    }
-
-    builder.setHBaseVersion(hbaseVersion)
-           .setClusterId(clusterId)
-           .setLiveServers(servers)
-           .setDeadServers(deadServers)
-           .setMaster(master)
-           .setBackupMasters(backupMasters)
-           .setRegionState(rit)
-           .setMasterCoprocessors(masterCoprocessors)
-           .setBalancerOn(balancerOn);
-    if (proto.hasMasterInfoPort()) {
-      builder.setMasterInfoPort(proto.getMasterInfoPort());
-    }
-    return builder.build();
-  }
-
-  /**
-   * Convert ClusterStatusProtos.Option to ClusterStatus.Option
-   * @param option a ClusterStatusProtos.Option
-   * @return converted ClusterStatus.Option
-   */
-  public static ClusterStatus.Option toOption(ClusterStatusProtos.Option option) {
-    switch (option) {
-      case HBASE_VERSION: return ClusterStatus.Option.HBASE_VERSION;
-      case LIVE_SERVERS: return ClusterStatus.Option.LIVE_SERVERS;
-      case DEAD_SERVERS: return ClusterStatus.Option.DEAD_SERVERS;
-      case REGIONS_IN_TRANSITION: return ClusterStatus.Option.REGIONS_IN_TRANSITION;
-      case CLUSTER_ID: return ClusterStatus.Option.CLUSTER_ID;
-      case MASTER_COPROCESSORS: return ClusterStatus.Option.MASTER_COPROCESSORS;
-      case MASTER: return ClusterStatus.Option.MASTER;
-      case BACKUP_MASTERS: return ClusterStatus.Option.BACKUP_MASTERS;
-      case BALANCER_ON: return ClusterStatus.Option.BALANCER_ON;
-      case MASTER_INFO_PORT: return ClusterStatus.Option.MASTER_INFO_PORT;
-      // should not reach here
-      default: throw new IllegalArgumentException("Invalid option: " + option);
-    }
-  }
-
-  /**
-   * Convert ClusterStatus.Option to ClusterStatusProtos.Option
-   * @param option a ClusterStatus.Option
-   * @return converted ClusterStatusProtos.Option
-   */
-  public static ClusterStatusProtos.Option toOption(ClusterStatus.Option option) {
-    switch (option) {
-      case HBASE_VERSION: return ClusterStatusProtos.Option.HBASE_VERSION;
-      case LIVE_SERVERS: return ClusterStatusProtos.Option.LIVE_SERVERS;
-      case DEAD_SERVERS: return ClusterStatusProtos.Option.DEAD_SERVERS;
-      case REGIONS_IN_TRANSITION: return ClusterStatusProtos.Option.REGIONS_IN_TRANSITION;
-      case CLUSTER_ID: return ClusterStatusProtos.Option.CLUSTER_ID;
-      case MASTER_COPROCESSORS: return ClusterStatusProtos.Option.MASTER_COPROCESSORS;
-      case MASTER: return ClusterStatusProtos.Option.MASTER;
-      case BACKUP_MASTERS: return ClusterStatusProtos.Option.BACKUP_MASTERS;
-      case BALANCER_ON: return ClusterStatusProtos.Option.BALANCER_ON;
-      case MASTER_INFO_PORT: return ClusterStatusProtos.Option.MASTER_INFO_PORT;
-      // should not reach here
-      default: throw new IllegalArgumentException("Invalid option: " + option);
-    }
-  }
-
-  /**
-   * Convert a list of ClusterStatusProtos.Option to an enum set of ClusterStatus.Option
-   * @param options
-   * @return an enum set of ClusterStatus.Option
-   */
-  public static EnumSet<Option> toOptions(List<ClusterStatusProtos.Option> options) {
-    EnumSet<Option> result = EnumSet.noneOf(Option.class);
-    for (ClusterStatusProtos.Option opt : options) {
-      result.add(toOption(opt));
-    }
-    return result;
-  }
-
-  /**
-   * Convert an enum set of ClusterStatus.Option to a list of ClusterStatusProtos.Option
-   * @param options
-   * @return a list of ClusterStatusProtos.Option
-   */
-  public static List<ClusterStatusProtos.Option> toOptions(EnumSet<Option> options) {
-    List<ClusterStatusProtos.Option> result = new ArrayList<>(options.size());
-    for (ClusterStatus.Option opt : options) {
-      result.add(toOption(opt));
-    }
-    return result;
-  }
-
-  /**
-   * Convert a ClusterStatus to a protobuf ClusterStatus
-   *
-   * @return the protobuf ClusterStatus
-   */
-  public static ClusterStatusProtos.ClusterStatus convert(ClusterStatus status) {
-    ClusterStatusProtos.ClusterStatus.Builder builder =
-        ClusterStatusProtos.ClusterStatus.newBuilder();
-    if (status.getHBaseVersion() != null) {
-       builder.setHbaseVersion(
-         HBaseVersionFileContent.newBuilder()
-                                .setVersion(status.getHBaseVersion()));
-    }
-
-    if (status.getServers() != null) {
-      for (ServerName serverName : status.getServers()) {
-        LiveServerInfo.Builder lsi =
-            LiveServerInfo.newBuilder().setServer(ProtobufUtil.toServerName(serverName));
-        lsi.setServerLoad(status.getLoad(serverName).obtainServerLoadPB());
-        builder.addLiveServers(lsi.build());
-      }
-    }
-
-    if (status.getDeadServerNames() != null) {
-      for (ServerName deadServer : status.getDeadServerNames()) {
-        builder.addDeadServers(ProtobufUtil.toServerName(deadServer));
-      }
-    }
-
-    if (status.getRegionsInTransition() != null) {
-      for (RegionState rit : status.getRegionsInTransition()) {
-        ClusterStatusProtos.RegionState rs = rit.convert();
-        RegionSpecifier.Builder spec =
-            RegionSpecifier.newBuilder().setType(RegionSpecifierType.REGION_NAME);
-        spec.setValue(UnsafeByteOperations.unsafeWrap(rit.getRegion().getRegionName()));
-
-        RegionInTransition pbRIT =
-            RegionInTransition.newBuilder().setSpec(spec.build()).setRegionState(rs).build();
-        builder.addRegionsInTransition(pbRIT);
-      }
-    }
-
-    if (status.getClusterId() != null) {
-      builder.setClusterId(new ClusterId(status.getClusterId()).convert());
-    }
-
-    if (status.getMasterCoprocessors() != null) {
-      for (String coprocessor : status.getMasterCoprocessors()) {
-        builder.addMasterCoprocessors(HBaseProtos.Coprocessor.newBuilder().setName(coprocessor));
-      }
-    }
-
-    if (status.getMaster() != null) {
-      builder.setMaster(ProtobufUtil.toServerName(status.getMaster()));
-    }
-
-    if (status.getBackupMasters() != null) {
-      for (ServerName backup : status.getBackupMasters()) {
-        builder.addBackupMasters(ProtobufUtil.toServerName(backup));
-      }
-    }
-
-    if (status.getBalancerOn() != null) {
-      builder.setBalancerOn(status.getBalancerOn());
-    }
-
-    builder.setMasterInfoPort(status.getMasterInfoPort());
-    return builder.build();
   }
 
   public static RegionLoadStats createRegionLoadStats(ClientProtos.RegionLoadStats stats) {
@@ -3456,6 +3210,25 @@ public final class ProtobufUtil {
     return builder
         .setEvictedBlocks(cacheEvictionStats.getEvictedBlocks())
         .setMaxCacheSize(cacheEvictionStats.getMaxCacheSize())
+        .build();
+  }
+
+  public static ClusterStatusProtos.ReplicationLoadSource toReplicationLoadSource(
+      ReplicationLoadSource rls) {
+    return ClusterStatusProtos.ReplicationLoadSource.newBuilder()
+        .setPeerID(rls.getPeerID())
+        .setAgeOfLastShippedOp(rls.getAgeOfLastShippedOp())
+        .setSizeOfLogQueue((int) rls.getSizeOfLogQueue())
+        .setTimeStampOfLastShippedOp(rls.getTimeStampOfLastShippedOp())
+        .setReplicationLag(rls.getReplicationLag())
+        .build();
+  }
+
+  public static ClusterStatusProtos.ReplicationLoadSink toReplicationLoadSink(
+      ReplicationLoadSink rls) {
+    return ClusterStatusProtos.ReplicationLoadSink.newBuilder()
+        .setAgeOfLastAppliedOp(rls.getAgeOfLastAppliedOp())
+        .setTimeStampsOfLastAppliedOp(rls.getTimeStampsOfLastAppliedOp())
         .build();
   }
 }

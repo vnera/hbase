@@ -21,6 +21,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import com.google.protobuf.ServiceException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,9 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
@@ -64,7 +62,6 @@ import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.HRegionFileSystem;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
-import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.FSTableDescriptors;
 import org.apache.hadoop.hbase.util.FSUtils;
@@ -72,6 +69,8 @@ import org.apache.hadoop.hbase.util.FSVisitor;
 import org.apache.hadoop.hbase.util.MD5Hash;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.junit.Assert;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsSnapshotDoneRequest;
@@ -79,14 +78,12 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.IsSnapshot
 import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos.SnapshotRegionManifest;
 
-import com.google.protobuf.ServiceException;
-
 /**
  * Utilities class for snapshots
  */
 @InterfaceAudience.Private
 public final class SnapshotTestingUtils {
-  private static final Log LOG = LogFactory.getLog(SnapshotTestingUtils.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SnapshotTestingUtils.class);
 
   // default number of regions (and keys) given by getSplitKeys() and createTable()
   private static byte[] KEYS = Bytes.toBytes("0123456");
@@ -230,9 +227,6 @@ public final class SnapshotTestingUtils {
         }
       });
     }
-    for (byte[] b : snapshotFamilies) {
-      LOG.info("[CHIA] " + Bytes.toStringBinary(b));
-    }
     // Verify that there are store files in the specified families
     if (nonEmptyTestFamilies != null) {
       for (final byte[] familyName: nonEmptyTestFamilies) {
@@ -284,11 +278,11 @@ public final class SnapshotTestingUtils {
    * @param snapshot: the snapshot to check
    * @param sleep: amount to sleep between checks to see if the snapshot is done
    * @throws ServiceException if the snapshot fails
-   * @throws org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException
+   * @throws org.apache.hbase.thirdparty.com.google.protobuf.ServiceException
    */
   public static void waitForSnapshotToComplete(HMaster master,
       SnapshotProtos.SnapshotDescription snapshot, long sleep)
-          throws org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException {
+          throws org.apache.hbase.thirdparty.com.google.protobuf.ServiceException {
     final IsSnapshotDoneRequest request = IsSnapshotDoneRequest.newBuilder()
         .setSnapshot(snapshot).build();
     IsSnapshotDoneResponse done = IsSnapshotDoneResponse.newBuilder()
@@ -298,7 +292,7 @@ public final class SnapshotTestingUtils {
       try {
         Thread.sleep(sleep);
       } catch (InterruptedException e) {
-        throw new org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException(e);
+        throw new org.apache.hbase.thirdparty.com.google.protobuf.ServiceException(e);
       }
     }
   }
@@ -349,7 +343,7 @@ public final class SnapshotTestingUtils {
     try {
       master.getMasterRpcServices().isSnapshotDone(null, snapshot);
       Assert.fail("didn't fail to lookup a snapshot");
-    } catch (org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException se) {
+    } catch (org.apache.hbase.thirdparty.com.google.protobuf.ServiceException se) {
       try {
         throw ProtobufUtil.handleRemoteException(se);
       } catch (HBaseSnapshotException e) {

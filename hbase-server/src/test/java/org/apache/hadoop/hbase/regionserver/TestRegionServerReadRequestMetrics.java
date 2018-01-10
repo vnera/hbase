@@ -18,10 +18,19 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.RegionLoad;
 import org.apache.hadoop.hbase.ServerLoad;
@@ -56,22 +65,13 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
-
-import java.io.IOException;
-import java.util.Collection;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category(MediumTests.class)
 public class TestRegionServerReadRequestMetrics {
-  private static final Log LOG = LogFactory.getLog(TestRegionServerReadRequestMetrics.class);
+  private static final Logger LOG =
+      LoggerFactory.getLogger(TestRegionServerReadRequestMetrics.class);
   private static final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private static final TableName TABLE_NAME = TableName.valueOf("test");
   private static final byte[] CF1 = "c1".getBytes();
@@ -106,7 +106,8 @@ public class TestRegionServerReadRequestMetrics {
     TEST_UTIL.getConfiguration().setBoolean(LoadBalancer.SYSTEM_TABLES_ON_MASTER, true);
     TEST_UTIL.startMiniCluster();
     admin = TEST_UTIL.getAdmin();
-    serverNames = admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers();
+    serverNames = admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS))
+      .getLiveServerMetrics().keySet();
     table = createTable();
     putData();
     List<RegionInfo> regions = admin.getRegions(TABLE_NAME);
@@ -166,7 +167,8 @@ public class TestRegionServerReadRequestMetrics {
     boolean metricsUpdated = false;
     for (int i = 0; i < MAX_TRY; i++) {
       for (ServerName serverName : serverNames) {
-        serverLoad = admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getLoad(serverName);
+        serverLoad = new ServerLoad(admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS))
+          .getLiveServerMetrics().get(serverName));
 
         Map<byte[], RegionLoad> regionsLoad = serverLoad.getRegionsLoad();
         RegionLoad regionLoad = regionsLoad.get(regionInfo.getRegionName());
@@ -442,8 +444,8 @@ public class TestRegionServerReadRequestMetrics {
 
   private void testReadRequests(byte[] regionName, int expectedReadRequests) throws Exception {
     for (ServerName serverName : serverNames) {
-      ServerLoad serverLoad =
-          admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getLoad(serverName);
+      ServerLoad serverLoad = new ServerLoad(admin.getClusterMetrics(
+        EnumSet.of(Option.LIVE_SERVERS)).getLiveServerMetrics().get(serverName));
       Map<byte[], RegionLoad> regionsLoad = serverLoad.getRegionsLoad();
       RegionLoad regionLoad = regionsLoad.get(regionName);
       if (regionLoad != null) {

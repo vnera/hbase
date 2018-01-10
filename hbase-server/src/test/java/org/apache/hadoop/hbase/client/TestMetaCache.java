@@ -17,8 +17,8 @@
  */
 package org.apache.hadoop.hbase.client;
 
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException;
+import org.apache.hbase.thirdparty.com.google.protobuf.RpcController;
+import org.apache.hbase.thirdparty.com.google.protobuf.ServiceException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
 
@@ -187,7 +187,7 @@ public class TestMetaCache {
   public static List<Throwable> metaCachePreservingExceptions() {
     return new ArrayList<Throwable>() {{
       add(new RegionOpeningException(" "));
-      add(new RegionTooBusyException());
+      add(new RegionTooBusyException("Some old message"));
       add(new ThrottlingException(" "));
       add(new MultiActionResultTooLarge(" "));
       add(new RetryImmediatelyException(" "));

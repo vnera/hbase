@@ -23,18 +23,10 @@ import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-
 import java.util.Set;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.master.HMaster;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.AdminService;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.ClientService;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.MasterService;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionServerStartupResponse;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.regionserver.Region;
@@ -44,6 +36,14 @@ import org.apache.hadoop.hbase.util.JVMClusterUtil;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.MasterThread;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.RegionServerThread;
 import org.apache.hadoop.hbase.util.Threads;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.AdminService;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.ClientService;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.MasterService;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionServerStartupResponse;
 
 /**
  * This class creates a single process HBase cluster.
@@ -53,7 +53,7 @@ import org.apache.hadoop.hbase.util.Threads;
  */
 @InterfaceAudience.Public
 public class MiniHBaseCluster extends HBaseCluster {
-  private static final Log LOG = LogFactory.getLog(MiniHBaseCluster.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(MiniHBaseCluster.class.getName());
   public LocalHBaseCluster hbaseCluster;
   private static int index;
 
@@ -77,10 +77,19 @@ public class MiniHBaseCluster extends HBaseCluster {
    */
   public MiniHBaseCluster(Configuration conf, int numMasters, int numRegionServers)
       throws IOException, InterruptedException {
-    this(conf, numMasters, numRegionServers, null, null);
+    this(conf, numMasters, numRegionServers, null, null, null);
   }
 
+  /**
+   * @param rsPorts Ports that RegionServer should use; pass ports if you want to test cluster
+   *   restart where for sure the regionservers come up on same address+port (but
+   *   just with different startcode); by default mini hbase clusters choose new
+   *   arbitrary ports on each cluster start.
+   * @throws IOException
+   * @throws InterruptedException
+   */
   public MiniHBaseCluster(Configuration conf, int numMasters, int numRegionServers,
+         List<Integer> rsPorts,
          Class<? extends HMaster> masterClass,
          Class<? extends MiniHBaseCluster.MiniHBaseClusterRegionServer> regionserverClass)
       throws IOException, InterruptedException {
@@ -93,7 +102,7 @@ public class MiniHBaseCluster extends HBaseCluster {
     // Hadoop 2
     CompatibilityFactory.getInstance(MetricsAssertHelper.class).init();
 
-    init(numMasters, numRegionServers, masterClass, regionserverClass);
+    init(numMasters, numRegionServers, rsPorts, masterClass, regionserverClass);
     this.initialClusterStatus = getClusterStatus();
   }
 
@@ -207,7 +216,7 @@ public class MiniHBaseCluster extends HBaseCluster {
     }
   }
 
-  private void init(final int nMasterNodes, final int nRegionNodes,
+  private void init(final int nMasterNodes, final int nRegionNodes, List<Integer> rsPorts,
                  Class<? extends HMaster> masterClass,
                  Class<? extends MiniHBaseCluster.MiniHBaseClusterRegionServer> regionserverClass)
   throws IOException, InterruptedException {
@@ -224,8 +233,11 @@ public class MiniHBaseCluster extends HBaseCluster {
           masterClass, regionserverClass);
 
       // manually add the regionservers as other users
-      for (int i=0; i<nRegionNodes; i++) {
+      for (int i = 0; i < nRegionNodes; i++) {
         Configuration rsConf = HBaseConfiguration.create(conf);
+        if (rsPorts != null) {
+          rsConf.setInt(HConstants.REGIONSERVER_PORT, rsPorts.get(i));
+        }
         User user = HBaseTestingUtility.getDifferentUser(rsConf,
             ".hfs."+index++);
         hbaseCluster.addRegionServer(rsConf, i, user);
@@ -616,10 +628,20 @@ public class MiniHBaseCluster extends HBaseCluster {
   public void close() throws IOException {
   }
 
-  @Override
+  /**
+   * @deprecated As of release 2.0.0, this will be removed in HBase 3.0.0
+   *             Use {@link #getClusterMetrics()} instead.
+   */
+  @Deprecated
   public ClusterStatus getClusterStatus() throws IOException {
     HMaster master = getMaster();
-    return master == null ? null : master.getClusterStatus();
+    return master == null ? null : new ClusterStatus(master.getClusterMetrics());
+  }
+
+  @Override
+  public ClusterMetrics getClusterMetrics() throws IOException {
+    HMaster master = getMaster();
+    return master == null ? null : master.getClusterMetrics();
   }
 
   /**

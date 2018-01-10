@@ -26,8 +26,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -43,6 +41,8 @@ import org.apache.hadoop.hbase.SizeCachedKeyValue;
 import org.apache.hadoop.hbase.SizeCachedNoTagsKeyValue;
 import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hbase.fs.HFileSystem;
 import org.apache.hadoop.hbase.io.FSDataInputStreamWrapper;
 import org.apache.hadoop.hbase.io.compress.Compression;
@@ -62,7 +62,7 @@ import org.apache.hadoop.hbase.util.ObjectIntPair;
 import org.apache.hadoop.io.WritableUtils;
 import org.apache.htrace.core.TraceScope;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 
 /**
  * Implementation that can handle all hfile versions of {@link HFile.Reader}.
@@ -74,7 +74,7 @@ public class HFileReaderImpl implements HFile.Reader, Configurable {
   // one file.  Ditto for all the HFileReader.ScannerV? implementations. I was running up against
   // the MaxInlineLevel limit because too many tiers involved reading from an hfile. Was also hard
   // to navigate the source code when so many classes participating in read.
-  private static final Log LOG = LogFactory.getLog(HFileReaderImpl.class);
+  private static final Logger LOG = LoggerFactory.getLogger(HFileReaderImpl.class);
 
   /** Data block index reader keeping the root data index in memory */
   private HFileBlockIndex.CellBasedKeyBlockIndexReader dataBlockIndexReader;

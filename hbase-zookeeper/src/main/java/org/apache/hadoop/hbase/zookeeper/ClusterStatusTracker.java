@@ -18,13 +18,14 @@
  */
 package org.apache.hadoop.hbase.zookeeper;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.Abortable;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.zookeeper.KeeperException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ZooKeeperProtos;
-import org.apache.zookeeper.KeeperException;
 
 /**
  * Tracker on cluster settings up in zookeeper.
@@ -35,15 +36,16 @@ import org.apache.zookeeper.KeeperException;
  */
 @InterfaceAudience.Private
 public class ClusterStatusTracker extends ZKNodeTracker {
-  private static final Log LOG = LogFactory.getLog(ClusterStatusTracker.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ClusterStatusTracker.class);
 
   /**
    * Creates a cluster status tracker.
    *
    * <p>After construction, use {@link #start} to kick off tracking.
    *
-   * @param watcher
-   * @param abortable
+   * @param watcher reference to the {@link ZKWatcher} which also contains configuration and
+   *                constants
+   * @param abortable used to abort if a fatal error occurs
    */
   public ClusterStatusTracker(ZKWatcher watcher, Abortable abortable) {
     super(watcher, watcher.znodePaths.clusterStateZNode, abortable);
@@ -52,7 +54,7 @@ public class ClusterStatusTracker extends ZKNodeTracker {
   /**
    * Checks if cluster is up.
    * @return true if the cluster up ('shutdown' is its name up in zk) znode
-   * exists with data, false if not
+   *         exists with data, false if not
    */
   public boolean isClusterUp() {
     return super.getData(false) != null;
@@ -88,7 +90,7 @@ public class ClusterStatusTracker extends ZKNodeTracker {
 
   /**
    * @return Content of the clusterup znode as a serialized pb with the pb
-   * magic as prefix.
+   *         magic as prefix.
    */
   static byte [] toByteArray() {
     ZooKeeperProtos.ClusterUp.Builder builder =

@@ -25,9 +25,8 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
-
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.junit.Test;
@@ -47,7 +46,8 @@ public class TestAsyncDecommissionAdminApi extends TestAsyncAdminBase {
     TEST_UTIL.createMultiRegionTable(tableName, FAMILY, 4);
 
     ArrayList<ServerName> clusterRegionServers =
-        new ArrayList<>(admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).get().getServers());
+        new ArrayList<>(admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS)).get()
+          .getLiveServerMetrics().keySet());
 
     assertEquals(clusterRegionServers.size(), 2);
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -37,8 +37,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.CategoryBasedTimeout;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
@@ -54,7 +52,6 @@ import org.apache.hadoop.hbase.ipc.ServerNotRunningYetException;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.master.RegionState.State;
 import org.apache.hadoop.hbase.master.procedure.MasterProcedureConstants;
-import org.apache.hadoop.hbase.master.procedure.MasterProcedureScheduler;
 import org.apache.hadoop.hbase.master.procedure.ProcedureSyncWait;
 import org.apache.hadoop.hbase.master.procedure.RSProcedureDispatcher;
 import org.apache.hadoop.hbase.procedure2.Procedure;
@@ -69,8 +66,6 @@ import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.ipc.RemoteException;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -80,7 +75,8 @@ import org.junit.experimental.categories.Category;
 import org.junit.rules.ExpectedException;
 import org.junit.rules.TestName;
 import org.junit.rules.TestRule;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.CloseRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.CloseRegionResponse;
@@ -96,10 +92,8 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProto
 
 @Category({MasterTests.class, MediumTests.class})
 public class TestAssignmentManager {
-  private static final Log LOG = LogFactory.getLog(TestAssignmentManager.class);
-  static {
-    Logger.getLogger(MasterProcedureScheduler.class).setLevel(Level.TRACE);
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(TestAssignmentManager.class);
+
   @Rule public TestName name = new TestName();
   @Rule public final TestRule timeout =
       CategoryBasedTimeout.builder().withTimeout(this.getClass()).
@@ -169,36 +163,6 @@ public class TestAssignmentManager {
     if (this.am.waitServerReportEvent(null, null)) throw new UnexpectedStateException();
   }
 
-  @Ignore @Test // TODO
-  public void testGoodSplit() throws Exception {
-    TableName tableName = TableName.valueOf(this.name.getMethodName());
-    RegionInfo hri = RegionInfoBuilder.newBuilder(tableName)
-        .setStartKey(Bytes.toBytes(0))
-        .setEndKey(Bytes.toBytes(2))
-        .setSplit(false)
-        .setRegionId(0)
-        .build();
-    SplitTableRegionProcedure split =
-        new SplitTableRegionProcedure(this.master.getMasterProcedureExecutor().getEnvironment(),
-            hri, Bytes.toBytes(1));
-    rsDispatcher.setMockRsExecutor(new GoodSplitExecutor());
-    long st = System.currentTimeMillis();
-    Thread t = new Thread() {
-      public void run() {
-        try {
-          waitOnFuture(submitProcedure(split));
-        } catch (Exception e) {
-          e.printStackTrace();
-        }
-      }
-    };
-    t.start();
-    t.join();
-    long et = System.currentTimeMillis();
-    float sec = ((et - st) / 1000.0f);
-    LOG.info(String.format("[T] Splitting in %s", StringUtils.humanTimeDiff(et - st)));
-  }
-
   @Test
   public void testAssignWithGoodExec() throws Exception {
     // collect AM metrics before test
@@ -216,7 +180,7 @@ public class TestAssignmentManager {
     final TableName tableName = TableName.valueOf("testAssignAndCrashBeforeResponse");
     final RegionInfo hri = createRegionInfo(tableName, 1);
     rsDispatcher.setMockRsExecutor(new HangThenRSCrashExecutor());
-    AssignProcedure proc = am.createAssignProcedure(hri, false);
+    AssignProcedure proc = am.createAssignProcedure(hri);
     waitOnFuture(submitProcedure(proc));
   }
 
@@ -226,7 +190,7 @@ public class TestAssignmentManager {
     final RegionInfo hri = createRegionInfo(tableName, 1);
     rsDispatcher.setMockRsExecutor(new HangOnCloseThenRSCrashExecutor());
     for (int i = 0; i < HangOnCloseThenRSCrashExecutor.TYPES_OF_FAILURE; i++) {
-      AssignProcedure assign = am.createAssignProcedure(hri, false);
+      AssignProcedure assign = am.createAssignProcedure(hri);
       waitOnFuture(submitProcedure(assign));
       UnassignProcedure unassign = am.createUnassignProcedure(hri,
           am.getRegionStates().getRegionServerOfRegion(hri), false);
@@ -243,7 +207,7 @@ public class TestAssignmentManager {
     // Loop a bunch of times so we hit various combos of exceptions.
     for (int i = 0; i < 10; i++) {
       LOG.info("" + i);
-      AssignProcedure proc = am.createAssignProcedure(hri, false);
+      AssignProcedure proc = am.createAssignProcedure(hri);
       waitOnFuture(submitProcedure(proc));
     }
   }
@@ -257,7 +221,7 @@ public class TestAssignmentManager {
     collectAssignmentManagerMetrics();
 
     rsDispatcher.setMockRsExecutor(new SocketTimeoutRsExecutor(20, 3));
-    waitOnFuture(submitProcedure(am.createAssignProcedure(hri, false)));
+    waitOnFuture(submitProcedure(am.createAssignProcedure(hri)));
 
     rsDispatcher.setMockRsExecutor(new SocketTimeoutRsExecutor(20, 1));
     // exception.expect(ServerCrashException.class);
@@ -285,7 +249,7 @@ public class TestAssignmentManager {
     // Test Assign operation failure
     rsDispatcher.setMockRsExecutor(executor);
     try {
-      waitOnFuture(submitProcedure(am.createAssignProcedure(hri, false)));
+      waitOnFuture(submitProcedure(am.createAssignProcedure(hri)));
       fail("unexpected assign completion");
     } catch (RetriesExhaustedException e) {
       // expected exception
@@ -294,7 +258,7 @@ public class TestAssignmentManager {
 
     // Assign the region (without problems)
     rsDispatcher.setMockRsExecutor(new GoodRsExecutor());
-    waitOnFuture(submitProcedure(am.createAssignProcedure(hri, false)));
+    waitOnFuture(submitProcedure(am.createAssignProcedure(hri)));
 
     // TODO: Currently unassign just keeps trying until it sees a server crash.
     // There is no count on unassign.
@@ -345,7 +309,7 @@ public class TestAssignmentManager {
     // Test Assign operation failure
     rsDispatcher.setMockRsExecutor(executor);
     try {
-      waitOnFuture(submitProcedure(am.createAssignProcedure(hri, false)));
+      waitOnFuture(submitProcedure(am.createAssignProcedure(hri)));
       fail("unexpected assign completion");
     } catch (RetriesExhaustedException e) {
       // expected exception
@@ -388,7 +352,7 @@ public class TestAssignmentManager {
 
     rsDispatcher.setMockRsExecutor(new GoodRsExecutor());
 
-    final Future<byte[]> futureA = submitProcedure(am.createAssignProcedure(hri, false));
+    final Future<byte[]> futureA = submitProcedure(am.createAssignProcedure(hri));
 
     // wait first assign
     waitOnFuture(futureA);
@@ -396,7 +360,7 @@ public class TestAssignmentManager {
     // Second should be a noop. We should recognize region is already OPEN internally
     // and skip out doing nothing.
     // wait second assign
-    final Future<byte[]> futureB = submitProcedure(am.createAssignProcedure(hri, false));
+    final Future<byte[]> futureB = submitProcedure(am.createAssignProcedure(hri));
     waitOnFuture(futureB);
     am.getRegionStates().isRegionInState(hri, State.OPEN);
     // TODO: What else can we do to ensure just a noop.
@@ -419,7 +383,7 @@ public class TestAssignmentManager {
     rsDispatcher.setMockRsExecutor(new GoodRsExecutor());
 
     // assign the region first
-    waitOnFuture(submitProcedure(am.createAssignProcedure(hri, false)));
+    waitOnFuture(submitProcedure(am.createAssignProcedure(hri)));
 
     final Future<byte[]> futureA = submitProcedure(am.createUnassignProcedure(hri, null, false));
 
@@ -516,7 +480,7 @@ public class TestAssignmentManager {
 
   private AssignProcedure createAndSubmitAssign(TableName tableName, int regionId) {
     RegionInfo hri = createRegionInfo(tableName, regionId);
-    AssignProcedure proc = am.createAssignProcedure(hri, false);
+    AssignProcedure proc = am.createAssignProcedure(hri);
     master.getMasterProcedureExecutor().submitProcedure(proc);
     return proc;
   }
@@ -564,6 +528,7 @@ public class TestAssignmentManager {
   }
 
   private class NoopRsExecutor implements MockRSExecutor {
+    @Override
     public ExecuteProceduresResponse sendRequest(ServerName server,
         ExecuteProceduresRequest request) throws IOException {
       ExecuteProceduresResponse.Builder builder = ExecuteProceduresResponse.newBuilder();
@@ -632,6 +597,7 @@ public class TestAssignmentManager {
   }
 
   private static class ServerNotYetRunningRsExecutor implements MockRSExecutor {
+    @Override
     public ExecuteProceduresResponse sendRequest(ServerName server, ExecuteProceduresRequest req)
         throws IOException {
       throw new ServerNotRunningYetException("wait on server startup");
@@ -645,6 +611,7 @@ public class TestAssignmentManager {
       this.exception = exception;
     }
 
+    @Override
     public ExecuteProceduresResponse sendRequest(ServerName server, ExecuteProceduresRequest req)
         throws IOException {
       throw exception;
@@ -664,6 +631,7 @@ public class TestAssignmentManager {
       this.maxSocketTimeoutRetries = maxSocketTimeoutRetries;
     }
 
+    @Override
     public ExecuteProceduresResponse sendRequest(ServerName server, ExecuteProceduresRequest req)
         throws IOException {
       // SocketTimeoutException should be a temporary problem
@@ -776,6 +744,7 @@ public class TestAssignmentManager {
   private class RandRsExecutor extends NoopRsExecutor {
     private final Random rand = new Random();
 
+    @Override
     public ExecuteProceduresResponse sendRequest(ServerName server, ExecuteProceduresRequest req)
         throws IOException {
       switch (rand.nextInt(5)) {
@@ -863,10 +832,6 @@ public class TestAssignmentManager {
         return mockRsExec.sendRequest(serverName, request);
       }
     }
-  }
-
-  private class GoodSplitExecutor extends NoopRsExecutor {
-
   }
 
   private void collectAssignmentManagerMetrics() {

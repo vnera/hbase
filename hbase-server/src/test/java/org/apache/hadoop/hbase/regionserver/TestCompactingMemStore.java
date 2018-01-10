@@ -23,8 +23,6 @@ import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellComparator;
@@ -54,6 +52,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -64,7 +64,7 @@ import static org.junit.Assert.assertTrue;
 @Category({RegionServerTests.class, MediumTests.class})
 public class TestCompactingMemStore extends TestDefaultMemStore {
 
-  private static final Log LOG = LogFactory.getLog(TestCompactingMemStore.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestCompactingMemStore.class);
   protected static ChunkCreator chunkCreator;
   protected HRegion region;
   protected RegionServicesForStores regionServicesForStores;
@@ -89,6 +89,7 @@ public class TestCompactingMemStore extends TestDefaultMemStore {
     compactingSetUp();
     this.memstore = new MyCompactingMemStore(HBaseConfiguration.create(), CellComparator.getInstance(),
         store, regionServicesForStores, MemoryCompactionPolicy.EAGER);
+    ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.ARRAY_MAP);
   }
 
   protected void compactingSetUp() throws Exception {
@@ -833,6 +834,27 @@ public class TestCompactingMemStore extends TestDefaultMemStore {
     }
     regionServicesForStores.addMemStoreSize(new MemStoreSize(hmc.getActive().keySize() - size,
         hmc.getActive().heapSize() - heapOverhead));
+    return totalLen;
+  }
+
+  // for controlling the val size when adding a new cell
+  protected int addRowsByKeys(final AbstractMemStore hmc, String[] keys, byte[] val) {
+    byte[] fam = Bytes.toBytes("testfamily");
+    byte[] qf = Bytes.toBytes("testqualifier");
+    long size = hmc.getActive().keySize();
+    long heapOverhead = hmc.getActive().heapSize();
+    int totalLen = 0;
+    for (int i = 0; i < keys.length; i++) {
+      long timestamp = System.currentTimeMillis();
+      Threads.sleep(1); // to make sure each kv gets a different ts
+      byte[] row = Bytes.toBytes(keys[i]);
+      KeyValue kv = new KeyValue(row, fam, qf, timestamp, val);
+      totalLen += kv.getLength();
+      hmc.add(kv, null);
+      LOG.debug("added kv: " + kv.getKeyString() + ", timestamp:" + kv.getTimestamp());
+    }
+    regionServicesForStores.addMemStoreSize(new MemStoreSize(hmc.getActive().keySize() - size,
+            hmc.getActive().heapSize() - heapOverhead));
     return totalLen;
   }
 

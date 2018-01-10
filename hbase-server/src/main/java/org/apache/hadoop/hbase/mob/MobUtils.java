@@ -36,8 +36,6 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -79,6 +77,8 @@ import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.ReflectionUtils;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The mob utilities
@@ -86,7 +86,7 @@ import org.apache.yetus.audience.InterfaceAudience;
 @InterfaceAudience.Private
 public final class MobUtils {
 
-  private static final Log LOG = LogFactory.getLog(MobUtils.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MobUtils.class);
   private final static long WEEKLY_THRESHOLD_MULTIPLIER = 7;
   private final static long MONTHLY_THRESHOLD_MULTIPLIER = 4 * WEEKLY_THRESHOLD_MULTIPLIER;
 
@@ -102,7 +102,7 @@ public final class MobUtils {
   static {
     List<Tag> tags = new ArrayList<>();
     tags.add(MobConstants.MOB_REF_TAG);
-    REF_DELETE_MARKER_TAG_BYTES = Tag.fromList(tags);
+    REF_DELETE_MARKER_TAG_BYTES = TagUtil.fromList(tags);
   }
 
   /**
@@ -502,7 +502,7 @@ public final class MobUtils {
     // find the original mob files by this table name. For details please see cloning
     // snapshot for mob files.
     tags.add(tableNameTag);
-    return createMobRefCell(cell, fileName, Tag.fromList(tags));
+    return createMobRefCell(cell, fileName, TagUtil.fromList(tags));
   }
 
   public static Cell createMobRefCell(Cell cell, byte[] fileName, byte[] refCellTags) {

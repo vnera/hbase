@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -16,29 +16,20 @@
  * limitations under the License.
  */
 
-package org.apache.hadoop.hbase.util;
+package org.apache.hadoop.hbase.regionserver.wal;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import org.apache.hadoop.hbase.testclassification.MediumTests;
+import org.apache.hadoop.hbase.wal.WALSplitter;
+import org.junit.BeforeClass;
+import org.junit.experimental.categories.Category;
 
-import org.apache.yetus.audience.InterfaceAudience;
 
-/**
- * Utility methods for Iterable including null-safe handlers.
- */
-@InterfaceAudience.Private
-public class IterableUtils {
-
-  private static final List<Object> EMPTY_LIST = Collections
-      .unmodifiableList(new ArrayList<>(0));
-
-  @SuppressWarnings("unchecked")
-  public static <T> Iterable<T> nullSafe(Iterable<T> in) {
-    if (in == null) {
-      return (List<T>) EMPTY_LIST;
-    }
-    return in;
+@Category(MediumTests.class)
+public class TestWALReplayBoundedLogWriterCreation extends TestWALReplay {
+  @BeforeClass
+  public static void setUpBeforeClass() throws Exception {
+    TestWALReplay.setUpBeforeClass();
+    TEST_UTIL.getConfiguration().setBoolean(WALSplitter.SPLIT_WRITER_CREATION_BOUNDED, true);
   }
-
 }
+

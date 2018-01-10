@@ -17,12 +17,12 @@
  */
 package org.apache.hadoop.hbase.client;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.UUID;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.io.TimeRange;
 import org.apache.hadoop.hbase.security.access.Permission;
@@ -30,6 +30,8 @@ import org.apache.hadoop.hbase.security.visibility.CellVisibility;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.ClassSize;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Performs Append operations on a single row.
@@ -44,6 +46,7 @@ import org.apache.yetus.audience.InterfaceAudience;
  */
 @InterfaceAudience.Public
 public class Append extends Mutation {
+  private static final Logger LOG = LoggerFactory.getLogger(Append.class);
   private static final long HEAP_OVERHEAD = ClassSize.REFERENCE + ClassSize.TIMERANGE;
   private TimeRange tr = new TimeRange();
 
@@ -86,6 +89,7 @@ public class Append extends Mutation {
    *          A client that is not interested in the result can save network
    *          bandwidth setting this to false.
    */
+  @Override
   public Append setReturnResults(boolean returnResults) {
     super.setReturnResults(returnResults);
     return this;
@@ -95,6 +99,7 @@ public class Append extends Mutation {
    * @return current setting for returnResults
    */
   // This method makes public the superclasses's protected method.
+  @Override
   public boolean isReturnResults() {
     return super.isReturnResults();
   }
@@ -110,17 +115,11 @@ public class Append extends Mutation {
   }
   /**
    * Copy constructor
-   * @param a
+   * @param appendToCopy append to copy
    */
-  public Append(Append a) {
-    this.row = a.getRow();
-    this.ts = a.getTimeStamp();
-    this.tr = a.getTimeRange();
-    this.familyMap.putAll(a.getFamilyCellMap());
-    for (Map.Entry<String, byte[]> entry : a.getAttributesMap().entrySet()) {
-      this.setAttribute(entry.getKey(), entry.getValue());
-    }
-    this.setPriority(a.getPriority());
+  public Append(Append appendToCopy) {
+    super(appendToCopy);
+    this.tr = appendToCopy.getTimeRange();
   }
 
   /** Create a Append operation for the specified row.
@@ -133,6 +132,18 @@ public class Append extends Mutation {
   public Append(final byte [] rowArray, final int rowOffset, final int rowLength) {
     checkRow(rowArray, rowOffset, rowLength);
     this.row = Bytes.copy(rowArray, rowOffset, rowLength);
+  }
+
+  /**
+   * Construct the Append with user defined data. NOTED:
+   * 1) all cells in the familyMap must have the Type.Put
+   * 2) the row of each cell must be same with passed row.
+   * @param row row. CAN'T be null
+   * @param ts timestamp
+   * @param familyMap the map to collect all cells internally. CAN'T be null
+   */
+  public Append(byte[] row, long ts, NavigableMap<byte [], List<Cell>> familyMap) {
+    super(row, ts, familyMap);
   }
 
   /**
@@ -168,14 +179,12 @@ public class Append extends Mutation {
    */
   @SuppressWarnings("unchecked")
   public Append add(final Cell cell) {
-    // Presume it is KeyValue for now.
-    byte [] family = CellUtil.cloneFamily(cell);
-
-    // Get cell list for the family
-    List<Cell> list = getCellList(family);
-
-    // find where the new entry should be placed in the List
-    list.add(cell);
+    try {
+      super.add(cell);
+    } catch (IOException e) {
+      // we eat the exception of wrong row for BC..
+      LOG.error(e.toString(), e);
+    }
     return this;
   }
 
@@ -200,6 +209,12 @@ public class Append extends Mutation {
     return (Append) super.setDurability(d);
   }
 
+  /**
+   * Method for setting the Append's familyMap
+   * @deprecated As of release 2.0.0, this will be removed in HBase 3.0.0.
+   *             Use {@link Append#Append(byte[], long, NavigableMap)} instead
+   */
+  @Deprecated
   @Override
   public Append setFamilyCellMap(NavigableMap<byte[], List<Cell>> map) {
     return (Append) super.setFamilyCellMap(map);

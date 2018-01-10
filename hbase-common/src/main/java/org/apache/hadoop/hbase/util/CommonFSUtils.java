@@ -29,9 +29,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
@@ -42,22 +39,22 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.fs.permission.FsPermission;
-
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
-
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 
 /**
  * Utility methods for interacting with the underlying file system.
  */
 @InterfaceAudience.Private
 public abstract class CommonFSUtils {
-  private static final Log LOG = LogFactory.getLog(CommonFSUtils.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CommonFSUtils.class);
 
   /** Parameter name for HBase WAL directory */
   public static final String HBASE_WAL_DIR = "hbase.wal.dir";
@@ -359,7 +356,7 @@ public abstract class CommonFSUtils {
   public static Path getRootDir(final Configuration c) throws IOException {
     Path p = new Path(c.get(HConstants.HBASE_DIR));
     FileSystem fs = p.getFileSystem(c);
-    return p.makeQualified(fs);
+    return p.makeQualified(fs.getUri(), fs.getWorkingDirectory());
   }
 
   public static void setRootDir(final Configuration c, final Path root) throws IOException {
@@ -387,7 +384,7 @@ public abstract class CommonFSUtils {
       return getRootDir(c);
     }
     FileSystem fs = p.getFileSystem(c);
-    return p.makeQualified(fs);
+    return p.makeQualified(fs.getUri(), fs.getWorkingDirectory());
   }
 
   @VisibleForTesting
@@ -402,8 +399,10 @@ public abstract class CommonFSUtils {
 
   private static boolean isValidWALRootDir(Path walDir, final Configuration c) throws IOException {
     Path rootDir = getRootDir(c);
-    if (walDir != rootDir) {
-      if (walDir.toString().startsWith(rootDir.toString() + "/")) {
+    FileSystem fs = walDir.getFileSystem(c);
+    Path qualifiedWalDir = walDir.makeQualified(fs.getUri(), fs.getWorkingDirectory());
+    if (!qualifiedWalDir.equals(rootDir)) {
+      if (qualifiedWalDir.toString().startsWith(rootDir.toString() + "/")) {
         throw new IllegalStateException("Illegal WAL directory specified. " +
             "WAL directories are not permitted to be under the root directory if set.");
       }
@@ -734,7 +733,7 @@ public abstract class CommonFSUtils {
    * @param LOG log to output information
    * @throws IOException if an unexpected exception occurs
    */
-  public static void logFileSystemState(final FileSystem fs, final Path root, Log LOG)
+  public static void logFileSystemState(final FileSystem fs, final Path root, Logger LOG)
       throws IOException {
     LOG.debug("File system contents for path " + root);
     logFSTree(LOG, fs, root, "|-");
@@ -743,9 +742,9 @@ public abstract class CommonFSUtils {
   /**
    * Recursive helper to log the state of the FS
    *
-   * @see #logFileSystemState(FileSystem, Path, Log)
+   * @see #logFileSystemState(FileSystem, Path, Logger)
    */
-  private static void logFSTree(Log LOG, final FileSystem fs, final Path root, String prefix)
+  private static void logFSTree(Logger LOG, final FileSystem fs, final Path root, String prefix)
       throws IOException {
     FileStatus[] files = listStatus(fs, root, null);
     if (files == null) {

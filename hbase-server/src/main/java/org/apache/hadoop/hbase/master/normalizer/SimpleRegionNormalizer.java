@@ -23,8 +23,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HBaseIOException;
 import org.apache.hadoop.hbase.RegionLoad;
 import org.apache.hadoop.hbase.ServerName;
@@ -35,7 +33,8 @@ import org.apache.hadoop.hbase.master.MasterRpcServices;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.master.normalizer.NormalizationPlan.PlanType;
 import org.apache.yetus.audience.InterfaceAudience;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 
 /**
@@ -44,13 +43,13 @@ import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
  * Logic in use:
  *
  *  <ol>
- *  <li> get all regions of a given table
- *  <li> get avg size S of each region (by total size of store files reported in RegionLoad)
- *  <li> If biggest region is bigger than S * 2, it is kindly requested to split,
- *    and normalization stops
- *  <li> Otherwise, two smallest region R1 and its smallest neighbor R2 are kindly requested
- *    to merge, if R1 + R1 &lt;  S, and normalization stops
- *  <li> Otherwise, no action is performed
+ *  <li> Get all regions of a given table
+ *  <li> Get avg size S of each region (by total size of store files reported in RegionLoad)
+ *  <li> Seek every single region one by one. If a region R0 is bigger than S * 2, it is
+ *  kindly requested to split. Thereon evaluate the next region R1
+ *  <li> Otherwise, if R0 + R1 is smaller than S, R0 and R1 are kindly requested to merge.
+ *  Thereon evaluate the next region R2
+ *  <li> Otherwise, R1 is evaluated
  * </ol>
  * <p>
  * Region sizes are coarse and approximate on the order of megabytes. Additionally,
@@ -60,7 +59,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 @InterfaceAudience.Private
 public class SimpleRegionNormalizer implements RegionNormalizer {
 
-  private static final Log LOG = LogFactory.getLog(SimpleRegionNormalizer.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleRegionNormalizer.class);
   private static final int MIN_REGION_COUNT = 3;
   private MasterServices masterServices;
   private MasterRpcServices masterRpcServices;
@@ -156,13 +155,13 @@ public class SimpleRegionNormalizer implements RegionNormalizer {
     try {
       splitEnabled = masterRpcServices.isSplitOrMergeEnabled(null,
         RequestConverter.buildIsSplitOrMergeEnabledRequest(MasterSwitchType.SPLIT)).getEnabled();
-    } catch (org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException e) {
+    } catch (org.apache.hbase.thirdparty.com.google.protobuf.ServiceException e) {
       LOG.debug("Unable to determine whether split is enabled", e);
     }
     try {
       mergeEnabled = masterRpcServices.isSplitOrMergeEnabled(null,
         RequestConverter.buildIsSplitOrMergeEnabledRequest(MasterSwitchType.MERGE)).getEnabled();
-    } catch (org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException e) {
+    } catch (org.apache.hbase.thirdparty.com.google.protobuf.ServiceException e) {
       LOG.debug("Unable to determine whether split is enabled", e);
     }
     while (candidateIdx < tableRegions.size()) {

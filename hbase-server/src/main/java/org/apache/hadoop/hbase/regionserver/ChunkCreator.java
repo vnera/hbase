@@ -31,9 +31,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hbase.regionserver.HeapMemoryManager.HeapMemoryTuneObserver;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.util.StringUtils;
@@ -47,7 +47,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
  */
 @InterfaceAudience.Private
 public class ChunkCreator {
-  private static final Log LOG = LogFactory.getLog(ChunkCreator.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ChunkCreator.class);
   // monotonically increasing chunkid
   private AtomicInteger chunkID = new AtomicInteger(1);
   // maps the chunk against the monotonically increasing chunk id. We need to preserve the
@@ -165,9 +165,11 @@ public class ChunkCreator {
     if (jumboSize <= chunkSize) {
       LOG.warn("Jumbo chunk size " + jumboSize + " must be more than regular chunk size "
           + chunkSize + ". Converting to regular chunk.");
-      getChunk(chunkIndexType,chunkSize);
+      return getChunk(chunkIndexType,chunkSize);
     }
-    return getChunk(chunkIndexType, jumboSize);
+    // the size of the allocation includes
+    // both the size requested and a place for the Chunk's header
+    return getChunk(chunkIndexType, jumboSize + SIZEOF_CHUNK_HEADER);
   }
 
   /**

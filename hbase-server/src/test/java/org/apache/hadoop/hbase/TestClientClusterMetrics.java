@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.client;
+package org.apache.hadoop.hbase;
 
 import java.io.IOException;
 import java.util.EnumSet;
@@ -23,16 +23,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.ClusterStatus;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
-import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.hbase.HBaseTestingUtility;
-import org.apache.hadoop.hbase.MiniHBaseCluster;
-import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.Waiter;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.Waiter.Predicate;
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.AsyncAdmin;
+import org.apache.hadoop.hbase.client.AsyncConnection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
@@ -40,7 +37,6 @@ import org.apache.hadoop.hbase.coprocessor.MasterObserver;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
 import org.apache.hadoop.hbase.master.HMaster;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
-import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.MasterThread;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.RegionServerThread;
@@ -50,11 +46,8 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
-/**
- * Test the ClusterStatus.
- */
 @Category(SmallTests.class)
-public class TestClientClusterStatus {
+public class TestClientClusterMetrics {
   private static HBaseTestingUtility UTIL;
   private static Admin ADMIN;
   private final static int SLAVES = 5;
@@ -75,7 +68,7 @@ public class TestClientClusterStatus {
     List<RegionServerThread> rsts = CLUSTER.getLiveRegionServerThreads();
     RegionServerThread rst = rsts.get(rsts.size() - 1);
     DEAD = rst.getRegionServer();
-    DEAD.stop("Test dead servers status");
+    DEAD.stop("Test dead servers metrics");
     while (rst.isAlive()) {
       Thread.sleep(500);
     }
@@ -83,47 +76,43 @@ public class TestClientClusterStatus {
 
   @Test
   public void testDefaults() throws Exception {
-    ClusterStatus origin = ADMIN.getClusterStatus();
-    ClusterStatus defaults = ADMIN.getClusterStatus(EnumSet.allOf(Option.class));
+    ClusterMetrics origin = ADMIN.getClusterMetrics();
+    ClusterMetrics defaults = ADMIN.getClusterMetrics(EnumSet.allOf(Option.class));
     Assert.assertEquals(origin.getHBaseVersion(), defaults.getHBaseVersion());
     Assert.assertEquals(origin.getClusterId(), defaults.getClusterId());
-    Assert.assertTrue(origin.getAverageLoad() == defaults.getAverageLoad());
-    Assert.assertTrue(origin.getBackupMastersSize() == defaults.getBackupMastersSize());
-    Assert.assertTrue(origin.getDeadServersSize() == defaults.getDeadServersSize());
-    Assert.assertTrue(origin.getRegionsCount() == defaults.getRegionsCount());
-    Assert.assertTrue(origin.getServersSize() == defaults.getServersSize());
-    Assert.assertTrue(origin.getMasterInfoPort() == defaults.getMasterInfoPort());
-    Assert.assertTrue(origin.equals(defaults));
-  }
-
-  @Test
-  public void testNone() throws Exception {
-    ClusterStatus status0 = ADMIN.getClusterStatus(EnumSet.allOf(Option.class));
-    ClusterStatus status1 = ADMIN.getClusterStatus(EnumSet.noneOf(Option.class));
-    Assert.assertEquals(status0, status1);
+    Assert.assertEquals(origin.getAverageLoad(), defaults.getAverageLoad(), 0);
+    Assert.assertEquals(origin.getBackupMasterNames().size(),
+        defaults.getBackupMasterNames().size());
+    Assert.assertEquals(origin.getDeadServerNames().size(), defaults.getDeadServerNames().size());
+    Assert.assertEquals(origin.getRegionCount(), defaults.getRegionCount());
+    Assert.assertEquals(origin.getLiveServerMetrics().size(),
+        defaults.getLiveServerMetrics().size());
+    Assert.assertEquals(origin.getMasterInfoPort(), defaults.getMasterInfoPort());
   }
 
   @Test
   public void testAsyncClient() throws Exception {
-    AsyncRegistry registry = AsyncRegistryFactory.getRegistry(UTIL.getConfiguration());
-    AsyncConnectionImpl asyncConnect = new AsyncConnectionImpl(UTIL.getConfiguration(), registry,
-      registry.getClusterId().get(), User.getCurrent());
-    AsyncAdmin asyncAdmin = asyncConnect.getAdmin();
-    CompletableFuture<ClusterStatus> originFuture =
-        asyncAdmin.getClusterStatus();
-    CompletableFuture<ClusterStatus> defaultsFuture =
-        asyncAdmin.getClusterStatus(EnumSet.allOf(Option.class));
-    ClusterStatus origin = originFuture.get();
-    ClusterStatus defaults = defaultsFuture.get();
-    Assert.assertEquals(origin.getHBaseVersion(), defaults.getHBaseVersion());
-    Assert.assertEquals(origin.getClusterId(), defaults.getClusterId());
-    Assert.assertTrue(origin.getAverageLoad() == defaults.getAverageLoad());
-    Assert.assertTrue(origin.getBackupMastersSize() == defaults.getBackupMastersSize());
-    Assert.assertTrue(origin.getDeadServersSize() == defaults.getDeadServersSize());
-    Assert.assertTrue(origin.getRegionsCount() == defaults.getRegionsCount());
-    Assert.assertTrue(origin.getServersSize() == defaults.getServersSize());
-    if (asyncConnect != null) {
-      asyncConnect.close();
+    try (AsyncConnection asyncConnect = ConnectionFactory.createAsyncConnection(
+      UTIL.getConfiguration()).get()) {
+      AsyncAdmin asyncAdmin = asyncConnect.getAdmin();
+      CompletableFuture<ClusterMetrics> originFuture =
+        asyncAdmin.getClusterMetrics();
+      CompletableFuture<ClusterMetrics> defaultsFuture =
+        asyncAdmin.getClusterMetrics(EnumSet.allOf(Option.class));
+      ClusterMetrics origin = originFuture.get();
+      ClusterMetrics defaults = defaultsFuture.get();
+      Assert.assertEquals(origin.getHBaseVersion(), defaults.getHBaseVersion());
+      Assert.assertEquals(origin.getClusterId(), defaults.getClusterId());
+      Assert.assertEquals(origin.getHBaseVersion(), defaults.getHBaseVersion());
+      Assert.assertEquals(origin.getClusterId(), defaults.getClusterId());
+      Assert.assertEquals(origin.getAverageLoad(), defaults.getAverageLoad(), 0);
+      Assert.assertEquals(origin.getBackupMasterNames().size(),
+        defaults.getBackupMasterNames().size());
+      Assert.assertEquals(origin.getDeadServerNames().size(), defaults.getDeadServerNames().size());
+      Assert.assertEquals(origin.getRegionCount(), defaults.getRegionCount());
+      Assert.assertEquals(origin.getLiveServerMetrics().size(),
+        defaults.getLiveServerMetrics().size());
+      Assert.assertEquals(origin.getMasterInfoPort(), defaults.getMasterInfoPort());
     }
   }
 
@@ -143,26 +132,25 @@ public class TestClientClusterStatus {
     Waiter.waitFor(CLUSTER.getConfiguration(), 10 * 1000, 100, new Predicate<Exception>() {
       @Override
       public boolean evaluate() throws Exception {
-        ClusterStatus status = ADMIN.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS));
-        Assert.assertNotNull(status);
-        return status.getRegionsCount() > 0;
+        ClusterMetrics metrics = ADMIN.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS));
+        Assert.assertNotNull(metrics);
+        return metrics.getRegionCount() > 0;
       }
     });
     // Retrieve live servers and dead servers info.
     EnumSet<Option> options = EnumSet.of(Option.LIVE_SERVERS, Option.DEAD_SERVERS);
-    ClusterStatus status = ADMIN.getClusterStatus(options);
-    Assert.assertNotNull(status);
-    Assert.assertNotNull(status.getServers());
+    ClusterMetrics metrics = ADMIN.getClusterMetrics(options);
+    Assert.assertNotNull(metrics);
     // exclude a dead region server
     Assert.assertEquals(SLAVES -1, numRs);
     // live servers = nums of regionservers
     // By default, HMaster don't carry any regions so it won't report its load.
     // Hence, it won't be in the server list.
-    Assert.assertEquals(status.getServers().size(), numRs);
-    Assert.assertTrue(status.getRegionsCount() > 0);
-    Assert.assertNotNull(status.getDeadServerNames());
-    Assert.assertEquals(1, status.getDeadServersSize());
-    ServerName deadServerName = status.getDeadServerNames().iterator().next();
+    Assert.assertEquals(numRs, metrics.getLiveServerMetrics().size());
+    Assert.assertTrue(metrics.getRegionCount() > 0);
+    Assert.assertNotNull(metrics.getDeadServerNames());
+    Assert.assertEquals(1, metrics.getDeadServerNames().size());
+    ServerName deadServerName = metrics.getDeadServerNames().iterator().next();
     Assert.assertEquals(DEAD.getServerName(), deadServerName);
   }
 
@@ -187,9 +175,9 @@ public class TestClientClusterStatus {
     Assert.assertEquals(MASTERS, masterThreads.size());
     // Retrieve master and backup masters infos only.
     EnumSet<Option> options = EnumSet.of(Option.MASTER, Option.BACKUP_MASTERS);
-    ClusterStatus status = ADMIN.getClusterStatus(options);
-    Assert.assertTrue(status.getMaster().equals(activeName));
-    Assert.assertEquals(MASTERS - 1, status.getBackupMastersSize());
+    ClusterMetrics metrics = ADMIN.getClusterMetrics(options);
+    Assert.assertTrue(metrics.getMasterName().equals(activeName));
+    Assert.assertEquals(MASTERS - 1, metrics.getBackupMasterNames().size());
   }
 
   @Test
@@ -197,17 +185,19 @@ public class TestClientClusterStatus {
     EnumSet<Option> options =
         EnumSet.of(Option.MASTER_COPROCESSORS, Option.HBASE_VERSION,
                    Option.CLUSTER_ID, Option.BALANCER_ON);
-    ClusterStatus status = ADMIN.getClusterStatus(options);
-    Assert.assertTrue(status.getMasterCoprocessors().length == 1);
-    Assert.assertNotNull(status.getHBaseVersion());
-    Assert.assertNotNull(status.getClusterId());
-    Assert.assertTrue(status.getAverageLoad() == 0.0);
-    Assert.assertNotNull(status.getBalancerOn());
+    ClusterMetrics metrics = ADMIN.getClusterMetrics(options);
+    Assert.assertEquals(1, metrics.getMasterCoprocessorNames().size());
+    Assert.assertNotNull(metrics.getHBaseVersion());
+    Assert.assertNotNull(metrics.getClusterId());
+    Assert.assertTrue(metrics.getAverageLoad() == 0.0);
+    Assert.assertNotNull(metrics.getBalancerOn());
   }
 
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
-    if (ADMIN != null) ADMIN.close();
+    if (ADMIN != null) {
+      ADMIN.close();
+    }
     UTIL.shutdownMiniCluster();
   }
 
@@ -215,7 +205,7 @@ public class TestClientClusterStatus {
   public void testObserver() throws IOException {
     int preCount = MyObserver.PRE_COUNT.get();
     int postCount = MyObserver.POST_COUNT.get();
-    Assert.assertTrue(Stream.of(ADMIN.getClusterStatus().getMasterCoprocessors())
+    Assert.assertTrue(ADMIN.getClusterMetrics().getMasterCoprocessorNames().stream()
         .anyMatch(s -> s.equals(MyObserver.class.getSimpleName())));
     Assert.assertEquals(preCount + 1, MyObserver.PRE_COUNT.get());
     Assert.assertEquals(postCount + 1, MyObserver.POST_COUNT.get());
@@ -229,13 +219,13 @@ public class TestClientClusterStatus {
       return Optional.of(this);
     }
 
-    @Override public void preGetClusterStatus(ObserverContext<MasterCoprocessorEnvironment> ctx)
+    @Override public void preGetClusterMetrics(ObserverContext<MasterCoprocessorEnvironment> ctx)
         throws IOException {
       PRE_COUNT.incrementAndGet();
     }
 
-    @Override public void postGetClusterStatus(ObserverContext<MasterCoprocessorEnvironment> ctx,
-        ClusterStatus status) throws IOException {
+    @Override public void postGetClusterMetrics(ObserverContext<MasterCoprocessorEnvironment> ctx,
+        ClusterMetrics metrics) throws IOException {
       POST_COUNT.incrementAndGet();
     }
   }

@@ -44,15 +44,12 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
-
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellScanner;
 import org.apache.hadoop.hbase.CellUtil;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.CompareOperator;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
@@ -60,10 +57,10 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.KeepDeletedCells;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
+import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
@@ -103,6 +100,7 @@ import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
+import org.apache.hadoop.hbase.util.NonRepeatedEnvironmentEdge;
 import org.apache.hadoop.hbase.util.Pair;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -111,6 +109,8 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Run tests that use the HBase clients; {@link Table}.
@@ -121,7 +121,7 @@ import org.junit.rules.TestName;
 @SuppressWarnings ("deprecation")
 public class TestFromClientSide {
   // NOTE: Increment tests were moved to their own class, TestIncrementsFromClientSide.
-  private static final Log LOG = LogFactory.getLog(TestFromClientSide.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestFromClientSide.class);
   protected final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private static byte [] ROW = Bytes.toBytes("testRow");
   private static byte [] FAMILY = Bytes.toBytes("testFamily");
@@ -140,6 +140,8 @@ public class TestFromClientSide {
     //((Log4JLogger)RpcServer.LOG).getLogger().setLevel(Level.ALL);
     //((Log4JLogger)RpcClient.LOG).getLogger().setLevel(Level.ALL);
     //((Log4JLogger)ScannerCallable.LOG).getLogger().setLevel(Level.ALL);
+    // make sure that we do not get the same ts twice, see HBASE-19731 for more details.
+    EnvironmentEdgeManager.injectEdge(new NonRepeatedEnvironmentEdge());
     Configuration conf = TEST_UTIL.getConfiguration();
     conf.setStrings(CoprocessorHost.REGION_COPROCESSOR_CONF_KEY,
         MultiRowMutationEndpoint.class.getName());
@@ -1160,7 +1162,7 @@ public class TestFromClientSide {
 
     // Null family (should NOT work)
     try {
-      TEST_UTIL.createTable(tableName, new byte[][]{(byte[])null});
+      TEST_UTIL.createTable(tableName, new byte[][]{null});
       fail("Creating a table with a null family passed, should fail");
     } catch(Exception e) {}
 
@@ -4261,8 +4263,8 @@ public class TestFromClientSide {
     boolean tablesOnMaster = LoadBalancer.isTablesOnMaster(TEST_UTIL.getConfiguration());
     try (Admin admin = conn.getAdmin()) {
       assertTrue(admin.tableExists(tableName));
-      assertTrue(admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS))
-          .getServersSize() == SLAVES + (tablesOnMaster ? 1 : 0));
+      assertTrue(admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS))
+          .getLiveServerMetrics().size() == SLAVES + (tablesOnMaster ? 1 : 0));
     }
   }
 
@@ -4766,7 +4768,7 @@ public class TestFromClientSide {
             // the error happens in a thread, it won't fail the test,
             // need to pass it to the caller for proper handling.
             error.set(e);
-            LOG.error(e);
+            LOG.error(e.toString(), e);
           }
 
           return null;
@@ -5163,7 +5165,7 @@ public class TestFromClientSide {
       // get the block cache and region
       String regionName = locator.getAllRegionLocations().get(0).getRegionInfo().getEncodedName();
 
-      HRegion region = (HRegion) TEST_UTIL.getRSForFirstRegionInTable(tableName)
+      HRegion region = TEST_UTIL.getRSForFirstRegionInTable(tableName)
           .getRegion(regionName);
       HStore store = region.getStores().iterator().next();
       CacheConfig cacheConf = store.getCacheConfig();
@@ -5516,18 +5518,18 @@ public class TestFromClientSide {
 
     // put the same row 4 times, with different values
     Put p = new Put(row);
-    p.addColumn(FAMILY, QUALIFIER, (long) 10, VALUE);
+    p.addColumn(FAMILY, QUALIFIER, 10, VALUE);
     table.put(p);
     p = new Put(row);
-    p.addColumn(FAMILY, QUALIFIER, (long) 11, ArrayUtils.add(VALUE, (byte) 2));
-    table.put(p);
-
-    p = new Put(row);
-    p.addColumn(FAMILY, QUALIFIER, (long) 12, ArrayUtils.add(VALUE, (byte) 3));
+    p.addColumn(FAMILY, QUALIFIER, 11, ArrayUtils.add(VALUE, (byte) 2));
     table.put(p);
 
     p = new Put(row);
-    p.addColumn(FAMILY, QUALIFIER, (long) 13, ArrayUtils.add(VALUE, (byte) 4));
+    p.addColumn(FAMILY, QUALIFIER, 12, ArrayUtils.add(VALUE, (byte) 3));
+    table.put(p);
+
+    p = new Put(row);
+    p.addColumn(FAMILY, QUALIFIER, 13, ArrayUtils.add(VALUE, (byte) 4));
     table.put(p);
 
     int versions = 4;

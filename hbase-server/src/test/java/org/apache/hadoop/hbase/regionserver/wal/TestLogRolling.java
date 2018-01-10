@@ -30,25 +30,23 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.CategoryBasedTimeout;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
-import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.client.TableDescriptor;
+import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.apache.hadoop.hbase.fs.HFileSystem;
 import org.apache.hadoop.hbase.regionserver.HRegion;
-import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.testclassification.VerySlowRegionServerTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -64,11 +62,13 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestRule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category({ VerySlowRegionServerTests.class, LargeTests.class })
 public class TestLogRolling extends AbstractTestLogRolling {
 
-  private static final Log LOG = LogFactory.getLog(TestLogRolling.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestLogRolling.class);
   @Rule public final TestRule timeout = CategoryBasedTimeout.builder().withTimeout(this.getClass()).
       withLookingForStuckThread(true).build();
 
@@ -90,6 +90,7 @@ public class TestLogRolling extends AbstractTestLogRolling {
     conf.setInt("hbase.regionserver.hlog.tolerable.lowreplication", 2);
     conf.setInt("hbase.regionserver.hlog.lowreplication.rolllimit", 3);
     conf.set(WALFactory.WAL_PROVIDER, "filesystem");
+    conf.set(WALFactory.META_WAL_PROVIDER, "filesystem");
     AbstractTestLogRolling.setUpBeforeClass();
   }
 
@@ -134,8 +135,8 @@ public class TestLogRolling extends AbstractTestLogRolling {
     this.server = cluster.getRegionServer(0);
 
     // Create the test table and open it
-    HTableDescriptor desc = new HTableDescriptor(TableName.valueOf(getName()));
-    desc.addFamily(new HColumnDescriptor(HConstants.CATALOG_FAMILY));
+    TableDescriptor desc = TableDescriptorBuilder.newBuilder(TableName.valueOf(getName()))
+        .addColumnFamily(ColumnFamilyDescriptorBuilder.of(HConstants.CATALOG_FAMILY)).build();
 
     admin.createTable(desc);
     Table table = TEST_UTIL.getConnection().getTable(desc.getTableName());
@@ -242,8 +243,8 @@ public class TestLogRolling extends AbstractTestLogRolling {
       this.server = cluster.getRegionServer(0);
 
       // Create the test table and open it
-      HTableDescriptor desc = new HTableDescriptor(TableName.valueOf(getName()));
-      desc.addFamily(new HColumnDescriptor(HConstants.CATALOG_FAMILY));
+      TableDescriptor desc = TableDescriptorBuilder.newBuilder(TableName.valueOf(getName()))
+          .addColumnFamily(ColumnFamilyDescriptorBuilder.of(HConstants.CATALOG_FAMILY)).build();
 
       admin.createTable(desc);
       Table table = TEST_UTIL.getConnection().getTable(desc.getTableName());
@@ -355,7 +356,7 @@ public class TestLogRolling extends AbstractTestLogRolling {
           // a failed append could not be followed by a successful
           // sync. What is coming out here is a failed sync, a sync
           // that used to 'pass'.
-          LOG.info(e);
+          LOG.info(e.toString(), e);
         }
       }
 

@@ -31,10 +31,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FSDataOutputStream;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -68,11 +66,13 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.mockito.Mockito;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category({MasterTests.class, MediumTests.class})
 public class TestLogsCleaner {
 
-  private static final Log LOG = LogFactory.getLog(TestLogsCleaner.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestLogsCleaner.class);
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
 
   @BeforeClass
@@ -134,7 +134,7 @@ public class TestLogsCleaner {
 
     // Case 2: 5 Procedure WALs that are old which would be deleted
     for (int i = 1; i < 6; i++) {
-      Path fileName = new Path(oldProcedureWALDir, String.format("pv-%020d.log", i));
+      Path fileName = new Path(oldProcedureWALDir, String.format("pv2-%020d.log", i));
       fs.createNewFile(fileName);
     }
 
@@ -155,7 +155,7 @@ public class TestLogsCleaner {
 
     // Case 5: 5 Procedure WALs that are new, will stay
     for (int i = 6; i < 11; i++) {
-      Path fileName = new Path(oldProcedureWALDir, String.format("pv-%020d.log", i));
+      Path fileName = new Path(oldProcedureWALDir, String.format("pv2-%020d.log", i));
       fs.createNewFile(fileName);
     }
 

@@ -24,8 +24,8 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.yetus.audience.InterfaceAudience;
 
 /**
  * Immutable POJO class for representing a table name.
@@ -141,7 +141,7 @@ public final class TableName implements Comparable<TableName> {
     }
 
     int namespaceDelimIndex =
-      org.apache.hadoop.hbase.shaded.com.google.common.primitives.Bytes.lastIndexOf(tableName,
+      org.apache.hbase.thirdparty.com.google.common.primitives.Bytes.lastIndexOf(tableName,
         (byte) NAMESPACE_DELIM);
     if (namespaceDelimIndex < 0){
       isLegalTableQualifierName(tableName);
@@ -436,7 +436,7 @@ public final class TableName implements Comparable<TableName> {
     }
 
     int namespaceDelimIndex =
-      org.apache.hadoop.hbase.shaded.com.google.common.primitives.Bytes.lastIndexOf(fullName,
+      org.apache.hbase.thirdparty.com.google.common.primitives.Bytes.lastIndexOf(fullName,
         (byte) NAMESPACE_DELIM);
 
     if (namespaceDelimIndex < 0) {

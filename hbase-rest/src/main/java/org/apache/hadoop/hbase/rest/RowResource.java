@@ -37,13 +37,10 @@ import javax.ws.rs.core.Response.ResponseBuilder;
 import javax.ws.rs.core.UriInfo;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.hbase.CellBuilder;
+import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.Cell.Type;
 import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
-import org.apache.yetus.audience.InterfaceAudience;
-import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.Append;
@@ -56,10 +53,13 @@ import org.apache.hadoop.hbase.rest.model.CellModel;
 import org.apache.hadoop.hbase.rest.model.CellSetModel;
 import org.apache.hadoop.hbase.rest.model.RowModel;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @InterfaceAudience.Private
 public class RowResource extends ResourceBase {
-  private static final Log LOG = LogFactory.getLog(RowResource.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RowResource.class);
 
   private static final String CHECK_PUT = "put";
   private static final String CHECK_DELETE = "delete";
@@ -246,7 +246,7 @@ public class RowResource extends ResourceBase {
               .setFamily(parts[0])
               .setQualifier(parts[1])
               .setTimestamp(cell.getTimestamp())
-              .setType(CellBuilder.DataType.Put)
+              .setType(Type.Put)
               .setValue(cell.getValue())
               .build());
         }
@@ -321,7 +321,7 @@ public class RowResource extends ResourceBase {
         .setFamily(parts[0])
         .setQualifier(parts[1])
         .setTimestamp(timestamp)
-        .setType(CellBuilder.DataType.Put)
+        .setType(Type.Put)
         .setValue(message)
         .build());
       table = servlet.getTable(tableResource.getName());
@@ -518,7 +518,7 @@ public class RowResource extends ResourceBase {
               .setFamily(parts[0])
               .setQualifier(parts[1])
               .setTimestamp(cell.getTimestamp())
-              .setType(CellBuilder.DataType.Put)
+              .setType(Type.Put)
               .setValue(cell.getValue())
               .build());
           if(Bytes.equals(col,

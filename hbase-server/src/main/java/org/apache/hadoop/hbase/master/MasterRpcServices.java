@@ -19,7 +19,9 @@
 package org.apache.hadoop.hbase.master;
 
 import java.io.IOException;
+import java.net.BindException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,13 +30,13 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.ClusterMetricsBuilder;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.MetaTableAccessor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
+import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
@@ -50,10 +52,13 @@ import org.apache.hadoop.hbase.client.replication.ReplicationPeerConfigUtil;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessor;
 import org.apache.hadoop.hbase.errorhandling.ForeignException;
 import org.apache.hadoop.hbase.exceptions.UnknownProtocolException;
+import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.ipc.CoprocessorRpcUtils;
 import org.apache.hadoop.hbase.ipc.PriorityFunction;
 import org.apache.hadoop.hbase.ipc.QosPriority;
 import org.apache.hadoop.hbase.ipc.RpcServer.BlockingServiceAndInterface;
+import org.apache.hadoop.hbase.ipc.RpcServerFactory;
+import org.apache.hadoop.hbase.ipc.RpcServerInterface;
 import org.apache.hadoop.hbase.ipc.ServerRpcController;
 import org.apache.hadoop.hbase.master.assignment.RegionStates;
 import org.apache.hadoop.hbase.master.locking.LockProcedure;
@@ -64,6 +69,7 @@ import org.apache.hadoop.hbase.procedure.MasterProcedureManager;
 import org.apache.hadoop.hbase.procedure2.LockType;
 import org.apache.hadoop.hbase.procedure2.LockedResource;
 import org.apache.hadoop.hbase.procedure2.Procedure;
+import org.apache.hadoop.hbase.procedure2.ProcedureExecutor;
 import org.apache.hadoop.hbase.procedure2.ProcedureUtil;
 import org.apache.hadoop.hbase.protobuf.generated.AccessControlProtos.AccessControlService;
 import org.apache.hadoop.hbase.protobuf.generated.VisibilityLabelsProtos.VisibilityLabelsService;
@@ -72,6 +78,7 @@ import org.apache.hadoop.hbase.quotas.QuotaObserverChore;
 import org.apache.hadoop.hbase.quotas.QuotaUtil;
 import org.apache.hadoop.hbase.quotas.SpaceQuotaSnapshot;
 import org.apache.hadoop.hbase.regionserver.RSRpcServices;
+import org.apache.hadoop.hbase.regionserver.RpcSchedulerFactory;
 import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.replication.ReplicationPeerDescription;
@@ -86,9 +93,12 @@ import org.apache.hadoop.hbase.util.ForeignExceptionUtil;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.UnsafeByteOperations;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.hbase.thirdparty.com.google.protobuf.RpcController;
+import org.apache.hbase.thirdparty.com.google.protobuf.ServiceException;
+import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.ResponseConverter;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.CompactRegionRequest;
@@ -282,7 +292,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos.Snapshot
 public class MasterRpcServices extends RSRpcServices
       implements MasterService.BlockingInterface, RegionServerStatusService.BlockingInterface,
         LockService.BlockingInterface {
-  private static final Log LOG = LogFactory.getLog(MasterRpcServices.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(MasterRpcServices.class.getName());
 
   private final HMaster master;
 
@@ -309,6 +319,24 @@ public class MasterRpcServices extends RSRpcServices
   public MasterRpcServices(HMaster m) throws IOException {
     super(m);
     master = m;
+  }
+
+  @Override
+  protected RpcServerInterface createRpcServer(Server server, Configuration conf,
+      RpcSchedulerFactory rpcSchedulerFactory, InetSocketAddress bindAddress, String name)
+      throws IOException {
+    // RpcServer at HM by default enable ByteBufferPool iff HM having user table region in it
+    boolean reservoirEnabled = conf.getBoolean(RESERVOIR_ENABLED_KEY,
+        (LoadBalancer.isTablesOnMaster(conf) && !LoadBalancer.isSystemTablesOnlyOnMaster(conf)));
+    try {
+      return RpcServerFactory.createRpcServer(server, name, getServices(),
+          bindAddress, // use final bindAddress for this server.
+          conf, rpcSchedulerFactory.create(conf, this, server), reservoirEnabled);
+    } catch (BindException be) {
+      throw new IOException(be.getMessage() + ". To switch ports use the '"
+          + HConstants.MASTER_PORT + "' configuration property.",
+          be.getCause() != null ? be.getCause() : be);
+    }
   }
 
   @Override
@@ -419,7 +447,7 @@ public class MasterRpcServices extends RSRpcServices
       ClusterStatusProtos.ServerLoad sl = request.getLoad();
       ServerName serverName = ProtobufUtil.toServerName(request.getServer());
       ServerLoad oldLoad = master.getServerManager().getLoad(serverName);
-      ServerLoad newLoad = new ServerLoad(sl);
+      ServerLoad newLoad = new ServerLoad(serverName, sl);
       master.getServerManager().regionServerReport(serverName, newLoad);
       int version = VersionInfoUtil.getCurrentClientVersionNumber();
       master.getAssignmentManager().reportOnlineRegions(serverName,
@@ -513,7 +541,7 @@ public class MasterRpcServices extends RSRpcServices
         master.cpHost.preAssign(regionInfo);
       }
       LOG.info(master.getClientIdAuditPrefix() + " assign " + regionInfo.getRegionNameAsString());
-      master.getAssignmentManager().assign(regionInfo, true);
+      master.getAssignmentManager().assign(regionInfo);
       if (master.cpHost != null) {
         master.cpHost.postAssign(regionInfo);
       }
@@ -875,8 +903,8 @@ public class MasterRpcServices extends RSRpcServices
     GetClusterStatusResponse.Builder response = GetClusterStatusResponse.newBuilder();
     try {
       master.checkInitialized();
-      response.setClusterStatus(ProtobufUtil.convert(
-        master.getClusterStatus(ProtobufUtil.toOptions(req.getOptionsList()))));
+      response.setClusterStatus(ClusterMetricsBuilder.toClusterStatus(
+        master.getClusterMetrics(ClusterMetricsBuilder.toOptions(req.getOptionsList()))));
     } catch (IOException e) {
       throw new ServiceException(e);
     }
@@ -1125,35 +1153,28 @@ public class MasterRpcServices extends RSRpcServices
     try {
       master.checkInitialized();
       GetProcedureResultResponse.Builder builder = GetProcedureResultResponse.newBuilder();
-
-      Procedure<?> result = master.getMasterProcedureExecutor()
-          .getResultOrProcedure(request.getProcId());
-      if (result == null) {
-        builder.setState(GetProcedureResultResponse.State.NOT_FOUND);
-      } else {
-        boolean remove = false;
-
-        if (result.isFinished() || result.isFailed()) {
+      long procId = request.getProcId();
+      ProcedureExecutor<?> executor = master.getMasterProcedureExecutor();
+      Procedure<?> result = executor.getResultOrProcedure(procId);
+      if (result != null) {
+        builder.setSubmittedTime(result.getSubmittedTime());
+        builder.setLastUpdate(result.getLastUpdate());
+        if (executor.isFinished(procId)) {
           builder.setState(GetProcedureResultResponse.State.FINISHED);
-          remove = true;
+          if (result.isFailed()) {
+            IOException exception = result.getException().unwrapRemoteIOException();
+            builder.setException(ForeignExceptionUtil.toProtoForeignException(exception));
+          }
+          byte[] resultData = result.getResult();
+          if (resultData != null) {
+            builder.setResult(UnsafeByteOperations.unsafeWrap(resultData));
+          }
+          master.getMasterProcedureExecutor().removeResult(request.getProcId());
         } else {
           builder.setState(GetProcedureResultResponse.State.RUNNING);
         }
-
-        builder.setSubmittedTime(result.getSubmittedTime());
-        builder.setLastUpdate(result.getLastUpdate());
-        if (result.isFailed()) {
-          IOException exception = result.getException().unwrapRemoteIOException();
-          builder.setException(ForeignExceptionUtil.toProtoForeignException(exception));
-        }
-        byte[] resultData = result.getResult();
-        if (resultData != null) {
-          builder.setResult(UnsafeByteOperations.unsafeWrap(resultData));
-        }
-
-        if (remove) {
-          master.getMasterProcedureExecutor().removeResult(request.getProcId());
-        }
+      } else {
+        builder.setState(GetProcedureResultResponse.State.NOT_FOUND);
       }
       return builder.build();
     } catch (IOException e) {
@@ -1601,12 +1622,27 @@ public class MasterRpcServices extends RSRpcServices
       TableName tableName = RegionInfo.getTable(regionName);
       // if the region is a mob region, do the mob file compaction.
       if (MobUtils.isMobRegionName(tableName, regionName)) {
+        checkHFileFormatVersionForMob();
         return compactMob(request, tableName);
       } else {
         return super.compactRegion(controller, request);
       }
     } catch (IOException ie) {
       throw new ServiceException(ie);
+    }
+  }
+
+  /**
+   * check configured hfile format version before to do compaction
+   * @throws IOException throw IOException
+   */
+  private void checkHFileFormatVersionForMob() throws IOException {
+    if (HFile.getFormatVersion(master.getConfiguration()) < HFile.MIN_FORMAT_VERSION_WITH_TAGS) {
+      LOG.error("A minimum HFile version of " + HFile.MIN_FORMAT_VERSION_WITH_TAGS
+          + " is required for MOB compaction. Compaction will not run.");
+      throw new IOException("A minimum HFile version of " + HFile.MIN_FORMAT_VERSION_WITH_TAGS
+          + " is required for MOB feature. Consider setting " + HFile.FORMAT_VERSION_KEY
+          + " accordingly.");
     }
   }
 

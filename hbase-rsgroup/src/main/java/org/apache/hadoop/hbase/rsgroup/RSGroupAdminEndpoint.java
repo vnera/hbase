@@ -29,8 +29,7 @@ import java.util.stream.Collectors;
 import com.google.protobuf.RpcCallback;
 import com.google.protobuf.RpcController;
 import com.google.protobuf.Service;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
@@ -76,14 +75,16 @@ import org.apache.hadoop.hbase.protobuf.generated.RSGroupAdminProtos.RemoveRSGro
 import org.apache.hadoop.hbase.protobuf.generated.RSGroupAdminProtos.RemoveServersRequest;
 import org.apache.hadoop.hbase.protobuf.generated.RSGroupAdminProtos.RemoveServersResponse;
 import org.apache.hadoop.hbase.protobuf.generated.TableProtos;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Sets;
+import org.apache.hbase.thirdparty.com.google.common.collect.Sets;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // TODO: Encapsulate MasterObserver functions into separate subclass.
 @CoreCoprocessor
 @InterfaceAudience.Private
 public class RSGroupAdminEndpoint implements MasterCoprocessor, MasterObserver {
-  private static final Log LOG = LogFactory.getLog(RSGroupAdminEndpoint.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RSGroupAdminEndpoint.class);
 
   private MasterServices master = null;
   // Only instance of RSGroupInfoManager. RSGroup aware load balancers ask for this instance on
@@ -341,7 +342,7 @@ public class RSGroupAdminEndpoint implements MasterCoprocessor, MasterObserver {
 
   // Assign table to default RSGroup.
   @Override
-  public void preCreateTable(ObserverContext<MasterCoprocessorEnvironment> ctx,
+  public void postCreateTable(ObserverContext<MasterCoprocessorEnvironment> ctx,
       TableDescriptor desc, RegionInfo[] regions) throws IOException {
     assignTableToGroup(desc);
   }

@@ -38,22 +38,24 @@ import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
-
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.testclassification.MiscTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
-import org.junit.*;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Rule;
+import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category({MiscTests.class, SmallTests.class})
 public class TestClassFinder {
 
-  private static final Log LOG = LogFactory.getLog(TestClassFinder.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestClassFinder.class);
 
   @Rule public TestName name = new TestName();
   private static final HBaseCommonTestingUtility testUtil = new HBaseCommonTestingUtility();
@@ -417,4 +419,4 @@ public class TestClassFinder {
     method.invoke(urlClassLoader, new Object[] { jarFile.toURI().toURL() });
     return jarFile.getAbsolutePath();
   }
-};
+}

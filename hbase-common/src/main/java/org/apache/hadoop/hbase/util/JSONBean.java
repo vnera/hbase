@@ -18,9 +18,11 @@ package org.apache.hadoop.hbase.util;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Array;
+import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.Set;
 
@@ -40,17 +42,18 @@ import javax.management.openmbean.CompositeData;
 import javax.management.openmbean.CompositeType;
 import javax.management.openmbean.TabularData;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonGenerationException;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
 
 /**
  * Utility for doing JSON and MBeans.
  */
 public class JSONBean {
-  private static final Log LOG = LogFactory.getLog(JSONBean.class);
+  private static final Logger LOG = LoggerFactory.getLogger(JSONBean.class);
   private final JsonFactory jsonFactory;
 
   public JSONBean() {
@@ -340,7 +343,8 @@ public class JSONBean {
    * @throws MalformedObjectNameException
    */
   public static void dumpAllBeans() throws IOException, MalformedObjectNameException {
-    try (PrintWriter writer = new PrintWriter(System.out)) {
+    try (PrintWriter writer = new PrintWriter(
+        new OutputStreamWriter(System.out, StandardCharsets.UTF_8))) {
       JSONBean dumper = new JSONBean();
       try (JSONBean.Writer jsonBeanWriter = dumper.open(writer)) {
         MBeanServer mbeanServer = ManagementFactory.getPlatformMBeanServer();

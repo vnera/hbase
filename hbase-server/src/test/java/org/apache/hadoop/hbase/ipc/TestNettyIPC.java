@@ -39,11 +39,11 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
 
-import org.apache.hadoop.hbase.shaded.io.netty.channel.Channel;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.epoll.EpollEventLoopGroup;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.epoll.EpollSocketChannel;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.nio.NioEventLoopGroup;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.socket.nio.NioSocketChannel;
+import org.apache.hbase.thirdparty.io.netty.channel.Channel;
+import org.apache.hbase.thirdparty.io.netty.channel.epoll.EpollEventLoopGroup;
+import org.apache.hbase.thirdparty.io.netty.channel.epoll.EpollSocketChannel;
+import org.apache.hbase.thirdparty.io.netty.channel.nio.NioEventLoopGroup;
+import org.apache.hbase.thirdparty.io.netty.channel.socket.nio.NioSocketChannel;
 
 
 @RunWith(Parameterized.class)
@@ -106,7 +106,7 @@ public class TestNettyIPC extends AbstractTestIPC {
   protected RpcServer createRpcServer(Server server, String name,
       List<RpcServer.BlockingServiceAndInterface> services, InetSocketAddress bindAddress,
       Configuration conf, RpcScheduler scheduler) throws IOException {
-    return new NettyRpcServer(server, name, services, bindAddress, conf, scheduler);
+    return new NettyRpcServer(server, name, services, bindAddress, conf, scheduler, true);
   }
 
   @Override
@@ -145,7 +145,7 @@ public class TestNettyIPC extends AbstractTestIPC {
     TestFailingRpcServer(Server server, String name,
         List<RpcServer.BlockingServiceAndInterface> services, InetSocketAddress bindAddress,
         Configuration conf, RpcScheduler scheduler) throws IOException {
-      super(server, name, services, bindAddress, conf, scheduler);
+      super(server, name, services, bindAddress, conf, scheduler, true);
     }
 
     final class FailingConnection extends NettyServerRpcConnection {

@@ -21,7 +21,6 @@ package org.apache.hadoop.hbase.client;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -30,7 +29,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
@@ -49,57 +47,69 @@ public class TestBufferedMutatorParams {
    */
   private class MockExecutorService implements ExecutorService {
 
+    @Override
     public void execute(Runnable command) {
     }
 
+    @Override
     public void shutdown() {
     }
 
+    @Override
     public List<Runnable> shutdownNow() {
       return null;
     }
 
+    @Override
     public boolean isShutdown() {
       return false;
     }
 
+    @Override
     public boolean isTerminated() {
       return false;
     }
 
-    public boolean awaitTermination(long timeout, TimeUnit unit)
-        throws InterruptedException {
+    @Override
+    public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
       return false;
     }
 
+    @Override
     public <T> Future<T> submit(Callable<T> task) {
       return null;
     }
 
+    @Override
     public <T> Future<T> submit(Runnable task, T result) {
       return null;
     }
 
+    @Override
     public Future<?> submit(Runnable task) {
       return null;
     }
 
+    @Override
     public <T> List<Future<T>> invokeAll(
         Collection<? extends Callable<T>> tasks) throws InterruptedException {
       return null;
     }
 
+    @Override
     public <T> List<Future<T>> invokeAll(
         Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit)
         throws InterruptedException {
       return null;
     }
 
+    @Override
     public <T> T invokeAny(Collection<? extends Callable<T>> tasks)
         throws InterruptedException, ExecutionException {
       return null;
     }
 
+    @Override
     public <T> T invokeAny(Collection<? extends Callable<T>> tasks,
         long timeout, TimeUnit unit)
         throws InterruptedException, ExecutionException, TimeoutException {
@@ -110,8 +120,8 @@ public class TestBufferedMutatorParams {
   /**
    * Just to create an instance, this doesn't actually function.
    */
-  private class MockExceptionListener
-      implements BufferedMutator.ExceptionListener {
+  private static class MockExceptionListener implements BufferedMutator.ExceptionListener {
+    @Override
     public void onException(RetriesExhaustedWithDetailsException exception,
         BufferedMutator mutator) throws RetriesExhaustedWithDetailsException {
     }
@@ -124,13 +134,21 @@ public class TestBufferedMutatorParams {
     BufferedMutatorParams bmp = new BufferedMutatorParams(TableName.valueOf(tableName));
 
     BufferedMutator.ExceptionListener listener = new MockExceptionListener();
-    bmp.writeBufferSize(17).maxKeyValueSize(13).pool(pool).listener(listener);
+    bmp
+            .writeBufferSize(17)
+            .setWriteBufferPeriodicFlushTimeoutMs(123)
+            .setWriteBufferPeriodicFlushTimerTickMs(456)
+            .maxKeyValueSize(13)
+            .pool(pool)
+            .listener(listener);
     bmp.implementationClassName("someClassName");
     BufferedMutatorParams clone = bmp.clone();
 
     // Confirm some literals
     assertEquals(tableName, clone.getTableName().toString());
     assertEquals(17, clone.getWriteBufferSize());
+    assertEquals(123, clone.getWriteBufferPeriodicFlushTimeoutMs());
+    assertEquals(456, clone.getWriteBufferPeriodicFlushTimerTickMs());
     assertEquals(13, clone.getMaxKeyValueSize());
     assertEquals("someClassName", clone.getImplementationClassName());
 
@@ -156,6 +174,10 @@ public class TestBufferedMutatorParams {
     assertEquals(some.getTableName().toString(),
         clone.getTableName().toString());
     assertEquals(some.getWriteBufferSize(), clone.getWriteBufferSize());
+    assertEquals(some.getWriteBufferPeriodicFlushTimeoutMs(),
+        clone.getWriteBufferPeriodicFlushTimeoutMs());
+    assertEquals(some.getWriteBufferPeriodicFlushTimerTickMs(),
+        clone.getWriteBufferPeriodicFlushTimerTickMs());
     assertEquals(some.getMaxKeyValueSize(), clone.getMaxKeyValueSize());
     assertTrue(some.getListener() == clone.getListener());
     assertTrue(some.getPool() == clone.getPool());

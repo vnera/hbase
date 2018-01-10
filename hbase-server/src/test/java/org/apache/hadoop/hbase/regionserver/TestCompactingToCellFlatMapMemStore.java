@@ -18,8 +18,6 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.CellComparatorImpl;
 import org.apache.hadoop.hbase.HBaseConfiguration;
@@ -38,6 +36,8 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.List;
@@ -52,7 +52,8 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
   public static Object[] data() {
     return new Object[] { "CHUNK_MAP", "ARRAY_MAP" }; // test different immutable indexes
   }
-  private static final Log LOG = LogFactory.getLog(TestCompactingToCellFlatMapMemStore.class);
+  private static final Logger LOG =
+      LoggerFactory.getLogger(TestCompactingToCellFlatMapMemStore.class);
   public final boolean toCellChunkMap;
   Configuration conf;
   //////////////////////////////////////////////////////////////////////////////
@@ -78,7 +79,7 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
     // set memstore to do data compaction
     conf.set(CompactingMemStore.COMPACTING_MEMSTORE_TYPE_KEY,
         String.valueOf(MemoryCompactionPolicy.EAGER));
-
+    conf.setDouble(CompactingMemStore.IN_MEMORY_FLUSH_THRESHOLD_FACTOR_KEY, 0.02);
     this.memstore =
         new MyCompactingMemStore(conf, CellComparatorImpl.COMPARATOR, store,
             regionServicesForStores, MemoryCompactionPolicy.EAGER);
@@ -87,14 +88,15 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
   //////////////////////////////////////////////////////////////////////////////
   // Compaction tests
   //////////////////////////////////////////////////////////////////////////////
+  @Override
   public void testCompaction1Bucket() throws IOException {
     int counter = 0;
     String[] keys1 = { "A", "A", "B", "C" }; //A1, A2, B3, C4
     if (toCellChunkMap) {
       // set memstore to flat into CellChunkMap
-      conf.set(CompactingMemStore.COMPACTING_MEMSTORE_INDEX_KEY,
-          String.valueOf(CompactingMemStore.IndexType.CHUNK_MAP));
-      ((CompactingMemStore)memstore).setIndexType();
+      ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.CHUNK_MAP);
+    } else {
+      ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.ARRAY_MAP);
     }
 
     // test 1 bucket
@@ -134,12 +136,13 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
     memstore.clearSnapshot(snapshot.getId());
   }
 
+  @Override
   public void testCompaction2Buckets() throws IOException {
     if (toCellChunkMap) {
       // set memstore to flat into CellChunkMap
-      conf.set(CompactingMemStore.COMPACTING_MEMSTORE_INDEX_KEY,
-          String.valueOf(CompactingMemStore.IndexType.CHUNK_MAP));
-      ((CompactingMemStore)memstore).setIndexType();
+      ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.CHUNK_MAP);
+    } else {
+      ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.ARRAY_MAP);
     }
     String[] keys1 = { "A", "A", "B", "C" };
     String[] keys2 = { "A", "B", "D" };
@@ -195,12 +198,14 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
     memstore.clearSnapshot(snapshot.getId());
   }
 
+  @Override
   public void testCompaction3Buckets() throws IOException {
     if (toCellChunkMap) {
       // set memstore to flat into CellChunkMap
-      conf.set(CompactingMemStore.COMPACTING_MEMSTORE_INDEX_KEY,
-          String.valueOf(CompactingMemStore.IndexType.CHUNK_MAP));
-      ((CompactingMemStore)memstore).setIndexType();
+      ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.CHUNK_MAP);
+    } else {
+      // set to CellArrayMap as CCM is configured by default due to MSLAB usage
+      ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.ARRAY_MAP);
     }
     String[] keys1 = { "A", "A", "B", "C" };
     String[] keys2 = { "A", "B", "D" };
@@ -286,9 +291,7 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
   public void testMerging() throws IOException {
     if (toCellChunkMap) {
       // set memstore to flat into CellChunkMap
-      conf.set(CompactingMemStore.COMPACTING_MEMSTORE_INDEX_KEY,
-          String.valueOf(CompactingMemStore.IndexType.CHUNK_MAP));
-      ((CompactingMemStore)memstore).setIndexType();
+      ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.CHUNK_MAP);
     }
     String[] keys1 = { "A", "A", "B", "C", "F", "H"};
     String[] keys2 = { "A", "B", "D", "G", "I", "J"};
@@ -358,9 +361,7 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
   public void testTimeRangeAfterCompaction() throws IOException {
     if (toCellChunkMap) {
       // set memstore to flat into CellChunkMap
-      conf.set(CompactingMemStore.COMPACTING_MEMSTORE_INDEX_KEY,
-          String.valueOf(CompactingMemStore.IndexType.CHUNK_MAP));
-      ((CompactingMemStore)memstore).setIndexType();
+      ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.CHUNK_MAP);
     }
     testTimeRange(true);
   }
@@ -369,9 +370,7 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
   public void testTimeRangeAfterMerge() throws IOException {
     if (toCellChunkMap) {
       // set memstore to flat into CellChunkMap
-      conf.set(CompactingMemStore.COMPACTING_MEMSTORE_INDEX_KEY,
-          String.valueOf(CompactingMemStore.IndexType.CHUNK_MAP));
-      ((CompactingMemStore)memstore).setIndexType();
+      ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.CHUNK_MAP);
     }
     MemoryCompactionPolicy compactionType = MemoryCompactionPolicy.BASIC;
     memstore.getConfiguration().set(CompactingMemStore.COMPACTING_MEMSTORE_TYPE_KEY,
@@ -572,6 +571,7 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
     assertTrue(chunkCreator.getPoolSize() > 0);
   }
 
+  @Override
   @Test
   public void testPuttingBackChunksAfterFlushing() throws IOException {
     byte[] row = Bytes.toBytes("testrow");
@@ -617,9 +617,7 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
     memstore.getConfiguration().set(CompactingMemStore.COMPACTING_MEMSTORE_TYPE_KEY,
         String.valueOf(compactionType));
     ((MyCompactingMemStore)memstore).initiateType(compactionType, memstore.getConfiguration());
-    memstore.getConfiguration().set(CompactingMemStore.COMPACTING_MEMSTORE_INDEX_KEY,
-        String.valueOf(CompactingMemStore.IndexType.CHUNK_MAP));
-    ((CompactingMemStore)memstore).setIndexType();
+    ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.CHUNK_MAP);
     int numOfCells = 8;
     String[] keys1 = { "A", "A", "B", "C", "D", "D", "E", "F" }; //A1, A2, B3, C4, D5, D6, E7, F8
 
@@ -643,8 +641,6 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
 
     ((CompactingMemStore)memstore).flushInMemory(); // push keys to pipeline and flatten
     assertEquals(0, memstore.getSnapshot().getCellsCount());
-    // One cell is duplicated, but it shouldn't be compacted because we are in BASIC mode.
-    // totalCellsLen should remain the same
     long oneCellOnCCMHeapSize =
         ClassSize.CELL_CHUNK_MAP_ENTRY + ClassSize.align(KeyValueUtil.length(kv));
     totalHeapSize = MutableSegment.DEEP_OVERHEAD + CellChunkImmutableSegment.DEEP_OVERHEAD_CCM
@@ -661,6 +657,162 @@ public class TestCompactingToCellFlatMapMemStore extends TestCompactingMemStore 
     assertEquals(0, regionServicesForStores.getMemStoreSize());
 
     memstore.clearSnapshot(snapshot.getId());
+  }
+
+  /**
+   * CellChunkMap Segment index requires all cell data to be written in the MSLAB Chunks.
+   * Even though MSLAB is enabled, cells bigger than maxAlloc
+   * (even if smaller than the size of a chunk) are not written in the MSLAB Chunks.
+   * If such cells are found in the process of flattening into CellChunkMap
+   * (in-memory-flush) they need to be copied into MSLAB.
+   * testFlatteningToBigCellChunkMap checks that the process of flattening into
+   * CellChunkMap succeeds, even when such big cells are allocated.
+   */
+  @Test
+  public void testFlatteningToBigCellChunkMap() throws IOException {
+
+    if (toCellChunkMap == false) {
+      return;
+    }
+    // set memstore to flat into CellChunkMap
+    MemoryCompactionPolicy compactionType = MemoryCompactionPolicy.BASIC;
+    memstore.getConfiguration().set(CompactingMemStore.COMPACTING_MEMSTORE_TYPE_KEY,
+            String.valueOf(compactionType));
+    ((MyCompactingMemStore)memstore).initiateType(compactionType, memstore.getConfiguration());
+    ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.CHUNK_MAP);
+    int numOfCells = 4;
+    char[] chars = new char[MemStoreLAB.MAX_ALLOC_DEFAULT];
+    for (int i = 0; i < chars.length; i++) {
+      chars[i] = 'A';
+    }
+    String bigVal = new String(chars);
+    String[] keys1 = { "A", "B", "C", "D"};
+
+    // make one cell
+    byte[] row = Bytes.toBytes(keys1[0]);
+    byte[] val = Bytes.toBytes(bigVal);
+    KeyValue kv =
+            new KeyValue(row, Bytes.toBytes("testfamily"), Bytes.toBytes("testqualifier"),
+                    System.currentTimeMillis(), val);
+
+    // test 1 bucket
+    int totalCellsLen = addRowsByKeys(memstore, keys1, val);
+
+    long oneCellOnCSLMHeapSize =
+            ClassSize.align(
+                    ClassSize.CONCURRENT_SKIPLISTMAP_ENTRY + kv.heapSize());
+
+    long totalHeapSize = numOfCells * oneCellOnCSLMHeapSize + MutableSegment.DEEP_OVERHEAD;
+    assertEquals(totalCellsLen, regionServicesForStores.getMemStoreSize());
+    assertEquals(totalHeapSize, ((CompactingMemStore) memstore).heapSize());
+
+    ((CompactingMemStore)memstore).flushInMemory(); // push keys to pipeline and flatten
+    while (((CompactingMemStore) memstore).isMemStoreFlushingInMemory()) {
+      Threads.sleep(10);
+    }
+    assertEquals(0, memstore.getSnapshot().getCellsCount());
+    // One cell is duplicated, but it shouldn't be compacted because we are in BASIC mode.
+    // totalCellsLen should remain the same
+    long oneCellOnCCMHeapSize =
+            ClassSize.CELL_CHUNK_MAP_ENTRY + ClassSize.align(KeyValueUtil.length(kv));
+    totalHeapSize = MutableSegment.DEEP_OVERHEAD + CellChunkImmutableSegment.DEEP_OVERHEAD_CCM
+            + numOfCells * oneCellOnCCMHeapSize;
+
+    assertEquals(totalCellsLen, regionServicesForStores.getMemStoreSize());
+    assertEquals(totalHeapSize, ((CompactingMemStore) memstore).heapSize());
+
+    MemStoreSize size = memstore.getFlushableSize();
+    MemStoreSnapshot snapshot = memstore.snapshot(); // push keys to snapshot
+    region.decrMemStoreSize(size);  // simulate flusher
+    ImmutableSegment s = memstore.getSnapshot();
+    assertEquals(numOfCells, s.getCellsCount());
+    assertEquals(0, regionServicesForStores.getMemStoreSize());
+
+    memstore.clearSnapshot(snapshot.getId());
+  }
+
+  /**
+   * CellChunkMap Segment index requires all cell data to be written in the MSLAB Chunks.
+   * Even though MSLAB is enabled, cells bigger than the size of a chunk are not
+   * written in the MSLAB Chunks.
+   * If such cells are found in the process of flattening into CellChunkMap
+   * (in-memory-flush) they need to be copied into MSLAB.
+   * testFlatteningToJumboCellChunkMap checks that the process of flattening
+   * into CellChunkMap succeeds, even when such big cells are allocated.
+   */
+  @Test
+  public void testFlatteningToJumboCellChunkMap() throws IOException {
+
+    if (toCellChunkMap == false) {
+      return;
+    }
+    // set memstore to flat into CellChunkMap
+    MemoryCompactionPolicy compactionType = MemoryCompactionPolicy.BASIC;
+    memstore.getConfiguration().set(CompactingMemStore.COMPACTING_MEMSTORE_TYPE_KEY,
+        String.valueOf(compactionType));
+    ((MyCompactingMemStore)memstore).initiateType(compactionType, memstore.getConfiguration());
+    ((CompactingMemStore)memstore).setIndexType(CompactingMemStore.IndexType.CHUNK_MAP);
+
+    int numOfCells = 1;
+    char[] chars = new char[MemStoreLAB.CHUNK_SIZE_DEFAULT];
+    for (int i = 0; i < chars.length; i++) {
+      chars[i] = 'A';
+    }
+    String bigVal = new String(chars);
+    String[] keys1 = { "A"};
+
+    // make one cell
+    byte[] row = Bytes.toBytes(keys1[0]);
+    byte[] val = Bytes.toBytes(bigVal);
+    KeyValue kv =
+            new KeyValue(row, Bytes.toBytes("testfamily"), Bytes.toBytes("testqualifier"),
+                    System.currentTimeMillis(), val);
+
+    // test 1 bucket
+    int totalCellsLen = addRowsByKeys(memstore, keys1, val);
+
+    long oneCellOnCSLMHeapSize =
+            ClassSize.align(
+                    ClassSize.CONCURRENT_SKIPLISTMAP_ENTRY + kv.heapSize());
+
+    long totalHeapSize = numOfCells * oneCellOnCSLMHeapSize + MutableSegment.DEEP_OVERHEAD;
+    assertEquals(totalCellsLen, regionServicesForStores.getMemStoreSize());
+    assertEquals(totalHeapSize, ((CompactingMemStore) memstore).heapSize());
+
+    ((CompactingMemStore)memstore).flushInMemory(); // push keys to pipeline and flatten
+    while (((CompactingMemStore) memstore).isMemStoreFlushingInMemory()) {
+      Threads.sleep(10);
+    }
+    assertEquals(0, memstore.getSnapshot().getCellsCount());
+
+    // One cell is duplicated, but it shouldn't be compacted because we are in BASIC mode.
+    // totalCellsLen should remain the same
+    long oneCellOnCCMHeapSize =
+            ClassSize.CELL_CHUNK_MAP_ENTRY + ClassSize.align(KeyValueUtil.length(kv));
+    totalHeapSize = MutableSegment.DEEP_OVERHEAD + CellChunkImmutableSegment.DEEP_OVERHEAD_CCM
+            + numOfCells * oneCellOnCCMHeapSize;
+
+    assertEquals(totalCellsLen, regionServicesForStores.getMemStoreSize());
+    assertEquals(totalHeapSize, ((CompactingMemStore) memstore).heapSize());
+
+    MemStoreSize size = memstore.getFlushableSize();
+    MemStoreSnapshot snapshot = memstore.snapshot(); // push keys to snapshot
+    region.decrMemStoreSize(size);  // simulate flusher
+    ImmutableSegment s = memstore.getSnapshot();
+    assertEquals(numOfCells, s.getCellsCount());
+    assertEquals(0, regionServicesForStores.getMemStoreSize());
+
+    memstore.clearSnapshot(snapshot.getId());
+
+    String[] keys2 = { "C", "D", "E"};
+    addRowsByKeys(memstore, keys2, val);
+    while (((CompactingMemStore) memstore).isMemStoreFlushingInMemory()) {
+      Threads.sleep(10);
+    }
+    totalHeapSize = 1 * oneCellOnCSLMHeapSize + MutableSegment.DEEP_OVERHEAD
+            + CellChunkImmutableSegment.DEEP_OVERHEAD_CCM
+            + 2 * oneCellOnCCMHeapSize;
+    assertEquals(totalHeapSize, ((CompactingMemStore) memstore).heapSize());
   }
 
 

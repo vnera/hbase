@@ -17,8 +17,8 @@
  */
 package org.apache.hadoop.hbase.regionserver.wal;
 
-import static org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions.checkArgument;
-import static org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.hbase.thirdparty.com.google.common.base.Preconditions.checkArgument;
+import static org.apache.hbase.thirdparty.com.google.common.base.Preconditions.checkNotNull;
 import static org.apache.hadoop.hbase.wal.AbstractFSWALProvider.WAL_FILE_NAME_DELIMITER;
 
 import com.lmax.disruptor.RingBuffer;
@@ -48,8 +48,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.lang3.mutable.MutableLong;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -62,6 +60,7 @@ import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.exceptions.TimeoutIOException;
 import org.apache.hadoop.hbase.io.util.MemorySizeUtil;
+import org.apache.hadoop.hbase.log.HBaseMarkers;
 import org.apache.hadoop.hbase.regionserver.MultiVersionConcurrencyControl;
 import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -83,8 +82,9 @@ import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.htrace.core.TraceScope;
 import org.apache.yetus.audience.InterfaceAudience;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 
 /**
  * Implementation of {@link WAL} to go against {@link FileSystem}; i.e. keep WALs in HDFS. Only one
@@ -115,7 +115,7 @@ import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTe
 @InterfaceAudience.Private
 public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
 
-  private static final Log LOG = LogFactory.getLog(AbstractFSWAL.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AbstractFSWAL.class);
 
   protected static final int DEFAULT_SLOW_SYNC_TIME_MS = 100; // in ms
 
@@ -402,12 +402,18 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
     }
     this.coprocessorHost = new WALCoprocessorHost(this, conf);
 
-    // Get size to roll log at. Roll at 95% of HDFS block size so we avoid crossing HDFS blocks
-    // (it costs a little x'ing bocks)
+    // Schedule a WAL roll when the WAL is 50% of the HDFS block size. Scheduling at 50% of block
+    // size should make it so WAL rolls before we get to the end-of-block (Block transitions cost
+    // some latency). In hbase-1 we did this differently. We scheduled a roll when we hit 95% of
+    // the block size but experience from the field has it that this was not enough time for the
+    // roll to happen before end-of-block. So the new accounting makes WALs of about the same
+    // size as those made in hbase-1 (to prevent surprise), we now have default block size as
+    // 2 times the DFS default: i.e. 2 * DFS default block size rolling at 50% full will generally
+    // make similar size logs to 1 * DFS default block size rolling at 95% full. See HBASE-19148.
     final long blocksize = this.conf.getLong("hbase.regionserver.hlog.blocksize",
-      CommonFSUtils.getDefaultBlockSize(this.fs, this.walDir));
+      CommonFSUtils.getDefaultBlockSize(this.fs, this.walDir) * 2);
     this.logrollsize =
-      (long) (blocksize * conf.getFloat("hbase.regionserver.logroll.multiplier", 0.95f));
+      (long) (blocksize * conf.getFloat("hbase.regionserver.logroll.multiplier", 0.5f));
 
     boolean maxLogsDefined = conf.get("hbase.regionserver.maxlogs") != null;
     if (maxLogsDefined) {
@@ -1117,8 +1123,8 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
     if (args[0].compareTo("--dump") == 0) {
       WALPrettyPrinter.run(Arrays.copyOfRange(args, 1, args.length));
     } else if (args[0].compareTo("--perf") == 0) {
-      LOG.fatal("Please use the WALPerformanceEvaluation tool instead. i.e.:");
-      LOG.fatal(
+      LOG.error(HBaseMarkers.FATAL, "Please use the WALPerformanceEvaluation tool instead. i.e.:");
+      LOG.error(HBaseMarkers.FATAL,
         "\thbase org.apache.hadoop.hbase.wal.WALPerformanceEvaluation --iterations " + args[1]);
       System.exit(-1);
     } else if (args[0].compareTo("--split") == 0) {

@@ -22,8 +22,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.zookeeper.ZKListener;
 import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.yetus.audience.InterfaceAudience;
@@ -32,6 +30,8 @@ import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.zookeeper.KeeperException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class is a ZooKeeper implementation of the ReplicationTracker interface. This class is
@@ -41,7 +41,7 @@ import org.apache.zookeeper.KeeperException;
 @InterfaceAudience.Private
 public class ReplicationTrackerZKImpl extends ReplicationStateZKBase implements ReplicationTracker {
 
-  private static final Log LOG = LogFactory.getLog(ReplicationTrackerZKImpl.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ReplicationTrackerZKImpl.class);
   // All about stopping
   private final Stoppable stopper;
   // listeners to be notified
@@ -101,6 +101,7 @@ public class ReplicationTrackerZKImpl extends ReplicationStateZKBase implements 
      * Called when a new node has been created.
      * @param path full path of the new node
      */
+    @Override
     public void nodeCreated(String path) {
       refreshListIfRightPath(path);
     }
@@ -109,6 +110,7 @@ public class ReplicationTrackerZKImpl extends ReplicationStateZKBase implements 
      * Called when a node has been deleted
      * @param path full path of the deleted node
      */
+    @Override
     public void nodeDeleted(String path) {
       if (stopper.isStopped()) {
         return;
@@ -127,6 +129,7 @@ public class ReplicationTrackerZKImpl extends ReplicationStateZKBase implements 
      * Called when an existing node has a child node added or removed.
      * @param path full path of the node whose children have changed
      */
+    @Override
     public void nodeChildrenChanged(String path) {
       if (stopper.isStopped()) {
         return;
@@ -158,6 +161,7 @@ public class ReplicationTrackerZKImpl extends ReplicationStateZKBase implements 
      * Called when a node has been deleted
      * @param path full path of the deleted node
      */
+    @Override
     public void nodeDeleted(String path) {
       List<String> peers = refreshPeersList(path);
       if (peers == null) {
@@ -176,6 +180,7 @@ public class ReplicationTrackerZKImpl extends ReplicationStateZKBase implements 
      * Called when an existing node has a child node added or removed.
      * @param path full path of the node whose children have changed
      */
+    @Override
     public void nodeChildrenChanged(String path) {
       List<String> peers = refreshPeersList(path);
       if (peers == null) {

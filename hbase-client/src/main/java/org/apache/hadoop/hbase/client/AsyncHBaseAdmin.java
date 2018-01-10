@@ -18,8 +18,6 @@
 package org.apache.hadoop.hbase.client;
 
 import com.google.protobuf.RpcChannel;
-
-import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -29,11 +27,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 import java.util.regex.Pattern;
-
-import org.apache.hadoop.hbase.ClusterStatus;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
+import org.apache.hadoop.hbase.ClusterMetrics;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
-import org.apache.hadoop.hbase.RegionLoad;
+import org.apache.hadoop.hbase.RegionMetrics;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.replication.TableCFs;
@@ -411,13 +408,13 @@ class AsyncHBaseAdmin implements AsyncAdmin {
 
   @Override
   public CompletableFuture<Void> appendReplicationPeerTableCFs(String peerId,
-      Map<TableName, ? extends Collection<String>> tableCfs) {
+      Map<TableName, List<String>> tableCfs) {
     return wrap(rawAdmin.appendReplicationPeerTableCFs(peerId, tableCfs));
   }
 
   @Override
   public CompletableFuture<Void> removeReplicationPeerTableCFs(String peerId,
-      Map<TableName, ? extends Collection<String>> tableCfs) {
+      Map<TableName, List<String>> tableCfs) {
     return wrap(rawAdmin.removeReplicationPeerTableCFs(peerId, tableCfs));
   }
 
@@ -569,13 +566,13 @@ class AsyncHBaseAdmin implements AsyncAdmin {
   }
 
   @Override
-  public CompletableFuture<ClusterStatus> getClusterStatus() {
-    return getClusterStatus(EnumSet.allOf(Option.class));
+  public CompletableFuture<ClusterMetrics> getClusterMetrics() {
+    return getClusterMetrics(EnumSet.allOf(Option.class));
   }
 
   @Override
-  public CompletableFuture<ClusterStatus> getClusterStatus(EnumSet<Option> options) {
-    return wrap(rawAdmin.getClusterStatus(options));
+  public CompletableFuture<ClusterMetrics> getClusterMetrics(EnumSet<Option> options) {
+    return wrap(rawAdmin.getClusterMetrics(options));
   }
 
   @Override
@@ -619,14 +616,14 @@ class AsyncHBaseAdmin implements AsyncAdmin {
   }
 
   @Override
-  public CompletableFuture<List<RegionLoad>> getRegionLoads(ServerName serverName) {
-    return wrap(rawAdmin.getRegionLoads(serverName));
+  public CompletableFuture<List<RegionMetrics>> getRegionMetrics(ServerName serverName) {
+    return wrap(rawAdmin.getRegionMetrics(serverName));
   }
 
   @Override
-  public CompletableFuture<List<RegionLoad>> getRegionLoads(ServerName serverName,
+  public CompletableFuture<List<RegionMetrics>> getRegionMetrics(ServerName serverName,
       TableName tableName) {
-    return wrap(rawAdmin.getRegionLoads(serverName, tableName));
+    return wrap(rawAdmin.getRegionMetrics(serverName, tableName));
   }
 
   @Override

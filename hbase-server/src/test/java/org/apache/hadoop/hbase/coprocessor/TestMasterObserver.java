@@ -29,9 +29,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
@@ -70,6 +67,8 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
@@ -83,7 +82,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.GetTableNa
  */
 @Category({CoprocessorTests.class, MediumTests.class})
 public class TestMasterObserver {
-  private static final Log LOG = LogFactory.getLog(TestMasterObserver.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestMasterObserver.class);
 
   public static CountDownLatch tableCreationLatch = new CountDownLatch(1);
   public static CountDownLatch tableDeletionLatch = new CountDownLatch(1);
@@ -1524,7 +1523,7 @@ public class TestMasterObserver {
       assertNotNull("Found a non-null entry", firstGoodPair);
       LOG.info("Found " + firstGoodPair.toString());
       // Try to force a move
-      Collection<ServerName> servers = master.getClusterStatus().getServers();
+      Collection<ServerName> servers = master.getClusterMetrics().getLiveServerMetrics().keySet();
       String destName = null;
       String serverNameForFirstRegion = firstGoodPair.getServerName().toString();
       LOG.info("serverNameForFirstRegion=" + serverNameForFirstRegion);

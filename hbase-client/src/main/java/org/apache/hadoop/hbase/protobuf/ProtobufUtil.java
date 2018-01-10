@@ -27,6 +27,7 @@ import com.google.protobuf.RpcController;
 import com.google.protobuf.Service;
 import com.google.protobuf.ServiceException;
 import com.google.protobuf.TextFormat;
+
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -37,9 +38,10 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableSet;
 import java.util.function.Function;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellBuilder;
+import org.apache.hadoop.hbase.Cell.Type;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellScanner;
 import org.apache.hadoop.hbase.CellUtil;
@@ -256,7 +258,7 @@ public final class ProtobufUtil {
    * @param se ServiceException that wraps IO exception thrown by the server
    * @return Exception wrapped in ServiceException.
    */
-  public static IOException getServiceException(org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException e) {
+  public static IOException getServiceException(org.apache.hbase.thirdparty.com.google.protobuf.ServiceException e) {
     Throwable t = e.getCause();
     if (ExceptionUtil.isInterrupt(t)) {
       return ExceptionUtil.asInterrupt(t);
@@ -278,7 +280,7 @@ public final class ProtobufUtil {
   private static IOException makeIOExceptionOfException(Exception e) {
     Throwable t = e;
     if (e instanceof ServiceException ||
-        e instanceof org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException) {
+        e instanceof org.apache.hbase.thirdparty.com.google.protobuf.ServiceException) {
       t = e.getCause();
     }
     if (ExceptionUtil.isInterrupt(t)) {
@@ -535,7 +537,7 @@ public final class ProtobufUtil {
                   .setFamily(family)
                   .setQualifier(qv.hasQualifier() ? qv.getQualifier().toByteArray() : null)
                   .setTimestamp(ts)
-                  .setType(CellBuilder.DataType.Put)
+                  .setType(Cell.Type.Put)
                   .setValue(qv.hasValue() ? qv.getValue().toByteArray() : null)
                   .setTags(allTagsBytes)
                   .build());
@@ -555,7 +557,7 @@ public final class ProtobufUtil {
                   .setFamily(family)
                   .setQualifier(qv.hasQualifier() ? qv.getQualifier().toByteArray() : null)
                   .setTimestamp(ts)
-                  .setType(CellBuilder.DataType.Put)
+                  .setType(Type.Put)
                   .setValue(qv.hasValue() ? qv.getValue().toByteArray() : null)
                   .build());
             }

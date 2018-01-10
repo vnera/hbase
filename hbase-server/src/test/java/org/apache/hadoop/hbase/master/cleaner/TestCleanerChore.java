@@ -24,8 +24,6 @@ import static org.junit.Assert.assertTrue;
 import java.io.IOException;
 import java.util.Random;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -43,11 +41,13 @@ import org.junit.experimental.categories.Category;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category({MasterTests.class, SmallTests.class})
 public class TestCleanerChore {
 
-  private static final Log LOG = LogFactory.getLog(TestCleanerChore.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestCleanerChore.class);
   private static final HBaseTestingUtility UTIL = new HBaseTestingUtility();
 
   @After
@@ -386,6 +386,25 @@ public class TestCleanerChore {
     assertEquals(4, chore.getChorePoolSize());
     // Stop chore
     t.join();
+  }
+
+  @Test
+  public void testMinimumNumberOfThreads() throws Exception {
+    Stoppable stop = new StoppableImplementation();
+    Configuration conf = UTIL.getConfiguration();
+    Path testDir = UTIL.getDataTestDir();
+    FileSystem fs = UTIL.getTestFileSystem();
+    String confKey = "hbase.test.cleaner.delegates";
+    conf.set(confKey, AlwaysDelete.class.getName());
+    conf.set(CleanerChore.CHORE_POOL_SIZE, "2");
+    AllValidPaths chore = new AllValidPaths("test-file-cleaner", stop, conf, fs, testDir, confKey);
+    int numProcs = Runtime.getRuntime().availableProcessors();
+    // Sanity
+    assertEquals(numProcs, chore.calculatePoolSize(Integer.toString(numProcs)));
+    // The implementation does not allow us to set more threads than we have processors
+    assertEquals(numProcs, chore.calculatePoolSize(Integer.toString(numProcs + 2)));
+    // Force us into the branch that is multiplying 0.0 against the number of processors
+    assertEquals(1, chore.calculatePoolSize("0.0"));
   }
 
   private void createFiles(FileSystem fs, Path parentDir, int numOfFiles) throws IOException {

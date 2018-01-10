@@ -27,8 +27,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
@@ -38,18 +36,22 @@ import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationFactory;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
+import org.apache.hadoop.hbase.replication.ReplicationPeerConfigBuilder;
 import org.apache.hadoop.hbase.replication.ReplicationPeerDescription;
 import org.apache.hadoop.hbase.replication.ReplicationQueues;
 import org.apache.hadoop.hbase.replication.ReplicationQueuesArguments;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -64,8 +66,8 @@ import static org.junit.Assert.fail;
 @Category({MediumTests.class, ClientTests.class})
 public class TestReplicationAdmin {
 
-  private static final Log LOG =
-      LogFactory.getLog(TestReplicationAdmin.class);
+  private static final Logger LOG =
+      LoggerFactory.getLogger(TestReplicationAdmin.class);
   private final static HBaseTestingUtility TEST_UTIL =
       new HBaseTestingUtility();
 
@@ -99,6 +101,20 @@ public class TestReplicationAdmin {
     TEST_UTIL.shutdownMiniCluster();
   }
 
+  @After
+  public void cleanupPeer() {
+    try {
+      hbaseAdmin.removeReplicationPeer(ID_ONE);
+    } catch (Exception e) {
+      LOG.debug("Replication peer " + ID_ONE + " may already be removed");
+    }
+    try {
+      hbaseAdmin.removeReplicationPeer(ID_SECOND);
+    } catch (Exception e) {
+      LOG.debug("Replication peer " + ID_SECOND + " may already be removed");
+    }
+  }
+
   /**
    * Simple testing of adding and removing peers, basically shows that
    * all interactions with ZK work
@@ -106,39 +122,39 @@ public class TestReplicationAdmin {
    */
   @Test
   public void testAddRemovePeer() throws Exception {
-    ReplicationPeerConfig rpc1 = new ReplicationPeerConfig();
+    ReplicationPeerConfigBuilder rpc1 = ReplicationPeerConfig.newBuilder();
     rpc1.setClusterKey(KEY_ONE);
-    ReplicationPeerConfig rpc2 = new ReplicationPeerConfig();
+    ReplicationPeerConfigBuilder rpc2 = ReplicationPeerConfig.newBuilder();
     rpc2.setClusterKey(KEY_SECOND);
     // Add a valid peer
-    admin.addPeer(ID_ONE, rpc1, null);
+    hbaseAdmin.addReplicationPeer(ID_ONE, rpc1.build());
     // try adding the same (fails)
     try {
-      admin.addPeer(ID_ONE, rpc1, null);
+      hbaseAdmin.addReplicationPeer(ID_ONE, rpc1.build());
     } catch (Exception e) {
       // OK!
     }
-    assertEquals(1, admin.getPeersCount());
+    assertEquals(1, hbaseAdmin.listReplicationPeers().size());
     // Try to remove an inexisting peer
     try {
-      admin.removePeer(ID_SECOND);
+      hbaseAdmin.removeReplicationPeer(ID_SECOND);
       fail();
-    } catch (Exception iae) {
+    } catch (Exception e) {
       // OK!
     }
-    assertEquals(1, admin.getPeersCount());
+    assertEquals(1, hbaseAdmin.listReplicationPeers().size());
     // Add a second since multi-slave is supported
     try {
-      admin.addPeer(ID_SECOND, rpc2, null);
-    } catch (Exception iae) {
+      hbaseAdmin.addReplicationPeer(ID_SECOND, rpc2.build());
+    } catch (Exception e) {
       fail();
     }
-    assertEquals(2, admin.getPeersCount());
+    assertEquals(2, hbaseAdmin.listReplicationPeers().size());
     // Remove the first peer we added
-    admin.removePeer(ID_ONE);
-    assertEquals(1, admin.getPeersCount());
-    admin.removePeer(ID_SECOND);
-    assertEquals(0, admin.getPeersCount());
+    hbaseAdmin.removeReplicationPeer(ID_ONE);
+    assertEquals(1, hbaseAdmin.listReplicationPeers().size());
+    hbaseAdmin.removeReplicationPeer(ID_SECOND);
+    assertEquals(0, hbaseAdmin.listReplicationPeers().size());
   }
 
   @Test
@@ -449,7 +465,7 @@ public class TestReplicationAdmin {
     assertTrue(namespaces.contains(ns2));
 
     rpc = hbaseAdmin.getReplicationPeerConfig(ID_ONE);
-    namespaces.clear();
+    namespaces = new HashSet<>();
     namespaces.add(ns1);
     rpc.setNamespaces(namespaces);
     hbaseAdmin.updateReplicationPeerConfig(ID_ONE, rpc);
@@ -483,8 +499,97 @@ public class TestReplicationAdmin {
   }
 
   @Test
+  public void testPeerExcludeNamespaces() throws Exception {
+    String ns1 = "ns1";
+    String ns2 = "ns2";
+
+    ReplicationPeerConfig rpc = new ReplicationPeerConfig();
+    rpc.setClusterKey(KEY_ONE);
+    hbaseAdmin.addReplicationPeer(ID_ONE, rpc);
+
+    rpc = hbaseAdmin.getReplicationPeerConfig(ID_ONE);
+    assertTrue(rpc.replicateAllUserTables());
+
+    Set<String> namespaces = new HashSet<String>();
+    namespaces.add(ns1);
+    namespaces.add(ns2);
+    rpc.setExcludeNamespaces(namespaces);
+    hbaseAdmin.updateReplicationPeerConfig(ID_ONE, rpc);
+    namespaces = hbaseAdmin.getReplicationPeerConfig(ID_ONE).getExcludeNamespaces();
+    assertEquals(2, namespaces.size());
+    assertTrue(namespaces.contains(ns1));
+    assertTrue(namespaces.contains(ns2));
+
+    rpc = hbaseAdmin.getReplicationPeerConfig(ID_ONE);
+    namespaces = new HashSet<String>();
+    namespaces.add(ns1);
+    rpc.setExcludeNamespaces(namespaces);
+    hbaseAdmin.updateReplicationPeerConfig(ID_ONE, rpc);
+    namespaces = hbaseAdmin.getReplicationPeerConfig(ID_ONE).getExcludeNamespaces();
+    assertEquals(1, namespaces.size());
+    assertTrue(namespaces.contains(ns1));
+
+    hbaseAdmin.removeReplicationPeer(ID_ONE);
+  }
+
+  @Test
+  public void testPeerExcludeTableCFs() throws Exception {
+    ReplicationPeerConfig rpc = new ReplicationPeerConfig();
+    rpc.setClusterKey(KEY_ONE);
+    TableName tab1 = TableName.valueOf("t1");
+    TableName tab2 = TableName.valueOf("t2");
+    TableName tab3 = TableName.valueOf("t3");
+    TableName tab4 = TableName.valueOf("t4");
+
+    // Add a valid peer
+    hbaseAdmin.addReplicationPeer(ID_ONE, rpc);
+    rpc = hbaseAdmin.getReplicationPeerConfig(ID_ONE);
+    assertTrue(rpc.replicateAllUserTables());
+
+    Map<TableName, List<String>> tableCFs = new HashMap<TableName, List<String>>();
+    tableCFs.put(tab1, null);
+    rpc.setExcludeTableCFsMap(tableCFs);
+    hbaseAdmin.updateReplicationPeerConfig(ID_ONE, rpc);
+    Map<TableName, List<String>> result =
+        hbaseAdmin.getReplicationPeerConfig(ID_ONE).getExcludeTableCFsMap();
+    assertEquals(1, result.size());
+    assertEquals(true, result.containsKey(tab1));
+    assertNull(result.get(tab1));
+
+    tableCFs.put(tab2, new ArrayList<String>());
+    tableCFs.get(tab2).add("f1");
+    rpc.setExcludeTableCFsMap(tableCFs);
+    hbaseAdmin.updateReplicationPeerConfig(ID_ONE, rpc);
+    result = hbaseAdmin.getReplicationPeerConfig(ID_ONE).getExcludeTableCFsMap();
+    assertEquals(2, result.size());
+    assertTrue("Should contain t1", result.containsKey(tab1));
+    assertTrue("Should contain t2", result.containsKey(tab2));
+    assertNull(result.get(tab1));
+    assertEquals(1, result.get(tab2).size());
+    assertEquals("f1", result.get(tab2).get(0));
+
+    tableCFs.clear();
+    tableCFs.put(tab3, new ArrayList<String>());
+    tableCFs.put(tab4, new ArrayList<String>());
+    tableCFs.get(tab4).add("f1");
+    tableCFs.get(tab4).add("f2");
+    rpc.setExcludeTableCFsMap(tableCFs);
+    hbaseAdmin.updateReplicationPeerConfig(ID_ONE, rpc);
+    result = hbaseAdmin.getReplicationPeerConfig(ID_ONE).getExcludeTableCFsMap();
+    assertEquals(2, result.size());
+    assertTrue("Should contain t3", result.containsKey(tab3));
+    assertTrue("Should contain t4", result.containsKey(tab4));
+    assertNull(result.get(tab3));
+    assertEquals(2, result.get(tab4).size());
+    assertEquals("f1", result.get(tab4).get(0));
+    assertEquals("f2", result.get(tab4).get(1));
+
+    hbaseAdmin.removeReplicationPeer(ID_ONE);
+  }
+
+  @Test
   public void testPeerConfigConflict() throws Exception {
-    // Default replicate all flag is true
+    // Default replicate_all flag is true
     ReplicationPeerConfig rpc = new ReplicationPeerConfig();
     rpc.setClusterKey(KEY_ONE);
 
@@ -492,39 +597,68 @@ public class TestReplicationAdmin {
     Set<String> namespaces = new HashSet<String>();
     namespaces.add(ns1);
 
-    TableName tab1 = TableName.valueOf("ns1:tabl");
+    TableName tab1 = TableName.valueOf("ns2:tabl");
     Map<TableName, List<String>> tableCfs = new HashMap<TableName, List<String>>();
     tableCfs.put(tab1, new ArrayList<String>());
 
     try {
       rpc.setNamespaces(namespaces);
       hbaseAdmin.addReplicationPeer(ID_ONE, rpc);
-      fail("Should throw Exception. When replicate all flag is true, no need to config namespaces");
+      fail("Should throw Exception."
+          + " When replicate all flag is true, no need to config namespaces");
     } catch (IOException e) {
       // OK
       rpc.setNamespaces(null);
     }
 
     try {
-      rpc.setTableCFsMap(tableCfs);
-      hbaseAdmin.addReplicationPeer(ID_ONE, rpc);
-      fail("Should throw Exception. When replicate all flag is true, no need to config table-cfs");
-    } catch (IOException e) {
-      // OK
-      rpc.setTableCFsMap(null);
-    }
-
-    try {
-      rpc.setNamespaces(namespaces);
       rpc.setTableCFsMap(tableCfs);
       hbaseAdmin.addReplicationPeer(ID_ONE, rpc);
       fail("Should throw Exception."
-          + " When replicate all flag is true, no need to config namespaces or table-cfs");
+          + " When replicate all flag is true, no need to config table-cfs");
     } catch (IOException e) {
       // OK
-      rpc.setNamespaces(null);
       rpc.setTableCFsMap(null);
     }
+
+    // Set replicate_all flag to true
+    rpc.setReplicateAllUserTables(false);
+    try {
+      rpc.setExcludeNamespaces(namespaces);
+      hbaseAdmin.addReplicationPeer(ID_ONE, rpc);
+      fail("Should throw Exception."
+          + " When replicate all flag is false, no need to config exclude namespaces");
+    } catch (IOException e) {
+      // OK
+      rpc.setExcludeNamespaces(null);
+    }
+
+    try {
+      rpc.setExcludeTableCFsMap(tableCfs);
+      hbaseAdmin.addReplicationPeer(ID_ONE, rpc);
+      fail("Should throw Exception."
+          + " When replicate all flag is false, no need to config exclude table-cfs");
+    } catch (IOException e) {
+      // OK
+      rpc.setExcludeTableCFsMap(null);
+    }
+
+    rpc.setNamespaces(namespaces);
+    rpc.setTableCFsMap(tableCfs);
+    // OK to add a new peer which replicate_all flag is false and with namespaces, table-cfs config
+    hbaseAdmin.addReplicationPeer(ID_ONE, rpc);
+
+    // Default replicate_all flag is true
+    ReplicationPeerConfig rpc2 = new ReplicationPeerConfig();
+    rpc2.setClusterKey(KEY_SECOND);
+    rpc2.setExcludeNamespaces(namespaces);
+    rpc2.setExcludeTableCFsMap(tableCfs);
+    // OK to add a new peer which replicate_all flag is true and with exclude namespaces, exclude
+    // table-cfs config
+    hbaseAdmin.addReplicationPeer(ID_SECOND, rpc2);
+
+    hbaseAdmin.removeReplicationPeer(ID_ONE);
+    hbaseAdmin.removeReplicationPeer(ID_SECOND);
   }
 
   @Test
@@ -539,41 +673,80 @@ public class TestReplicationAdmin {
     rpc.setReplicateAllUserTables(false);
     hbaseAdmin.addReplicationPeer(ID_ONE, rpc);
 
-    rpc = admin.getPeerConfig(ID_ONE);
+    rpc = hbaseAdmin.getReplicationPeerConfig(ID_ONE);
     Set<String> namespaces = new HashSet<String>();
     namespaces.add(ns1);
     rpc.setNamespaces(namespaces);
-    admin.updatePeerConfig(ID_ONE, rpc);
-    rpc = admin.getPeerConfig(ID_ONE);
-    Map<TableName, List<String>> tableCfs = new HashMap<>();
-    tableCfs.put(tableName1, new ArrayList<>());
-    rpc.setTableCFsMap(tableCfs);
+    hbaseAdmin.updateReplicationPeerConfig(ID_ONE, rpc);
+    rpc = hbaseAdmin.getReplicationPeerConfig(ID_ONE);
     try {
-      admin.updatePeerConfig(ID_ONE, rpc);
-      fail("Should throw ReplicationException, because table " + tableName1 + " conflict with namespace "
-          + ns1);
-    } catch (IOException e) {
+      Map<TableName, List<String>> tableCfs = new HashMap<>();
+      tableCfs.put(tableName1, new ArrayList<>());
+      rpc.setTableCFsMap(tableCfs);
+      hbaseAdmin.updateReplicationPeerConfig(ID_ONE, rpc);
+      fail("Should throw ReplicationException" + " Because table " + tableName1
+          + " conflict with namespace " + ns1);
+    } catch (Exception e) {
       // OK
     }
 
-    rpc = admin.getPeerConfig(ID_ONE);
-    tableCfs.clear();
+    rpc = hbaseAdmin.getReplicationPeerConfig(ID_ONE);
+    Map<TableName, List<String>> tableCfs = new HashMap<>();
     tableCfs.put(tableName2, new ArrayList<>());
     rpc.setTableCFsMap(tableCfs);
-    admin.updatePeerConfig(ID_ONE, rpc);
-    rpc = admin.getPeerConfig(ID_ONE);
-    namespaces.clear();
-    namespaces.add(ns2);
-    rpc.setNamespaces(namespaces);
+    hbaseAdmin.updateReplicationPeerConfig(ID_ONE, rpc);
+    rpc = hbaseAdmin.getReplicationPeerConfig(ID_ONE);
     try {
-      admin.updatePeerConfig(ID_ONE, rpc);
-      fail("Should throw ReplicationException, because namespace " + ns2 + " conflict with table "
-          + tableName2);
-    } catch (IOException e) {
+      namespaces.clear();
+      namespaces.add(ns2);
+      rpc.setNamespaces(namespaces);
+      hbaseAdmin.updateReplicationPeerConfig(ID_ONE, rpc);
+      fail("Should throw ReplicationException" + " Because namespace " + ns2
+          + " conflict with table " + tableName2);
+    } catch (Exception e) {
       // OK
     }
 
-    admin.removePeer(ID_ONE);
+    ReplicationPeerConfig rpc2 = new ReplicationPeerConfig();
+    rpc2.setClusterKey(KEY_SECOND);
+    hbaseAdmin.addReplicationPeer(ID_SECOND, rpc2);
+
+    rpc2 = hbaseAdmin.getReplicationPeerConfig(ID_SECOND);
+    Set<String> excludeNamespaces = new HashSet<String>();
+    excludeNamespaces.add(ns1);
+    rpc2.setExcludeNamespaces(excludeNamespaces);
+    hbaseAdmin.updateReplicationPeerConfig(ID_SECOND, rpc2);
+    rpc2 = hbaseAdmin.getReplicationPeerConfig(ID_SECOND);
+    try {
+      Map<TableName, List<String>> excludeTableCfs = new HashMap<>();
+      excludeTableCfs.put(tableName1, new ArrayList<>());
+      rpc2.setExcludeTableCFsMap(excludeTableCfs);
+      hbaseAdmin.updateReplicationPeerConfig(ID_SECOND, rpc2);
+      fail("Should throw ReplicationException" + " Because exclude table " + tableName1
+          + " conflict with exclude namespace " + ns1);
+    } catch (Exception e) {
+      // OK
+    }
+
+    rpc2 = hbaseAdmin.getReplicationPeerConfig(ID_SECOND);
+    Map<TableName, List<String>> excludeTableCfs = new HashMap<>();
+    excludeTableCfs.put(tableName2, new ArrayList<>());
+    rpc2.setExcludeTableCFsMap(excludeTableCfs);
+    hbaseAdmin.updateReplicationPeerConfig(ID_SECOND, rpc2);
+    rpc2 = hbaseAdmin.getReplicationPeerConfig(ID_SECOND);
+    try {
+      namespaces.clear();
+      namespaces.add(ns2);
+      rpc2.setNamespaces(namespaces);
+      hbaseAdmin.updateReplicationPeerConfig(ID_SECOND, rpc2);
+      fail("Should throw ReplicationException" + " Because exclude namespace " + ns2
+          + " conflict with exclude table " + tableName2);
+    } catch (Exception e) {
+      // OK
+    }
+
+    hbaseAdmin.removeReplicationPeer(ID_ONE);
+    hbaseAdmin.removeReplicationPeer(ID_SECOND);
   }
 
   @Test

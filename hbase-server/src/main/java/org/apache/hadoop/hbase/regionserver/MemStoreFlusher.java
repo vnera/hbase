@@ -37,14 +37,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.DroppedSnapshotException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.RegionReplicaUtil;
 import org.apache.hadoop.hbase.regionserver.HRegion.FlushResult;
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
 import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
@@ -55,6 +53,8 @@ import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.util.StringUtils.TraditionalBinaryPrefix;
 import org.apache.htrace.core.TraceScope;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Thread that flushes cache on request
@@ -67,7 +67,7 @@ import org.apache.yetus.audience.InterfaceAudience;
  */
 @InterfaceAudience.Private
 class MemStoreFlusher implements FlushRequester {
-  private static final Log LOG = LogFactory.getLog(MemStoreFlusher.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MemStoreFlusher.class);
 
   private Configuration conf;
   // These two data members go together.  Any entry in the one must have
@@ -431,8 +431,7 @@ class MemStoreFlusher implements FlushRequester {
    */
   private boolean flushRegion(final FlushRegionEntry fqe) {
     HRegion region = fqe.region;
-    if (!region.getRegionInfo().isMetaRegion() &&
-        isTooManyStoreFiles(region)) {
+    if (!region.getRegionInfo().isMetaRegion() && isTooManyStoreFiles(region)) {
       if (fqe.isMaximumWait(this.blockingWaitTime)) {
         LOG.info("Waited " + (EnvironmentEdgeManager.currentTime() - fqe.createTime) +
           "ms on a compaction to clean up 'too many store files'; waited " +
@@ -442,7 +441,7 @@ class MemStoreFlusher implements FlushRequester {
         // If this is first time we've been put off, then emit a log message.
         if (fqe.getRequeueCount() <= 0) {
           // Note: We don't impose blockingStoreFiles constraint on meta regions
-          LOG.warn("Region " + region.getRegionInfo().getRegionNameAsString() + " has too many " +
+          LOG.warn("Region " + region.getRegionInfo().getEncodedName() + " has too many " +
             "store files; delaying flush up to " + this.blockingWaitTime + "ms");
           if (!this.server.compactSplitThread.requestSplit(region)) {
             try {

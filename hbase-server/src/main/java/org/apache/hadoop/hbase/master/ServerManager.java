@@ -38,14 +38,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ClockOutOfSyncException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.RegionLoad;
 import org.apache.hadoop.hbase.ServerLoad;
+import org.apache.hadoop.hbase.ServerMetricsBuilder;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.YouAreDeadException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
@@ -61,9 +60,10 @@ import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.UnsafeByteOperations;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.AdminService;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos.RegionStoreSequenceIds;
@@ -109,7 +109,7 @@ public class ServerManager {
   public static final String WAIT_ON_REGIONSERVERS_INTERVAL =
       "hbase.master.wait.on.regionservers.interval";
 
-  private static final Log LOG = LogFactory.getLog(ServerManager.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ServerManager.class);
 
   // Set if we are to shutdown the cluster.
   private AtomicBoolean clusterShutdown = new AtomicBoolean(false);
@@ -245,7 +245,7 @@ public class ServerManager {
       request.getServerStartCode());
     checkClockSkew(sn, request.getServerCurrentTime());
     checkIsDead(sn, "STARTUP");
-    if (!checkAndRecordNewServer(sn, ServerLoad.EMPTY_SERVERLOAD)) {
+    if (!checkAndRecordNewServer(sn, new ServerLoad(ServerMetricsBuilder.of(sn)))) {
       LOG.warn("THIS SHOULD NOT HAPPEN, RegionServerStartup"
         + " could not record the server: " + sn);
     }
@@ -321,8 +321,7 @@ public class ServerManager {
    * @param sl the server load on the server
    * @return true if the server is recorded, otherwise, false
    */
-  boolean checkAndRecordNewServer(
-      final ServerName serverName, final ServerLoad sl) {
+  boolean checkAndRecordNewServer(final ServerName serverName, final ServerLoad sl) {
     ServerName existingServer = null;
     synchronized (this.onlineServers) {
       existingServer = findServerWithSameHostnamePortWithLock(serverName);
@@ -343,7 +342,8 @@ public class ServerManager {
 
     // Note that we assume that same ts means same server, and don't expire in that case.
     //  TODO: ts can theoretically collide due to clock shifts, so this is a bit hacky.
-    if (existingServer != null && (existingServer.getStartcode() < serverName.getStartcode())) {
+    if (existingServer != null &&
+        (existingServer.getStartcode() < serverName.getStartcode())) {
       LOG.info("Triggering server recovery; existingServer " +
           existingServer + " looks stale, new server:" + serverName);
       expireServer(existingServer);
@@ -659,7 +659,9 @@ public class ServerManager {
     }
 
     if (!master.getAssignmentManager().isFailoverCleanupDone()) {
-      LOG.debug("AssignmentManager failover cleanup not done.");
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("AssignmentManager failover cleanup not done.");
+      }
     }
 
     for (Map.Entry<ServerName, Boolean> entry : requeuedDeadServers.entrySet()) {
@@ -857,7 +859,7 @@ public class ServerManager {
     for (ServerListener listener: this.listeners) {
       listener.waiting();
     }
-    while (!this.master.isStopped() && count < maxToStart &&
+    while (!this.master.isStopped() && !isClusterShutdown() && count < maxToStart &&
         ((lastCountChange + interval) > now || timeout > slept || count < minToStart)) {
       // Log some info at every interval time or if there is a change
       if (oldCount != count || lastLogTime + interval < now) {
@@ -881,6 +883,10 @@ public class ServerManager {
       if (count != oldCount) {
         lastCountChange = now;
       }
+    }
+    // Did we exit the loop because cluster is going down?
+    if (isClusterShutdown()) {
+      this.master.stop("Cluster shutdown");
     }
     LOG.info("Finished wait on RegionServer count=" + count + "; waited=" + slept + "ms," +
         " expected min=" + minToStart + " server(s), max=" +  getStrForMax(maxToStart) + " server(s),"+
@@ -955,7 +961,6 @@ public class ServerManager {
     String statusStr = "Cluster shutdown requested of master=" + this.master.getServerName();
     LOG.info(statusStr);
     this.clusterShutdown.set(true);
-    this.master.stop(statusStr);
   }
 
   public boolean isClusterShutdown() {

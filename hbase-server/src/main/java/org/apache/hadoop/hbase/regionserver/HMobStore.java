@@ -27,8 +27,6 @@ import java.util.NavigableSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -42,6 +40,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.TagType;
+import org.apache.hadoop.hbase.TagUtil;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.filter.Filter;
@@ -58,6 +57,8 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.HFileArchiveUtil;
 import org.apache.hadoop.hbase.util.IdLock;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The store implementation to save MOBs (medium objects), it extends the HStore.
@@ -77,7 +78,7 @@ import org.apache.yetus.audience.InterfaceAudience;
  */
 @InterfaceAudience.Private
 public class HMobStore extends HStore {
-  private static final Log LOG = LogFactory.getLog(HMobStore.class);
+  private static final Logger LOG = LoggerFactory.getLogger(HMobStore.class);
   private MobCacheConfig mobCacheConfig;
   private Path homePath;
   private Path mobFamilyPath;
@@ -120,7 +121,7 @@ public class HMobStore extends HStore {
     Tag tableNameTag = new ArrayBackedTag(TagType.MOB_TABLE_NAME_TAG_TYPE,
         getTableName().getName());
     tags.add(tableNameTag);
-    this.refCellTags = Tag.fromList(tags);
+    this.refCellTags = TagUtil.fromList(tags);
   }
 
   /**

@@ -20,17 +20,15 @@ package org.apache.hadoop.hbase.regionserver;
 
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.SortedSet;
 
-import org.apache.commons.logging.Log;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellComparator;
 import org.apache.hadoop.hbase.io.TimeRange;
 import org.apache.yetus.audience.InterfaceAudience;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.slf4j.Logger;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 
 /**
  * The CompositeImmutableSegments is created as a collection of ImmutableSegments and supports
@@ -57,7 +55,7 @@ public class CompositeImmutableSegment extends ImmutableSegment {
   @VisibleForTesting
   @Override
   public List<Segment> getAllSegments() {
-    return new LinkedList<>(segments);
+    return new ArrayList<>(segments);
   }
 
   @Override
@@ -112,7 +110,7 @@ public class CompositeImmutableSegment extends ImmutableSegment {
    * @return either the given cell or its clone
    */
   @Override
-  public Cell maybeCloneWithAllocator(Cell cell) {
+  public Cell maybeCloneWithAllocator(Cell cell, boolean forceCloneOfBigCell) {
     throw new IllegalStateException("Not supported by CompositeImmutableScanner");
   }
 
@@ -281,7 +279,7 @@ public class CompositeImmutableSegment extends ImmutableSegment {
   /**
    * Dumps all cells of the segment into the given log
    */
-  void dump(Log log) {
+  void dump(Logger log) {
     for (ImmutableSegment s : segments) {
       s.dump(log);
     }

@@ -99,9 +99,9 @@ public final class TagUtil {
     }
     byte[] b = new byte[tags.length + cellTagsLen];
     int pos = Bytes.putBytes(b, 0, tags, 0, tags.length);
-    if (cell instanceof ByteBufferCell) {
-      ByteBufferUtils.copyFromBufferToArray(b, ((ByteBufferCell) cell).getTagsByteBuffer(),
-          ((ByteBufferCell) cell).getTagsPosition(), pos, cellTagsLen);
+    if (cell instanceof ByteBufferExtendedCell) {
+      ByteBufferUtils.copyFromBufferToArray(b, ((ByteBufferExtendedCell) cell).getTagsByteBuffer(),
+          ((ByteBufferExtendedCell) cell).getTagsPosition(), pos, cellTagsLen);
     } else {
       Bytes.putBytes(b, pos, cell.getTagsArray(), cell.getTagsOffset(), cellTagsLen);
     }
@@ -134,6 +134,41 @@ public final class TagUtil {
     }
     tags.add(new ArrayBackedTag(TagType.TTL_TAG_TYPE, Bytes.toBytes(ttl)));
     return tags;
+  }
+
+  /**
+   * Write a list of tags into a byte array
+   * Note : these are all purely internal APIs. It helps in
+   * cases where we have set of tags and we would want to create a cell out of it. Say in Mobs we
+   * create a reference tags to indicate the presence of mob data. Also note that these are not
+   * exposed to CPs also
+   * @param tags The list of tags
+   * @return the serialized tag data as bytes
+   */
+  public static byte[] fromList(List<Tag> tags) {
+    if (tags == null || tags.isEmpty()) {
+      return HConstants.EMPTY_BYTE_ARRAY;
+    }
+    int length = 0;
+    for (Tag tag : tags) {
+      length += tag.getValueLength() + Tag.INFRASTRUCTURE_SIZE;
+    }
+    byte[] b = new byte[length];
+    int pos = 0;
+    int tlen;
+    for (Tag tag : tags) {
+      tlen = tag.getValueLength();
+      pos = Bytes.putAsShort(b, pos, tlen + Tag.TYPE_LENGTH_SIZE);
+      pos = Bytes.putByte(b, pos, tag.getType());
+      if (tag.hasArray()) {
+        pos = Bytes.putBytes(b, pos, tag.getValueArray(), tag.getValueOffset(), tlen);
+      } else {
+        ByteBufferUtils.copyFromBufferToArray(b, tag.getValueByteBuffer(), tag.getValueOffset(),
+          pos, tlen);
+        pos += tlen;
+      }
+    }
+    return b;
   }
 
   /**

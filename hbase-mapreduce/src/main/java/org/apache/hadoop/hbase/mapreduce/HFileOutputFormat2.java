@@ -27,7 +27,6 @@ import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -40,8 +39,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -51,8 +48,8 @@ import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.KeyValue;
+import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
@@ -78,7 +75,7 @@ import org.apache.hadoop.hbase.regionserver.StoreFileWriter;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.FSUtils;
-import org.apache.hadoop.hbase.util.MapReduceCell;
+import org.apache.hadoop.hbase.util.MapReduceExtendedCell;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
@@ -91,7 +88,10 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.partition.TotalOrderPartitioner;
 import org.apache.yetus.audience.InterfaceAudience;
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 
 /**
  * Writes HFiles. Passed Cells must arrive in order.
@@ -105,7 +105,7 @@ import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTe
 @InterfaceAudience.Public
 public class HFileOutputFormat2
     extends FileOutputFormat<ImmutableBytesWritable, Cell> {
-  private static final Log LOG = LogFactory.getLog(HFileOutputFormat2.class);
+  private static final Logger LOG = LoggerFactory.getLogger(HFileOutputFormat2.class);
   static class TableInfo {
     private TableDescriptor tableDesctiptor;
     private RegionLocator regionLocator;
@@ -134,10 +134,9 @@ public class HFileOutputFormat2
     }
   }
 
-  protected static final byte[] tableSeparator = ";".getBytes(StandardCharsets.UTF_8);
+  protected static final byte[] tableSeparator = Bytes.toBytes(";");
 
-  protected static byte[] combineTableNameSuffix(byte[] tableName,
-                                       byte[] suffix ) {
+  protected static byte[] combineTableNameSuffix(byte[] tableName, byte[] suffix) {
     return Bytes.add(tableName, tableSeparator, suffix);
   }
 
@@ -257,7 +256,7 @@ public class HFileOutputFormat2
                     "' not" + " expected");
           }
         } else {
-          tableNameBytes = writeTableNames.getBytes(StandardCharsets.UTF_8);
+          tableNameBytes = Bytes.toBytes(writeTableNames);
         }
         byte[] tableAndFamily = getTableNameSuffixedWithFamily(tableNameBytes, family);
         WriterLength wl = this.writers.get(tableAndFamily);
@@ -587,7 +586,7 @@ public class HFileOutputFormat2
       Class<? extends OutputFormat<?, ?>> cls) throws IOException {
     Configuration conf = job.getConfiguration();
     job.setOutputKeyClass(ImmutableBytesWritable.class);
-    job.setOutputValueClass(MapReduceCell.class);
+    job.setOutputValueClass(MapReduceExtendedCell.class);
     job.setOutputFormatClass(cls);
 
     if (multiTableInfo.stream().distinct().count() != multiTableInfo.size()) {
@@ -602,7 +601,7 @@ public class HFileOutputFormat2
     // sort the incoming values.
     // TODO it would be nice to pick one or the other of these formats.
     if (KeyValue.class.equals(job.getMapOutputValueClass())
-        || MapReduceCell.class.equals(job.getMapOutputValueClass())) {
+        || MapReduceExtendedCell.class.equals(job.getMapOutputValueClass())) {
       job.setReducerClass(CellSortReducer.class);
     } else if (Put.class.equals(job.getMapOutputValueClass())) {
       job.setReducerClass(PutSortReducer.class);
@@ -662,7 +661,7 @@ public class HFileOutputFormat2
     Configuration conf = job.getConfiguration();
 
     job.setOutputKeyClass(ImmutableBytesWritable.class);
-    job.setOutputValueClass(MapReduceCell.class);
+    job.setOutputValueClass(MapReduceExtendedCell.class);
     job.setOutputFormatClass(HFileOutputFormat2.class);
 
     ArrayList<TableDescriptor> singleTableDescriptor = new ArrayList<>(1);
@@ -780,7 +779,7 @@ public class HFileOutputFormat2
         continue;
       }
       try {
-        confValMap.put(URLDecoder.decode(familySplit[0], "UTF-8").getBytes(StandardCharsets.UTF_8),
+        confValMap.put(Bytes.toBytes(URLDecoder.decode(familySplit[0], "UTF-8")),
             URLDecoder.decode(familySplit[1], "UTF-8"));
       } catch (UnsupportedEncodingException e) {
         // will not happen with UTF-8 encoding

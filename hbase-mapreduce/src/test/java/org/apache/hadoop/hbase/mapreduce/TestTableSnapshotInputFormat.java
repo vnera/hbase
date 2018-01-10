@@ -18,14 +18,15 @@
 
 package org.apache.hadoop.hbase.mapreduce;
 
+import static org.apache.hadoop.hbase.mapreduce.TableSnapshotInputFormatImpl.SNAPSHOT_INPUTFORMAT_LOCALITY_ENABLED_DEFAULT;
+import static org.apache.hadoop.hbase.mapreduce.TableSnapshotInputFormatImpl.SNAPSHOT_INPUTFORMAT_LOCALITY_ENABLED_KEY;
+
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.CategoryBasedTimeout;
@@ -55,8 +56,9 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.junit.rules.TestRule;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 
 import java.util.Arrays;
 import org.apache.hadoop.fs.FileSystem;
@@ -68,7 +70,7 @@ import org.apache.hadoop.hbase.util.RegionSplitter;
 
 @Category({VerySlowMapReduceTests.class, LargeTests.class})
 public class TestTableSnapshotInputFormat extends TableSnapshotInputFormatTestBase {
-  private static final Log LOG = LogFactory.getLog(TestTableSnapshotInputFormat.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestTableSnapshotInputFormat.class);
   @Rule public final TestRule timeout = CategoryBasedTimeout.builder().
       withTimeout(this.getClass()).withLookingForStuckThread(true).build();
 
@@ -98,7 +100,7 @@ public class TestTableSnapshotInputFormat extends TableSnapshotInputFormatTestBa
     Configuration conf = UTIL.getConfiguration();
 
     HDFSBlocksDistribution blockDistribution = new HDFSBlocksDistribution();
-    Assert.assertEquals(Lists.newArrayList(),
+    Assert.assertEquals(null,
       TableSnapshotInputFormatImpl.getBestLocations(conf, blockDistribution));
 
     blockDistribution.addHostsAndBlockWeight(new String[] {"h1"}, 1);
@@ -132,7 +134,7 @@ public class TestTableSnapshotInputFormat extends TableSnapshotInputFormatTestBa
     blockDistribution.addHostsAndBlockWeight(new String[] {"h3"}, 6);
     blockDistribution.addHostsAndBlockWeight(new String[] {"h4"}, 9);
 
-    Assert.assertEquals(Lists.newArrayList("h2", "h3", "h4", "h1"),
+    Assert.assertEquals(Lists.newArrayList("h2", "h3", "h4"),
       TableSnapshotInputFormatImpl.getBestLocations(conf, blockDistribution));
   }
 
@@ -210,14 +212,17 @@ public class TestTableSnapshotInputFormat extends TableSnapshotInputFormatTestBa
 
   @Override
   public void testWithMockedMapReduce(HBaseTestingUtility util, String snapshotName,
-      int numRegions, int numSplitsPerRegion, int expectedNumSplits) throws Exception {
+      int numRegions, int numSplitsPerRegion, int expectedNumSplits, boolean setLocalityEnabledTo)
+      throws Exception {
     setupCluster();
     final TableName tableName = TableName.valueOf(name.getMethodName());
     try {
       createTableAndSnapshot(
         util, tableName, snapshotName, getStartRow(), getEndRow(), numRegions);
 
-      Job job = new Job(util.getConfiguration());
+      Configuration conf = util.getConfiguration();
+      conf.setBoolean(SNAPSHOT_INPUTFORMAT_LOCALITY_ENABLED_KEY, setLocalityEnabledTo);
+      Job job = new Job(conf);
       Path tmpTableDir = util.getDataTestDirOnTestFS(snapshotName);
       Scan scan = new Scan(getStartRow(), getEndRow()); // limit the scan
 
@@ -304,10 +309,19 @@ public class TestTableSnapshotInputFormat extends TableSnapshotInputFormatTestBa
     HBaseTestingUtility.SeenRowTracker rowTracker =
         new HBaseTestingUtility.SeenRowTracker(startRow, stopRow);
 
+    boolean localityEnabled =
+        job.getConfiguration().getBoolean(SNAPSHOT_INPUTFORMAT_LOCALITY_ENABLED_KEY,
+                                          SNAPSHOT_INPUTFORMAT_LOCALITY_ENABLED_DEFAULT);
+
     for (int i = 0; i < splits.size(); i++) {
       // validate input split
       InputSplit split = splits.get(i);
       Assert.assertTrue(split instanceof TableSnapshotRegionSplit);
+      if (localityEnabled) {
+        Assert.assertTrue(split.getLocations() != null && split.getLocations().length != 0);
+      } else {
+        Assert.assertTrue(split.getLocations() != null && split.getLocations().length == 0);
+      }
 
       // validate record reader
       TaskAttemptContext taskAttemptContext = mock(TaskAttemptContext.class);

@@ -27,8 +27,6 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.CategoryBasedTimeout;
@@ -38,6 +36,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.MetaMockingUtil;
 import org.apache.hadoop.hbase.ServerLoad;
+import org.apache.hadoop.hbase.ServerMetricsBuilder;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
@@ -66,6 +65,8 @@ import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.junit.rules.TestRule;
 import org.mockito.Mockito;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Standup the master and fake it to test various aspects of master function.
@@ -77,7 +78,7 @@ import org.mockito.Mockito;
  */
 @Category({MasterTests.class, MediumTests.class})
 public class TestMasterNoCluster {
-  private static final Log LOG = LogFactory.getLog(TestMasterNoCluster.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestMasterNoCluster.class);
   private static final HBaseTestingUtility TESTUTIL = new HBaseTestingUtility();
 
   @Rule public final TestRule timeout = CategoryBasedTimeout.builder().
@@ -143,7 +144,7 @@ public class TestMasterNoCluster {
    * @throws IOException
    * @throws KeeperException
    * @throws InterruptedException
-   * @throws org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException
+   * @throws org.apache.hbase.thirdparty.com.google.protobuf.ServiceException
    */
   @Ignore @Test // Disabled since HBASE-18511. Reenable when master can carry regions.
   public void testFailover() throws Exception {
@@ -230,7 +231,7 @@ public class TestMasterNoCluster {
         RegionServerReportRequest.Builder request = RegionServerReportRequest.newBuilder();;
         ServerName sn = ServerName.parseVersionedServerName(sns[i].getVersionedBytes());
         request.setServer(ProtobufUtil.toServerName(sn));
-        request.setLoad(ServerLoad.EMPTY_SERVERLOAD.obtainServerLoadPB());
+        request.setLoad(ServerMetricsBuilder.toServerLoad(ServerMetricsBuilder.of(sn)));
         master.getMasterRpcServices().regionServerReport(null, request.build());
       }
        // Master should now come up.
@@ -272,7 +273,8 @@ public class TestMasterNoCluster {
           KeeperException, CoordinatedStateException {
         super.initializeZKBasedSystemTrackers();
         // Record a newer server in server manager at first
-        getServerManager().recordNewServerWithLock(newServer, ServerLoad.EMPTY_SERVERLOAD);
+        getServerManager().recordNewServerWithLock(newServer,
+          new ServerLoad(ServerMetricsBuilder.of(newServer)));
 
         List<ServerName> onlineServers = new ArrayList<>();
         onlineServers.add(deadServer);

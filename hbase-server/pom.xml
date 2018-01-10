@@ -245,7 +245,6 @@
           </properties>
           <systemPropertyVariables>
             <test.build.webapps>target/test-classes/webapps</test.build.webapps>
-            <org.apache.hadoop.hbase.shaded.io.netty.packagePrefix>org.apache.hadoop.hbase.shaded.</org.apache.hadoop.hbase.shaded.io.netty.packagePrefix>
           </systemPropertyVariables>
         </configuration>
       </plugin>
@@ -405,7 +404,6 @@
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase-resource-bundle</artifactId>
-      <version>${project.version}</version>
       <optional>true</optional>
     </dependency>
     <dependency>
@@ -492,12 +490,16 @@
       <artifactId>commons-lang3</artifactId>
     </dependency>
     <dependency>
-      <groupId>commons-logging</groupId>
-      <artifactId>commons-logging</artifactId>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-math3</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-log4j12</artifactId>
     </dependency>
     <dependency>
       <groupId>log4j</groupId>
@@ -797,9 +799,6 @@
           <name>!hadoop.profile</name>
         </property>
       </activation>
-      <properties>
-        <hadoop.version>${hadoop-three.version}</hadoop.version>
-      </properties>
       <dependencies>
         <dependency>
           <groupId>org.apache.hadoop</groupId>
@@ -812,26 +811,25 @@
         </dependency>
         <dependency>
           <groupId>org.apache.hadoop</groupId>
+          <artifactId>hadoop-hdfs</artifactId>
+        </dependency>
+        <dependency>
+          <groupId>org.apache.hadoop</groupId>
           <artifactId>hadoop-annotations</artifactId>
           <version>${hadoop-three.version}</version>
         </dependency>
         <dependency>
           <groupId>org.apache.hadoop</groupId>
           <artifactId>hadoop-minicluster</artifactId>
-          <exclusions>
-            <exclusion>
-              <groupId>com.google.guava</groupId>
-              <artifactId>guava</artifactId>
-            </exclusion>
-          </exclusions>
+          <scope>test</scope>
         </dependency>
-        <!-- Hadoop needs Netty 3.x at test scope for the minicluster -->
+        <!-- Hadoop needs Netty 3.x at test scope for the minicluster>
         <dependency>
           <groupId>io.netty</groupId>
           <artifactId>netty</artifactId>
           <version>${netty.hadoop.version}</version>
           <scope>test</scope>
-        </dependency>
+        </dependency-->
       </dependencies>
       <build>
         <plugins>

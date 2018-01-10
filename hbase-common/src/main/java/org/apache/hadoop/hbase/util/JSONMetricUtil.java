@@ -38,16 +38,16 @@ import javax.management.ObjectName;
 import javax.management.ReflectionException;
 import javax.management.openmbean.CompositeData;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.codehaus.jettison.json.JSONException;
 
 public final class JSONMetricUtil {
 
-  private static final Log LOG = LogFactory.getLog(JSONMetricUtil.class);
+  private static final Logger LOG = LoggerFactory.getLogger(JSONMetricUtil.class);
 
   private static MBeanServer mbServer = ManagementFactory.getPlatformMBeanServer();
   //MBeans ObjectName domain names
@@ -180,7 +180,7 @@ public final class JSONMetricUtil {
   }
 
   public static String getCommmand() throws MalformedObjectNameException,
-  IOException, JSONException {
+  IOException {
     RuntimeMXBean runtimeBean = ManagementFactory.getRuntimeMXBean();
     return runtimeBean.getSystemProperties().get("sun.java.command");
   }

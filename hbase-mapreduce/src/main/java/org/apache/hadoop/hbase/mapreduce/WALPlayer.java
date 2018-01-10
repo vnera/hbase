@@ -23,8 +23,6 @@ import java.text.SimpleDateFormat;
 import java.util.Map;
 import java.util.TreeMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.Path;
@@ -44,7 +42,7 @@ import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
 import org.apache.hadoop.hbase.regionserver.wal.WALCellCodec;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.MapReduceCell;
+import org.apache.hadoop.hbase.util.MapReduceExtendedCell;
 import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.wal.WALKey;
 import org.apache.hadoop.mapreduce.Job;
@@ -54,6 +52,8 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A tool to replay WAL files as a M/R job.
@@ -67,7 +67,7 @@ import org.apache.yetus.audience.InterfaceAudience;
  */
 @InterfaceAudience.Public
 public class WALPlayer extends Configured implements Tool {
-  private static final Log LOG = LogFactory.getLog(WALPlayer.class);
+  private static final Logger LOG = LoggerFactory.getLogger(WALPlayer.class);
   final static String NAME = "WALPlayer";
   public final static String BULK_OUTPUT_CONF_KEY = "wal.bulk.output";
   public final static String TABLES_KEY = "wal.input.tables";
@@ -156,7 +156,7 @@ public class WALPlayer extends Configured implements Tool {
               continue;
             }
             context.write(new ImmutableBytesWritable(CellUtil.cloneRow(cell)),
-              new MapReduceCell(cell));
+              new MapReduceExtendedCell(cell));
           }
         }
       } catch (InterruptedException e) {
@@ -347,14 +347,14 @@ public class WALPlayer extends Configured implements Tool {
       job.setReducerClass(CellSortReducer.class);
       Path outputDir = new Path(hfileOutPath);
       FileOutputFormat.setOutputPath(job, outputDir);
-      job.setMapOutputValueClass(MapReduceCell.class);
+      job.setMapOutputValueClass(MapReduceExtendedCell.class);
       try (Connection conn = ConnectionFactory.createConnection(conf);
           Table table = conn.getTable(tableName);
           RegionLocator regionLocator = conn.getRegionLocator(tableName)) {
         HFileOutputFormat2.configureIncrementalLoad(job, table.getDescriptor(), regionLocator);
       }
       TableMapReduceUtil.addDependencyJarsForClasses(job.getConfiguration(),
-          org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions.class);
+          org.apache.hbase.thirdparty.com.google.common.base.Preconditions.class);
     } else {
       // output to live cluster
       job.setMapperClass(WALMapper.class);

@@ -24,8 +24,6 @@ import static org.mockito.Mockito.when;
 import java.io.IOException;
 import java.util.ArrayList;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
@@ -47,7 +45,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.MoveRegion
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.OfflineRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.RunCatalogScanRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.SetBalancerRunningRequest;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
+import org.apache.hbase.thirdparty.com.google.protobuf.RpcController;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.junit.Ignore;
@@ -59,13 +57,15 @@ import org.mockito.Matchers;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.protobuf.ServiceException;
 
 @Category({SmallTests.class, ClientTests.class})
 public class TestHBaseAdminNoCluster {
 
-  private static final Log LOG = LogFactory.getLog(TestHBaseAdminNoCluster.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestHBaseAdminNoCluster.class);
 
   @Rule
   public TestName name = new TestName();
@@ -77,7 +77,7 @@ public class TestHBaseAdminNoCluster {
    * @throws ZooKeeperConnectionException
    * @throws MasterNotRunningException
    * @throws ServiceException
-   * @throws org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException 
+   * @throws org.apache.hbase.thirdparty.com.google.protobuf.ServiceException 
    */
   //TODO: Clean up, with Procedure V2 and nonce to prevent the same procedure to call mulitple
   // time, this test is invalid anymore. Just keep the test around for some time before
@@ -86,7 +86,7 @@ public class TestHBaseAdminNoCluster {
   @Test
   public void testMasterMonitorCallableRetries()
   throws MasterNotRunningException, ZooKeeperConnectionException, IOException, 
-  org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException {
+  org.apache.hbase.thirdparty.com.google.protobuf.ServiceException {
     Configuration configuration = HBaseConfiguration.create();
     // Set the pause and retry count way down.
     configuration.setLong(HConstants.HBASE_CLIENT_PAUSE, 1);

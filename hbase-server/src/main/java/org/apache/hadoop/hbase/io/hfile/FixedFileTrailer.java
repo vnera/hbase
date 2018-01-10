@@ -33,7 +33,7 @@ import org.apache.hadoop.hbase.CellComparatorImpl.MetaCellComparator;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.io.compress.Compression;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.UnsafeByteOperations;
+import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HFileProtos;
 import org.apache.hadoop.hbase.util.Bytes;
 
@@ -570,7 +570,7 @@ public class FixedFileTrailer {
         || (comparatorClassName
             .equals("org.apache.hadoop.hbase.CellComparator$MetaCellComparator"))) {
       comparatorKlass = MetaCellComparator.class;
-    } else if (comparatorClassName.equals("org.apache.hadoop.hbase.KeyValue.RawBytesComparator")
+    } else if (comparatorClassName.equals("org.apache.hadoop.hbase.KeyValue$RawBytesComparator")
         || comparatorClassName.equals("org.apache.hadoop.hbase.util.Bytes$ByteArrayComparator")) {
       // When the comparator to be used is Bytes.BYTES_RAWCOMPARATOR, we just return null from here
       // Bytes.BYTES_RAWCOMPARATOR is not a CellComparator

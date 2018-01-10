@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
@@ -57,12 +58,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FSDataOutputStream;
@@ -74,8 +72,8 @@ import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
-import org.apache.hadoop.hbase.ClusterStatus;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
+import org.apache.hadoop.hbase.ClusterMetrics;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HConstants;
@@ -110,6 +108,7 @@ import org.apache.hadoop.hbase.io.FileLink;
 import org.apache.hadoop.hbase.io.HFileLink;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.hfile.HFile;
+import org.apache.hadoop.hbase.log.HBaseMarkers;
 import org.apache.hadoop.hbase.master.MasterFileSystem;
 import org.apache.hadoop.hbase.master.RegionState;
 import org.apache.hadoop.hbase.regionserver.HRegion;
@@ -141,14 +140,15 @@ import org.apache.hadoop.util.ToolRunner;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.yetus.audience.InterfaceStability;
 import org.apache.zookeeper.KeeperException;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Joiner;
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableList;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Multimap;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Ordering;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.TreeMultimap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.base.Joiner;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
+import org.apache.hbase.thirdparty.com.google.common.collect.ImmutableList;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.common.collect.Multimap;
+import org.apache.hbase.thirdparty.com.google.common.collect.Ordering;
+import org.apache.hbase.thirdparty.com.google.common.collect.TreeMultimap;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.AdminService.BlockingInterface;
 
@@ -223,8 +223,8 @@ public class HBaseFsck extends Configured implements Closeable {
   /**********************
    * Internal resources
    **********************/
-  private static final Log LOG = LogFactory.getLog(HBaseFsck.class.getName());
-  private ClusterStatus status;
+  private static final Logger LOG = LoggerFactory.getLogger(HBaseFsck.class.getName());
+  private ClusterMetrics status;
   private ClusterConnection connection;
   private Admin admin;
   private Table meta;
@@ -525,7 +525,7 @@ public class HBaseFsck extends Configured implements Closeable {
     connection = (ClusterConnection)ConnectionFactory.createConnection(getConf());
     admin = connection.getAdmin();
     meta = connection.getTable(TableName.META_TABLE_NAME);
-    status = admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS,
+    status = admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS,
       Option.DEAD_SERVERS, Option.MASTER, Option.BACKUP_MASTERS,
       Option.REGIONS_IN_TRANSITION, Option.HBASE_VERSION));
   }
@@ -535,7 +535,7 @@ public class HBaseFsck extends Configured implements Closeable {
    */
   private void loadDeployedRegions() throws IOException, InterruptedException {
     // From the master, get a list of all known live region servers
-    Collection<ServerName> regionServers = status.getServers();
+    Collection<ServerName> regionServers = status.getLiveServerMetrics().keySet();
     errors.print("Number of live region servers: " + regionServers.size());
     if (details) {
       for (ServerName rsinfo: regionServers) {
@@ -553,10 +553,10 @@ public class HBaseFsck extends Configured implements Closeable {
     }
 
     // Print the current master name and state
-    errors.print("Master: " + status.getMaster());
+    errors.print("Master: " + status.getMasterName());
 
     // Print the list of all backup masters
-    Collection<ServerName> backupMasters = status.getBackupMasters();
+    Collection<ServerName> backupMasters = status.getBackupMasterNames();
     errors.print("Number of backup masters: " + backupMasters.size());
     if (details) {
       for (ServerName name: backupMasters) {
@@ -566,9 +566,9 @@ public class HBaseFsck extends Configured implements Closeable {
 
     errors.print("Average load: " + status.getAverageLoad());
     errors.print("Number of requests: " + status.getRequestCount());
-    errors.print("Number of regions: " + status.getRegionsCount());
+    errors.print("Number of regions: " + status.getRegionCount());
 
-    List<RegionState> rits = status.getRegionsInTransition();
+    List<RegionState> rits = status.getRegionStatesInTransition();
     errors.print("Number of regions in transition: " + rits.size());
     if (details) {
       for (RegionState state: rits) {
@@ -805,7 +805,7 @@ public class HBaseFsck extends Configured implements Closeable {
       cleanupHbckZnode();
       unlockHbck();
     } catch (Exception io) {
-      LOG.warn(io);
+      LOG.warn(io.toString(), io);
     } finally {
       if (zkw != null) {
         zkw.close();
@@ -907,11 +907,11 @@ public class HBaseFsck extends Configured implements Closeable {
           errors.reportError(ERROR_CODE.BOUNDARIES_ERROR, "Found issues with regions boundaries",
             tablesInfo.get(regionInfo.getTable()));
           LOG.warn("Region's boundaries not aligned between stores and META for:");
-          LOG.warn(currentRegionBoundariesInformation);
+          LOG.warn(Objects.toString(currentRegionBoundariesInformation));
         }
       }
     } catch (IOException e) {
-      LOG.error(e);
+      LOG.error(e.toString(), e);
     }
   }
 
@@ -1597,8 +1597,8 @@ public class HBaseFsck extends Configured implements Closeable {
     // populate meta
     List<Put> puts = generatePuts(tablesInfo);
     if (puts == null) {
-      LOG.fatal("Problem encountered when creating new hbase:meta entries.  " +
-        "You may need to restore the previously sidelined hbase:meta");
+      LOG.error(HBaseMarkers.FATAL, "Problem encountered when creating new hbase:meta "
+          + "entries. You may need to restore the previously sidelined hbase:meta");
       return false;
     }
     meta.batchMutate(puts.toArray(new Put[puts.size()]), HConstants.NO_NONCE, HConstants.NO_NONCE);
@@ -1791,9 +1791,9 @@ public class HBaseFsck extends Configured implements Closeable {
     try {
       sidelineTable(fs, TableName.META_TABLE_NAME, hbaseDir, backupDir);
     } catch (IOException e) {
-        LOG.fatal("... failed to sideline meta. Currently in inconsistent state.  To restore "
-            + "try to rename hbase:meta in " + backupDir.getName() + " to "
-            + hbaseDir.getName() + ".", e);
+        LOG.error(HBaseMarkers.FATAL, "... failed to sideline meta. Currently in "
+            + "inconsistent state.  To restore try to rename hbase:meta in " +
+            backupDir.getName() + " to " + hbaseDir.getName() + ".", e);
       throw e; // throw original exception
     }
     return backupDir;
@@ -1882,7 +1882,7 @@ public class HBaseFsck extends Configured implements Closeable {
    * Record the location of the hbase:meta region as found in ZooKeeper.
    */
   private boolean recordMetaRegion() throws IOException {
-    RegionLocations rl = ((ClusterConnection)connection).locateRegion(TableName.META_TABLE_NAME,
+    RegionLocations rl = connection.locateRegion(TableName.META_TABLE_NAME,
         HConstants.EMPTY_START_ROW, false, false);
     if (rl == null) {
       errors.reportError(ERROR_CODE.NULL_META_REGION,
@@ -2451,7 +2451,8 @@ public class HBaseFsck extends Configured implements Closeable {
         LOG.info("Patching hbase:meta with .regioninfo: " + hbi.getHdfsHRI());
         int numReplicas = admin.getTableDescriptor(hbi.getTableName()).getRegionReplication();
         HBaseFsckRepair.fixMetaHoleOnlineAndAddReplicas(getConf(), hbi.getHdfsHRI(),
-            admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers(), numReplicas);
+            admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS))
+              .getLiveServerMetrics().keySet(), numReplicas);
 
         tryAssignmentRepair(hbi, "Trying to reassign region...");
       }
@@ -2478,7 +2479,8 @@ public class HBaseFsck extends Configured implements Closeable {
         LOG.info("Patching hbase:meta with with .regioninfo: " + hbi.getHdfsHRI());
         int numReplicas = admin.getTableDescriptor(hbi.getTableName()).getRegionReplication();
         HBaseFsckRepair.fixMetaHoleOnlineAndAddReplicas(getConf(), hbi.getHdfsHRI(),
-            admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers(), numReplicas);
+            admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS))
+              .getLiveServerMetrics().keySet(), numReplicas);
         tryAssignmentRepair(hbi, "Trying to fix unassigned region...");
       }
 

@@ -21,14 +21,11 @@ package org.apache.hadoop.hbase.client;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.TreeMap;
 import java.util.UUID;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.IndividualBytesFieldCell;
 import org.apache.hadoop.hbase.KeyValue;
@@ -47,7 +44,7 @@ import org.apache.yetus.audience.InterfaceAudience;
  * setting the timestamp.
  */
 @InterfaceAudience.Public
-public class Put extends Mutation implements HeapSize, Comparable<Row> {
+public class Put extends Mutation implements HeapSize {
   /**
    * Create a Put operation for the specified row.
    * @param row row key
@@ -155,15 +152,19 @@ public class Put extends Mutation implements HeapSize, Comparable<Row> {
    * @param putToCopy put to copy
    */
   public Put(Put putToCopy) {
-    this(putToCopy.getRow(), putToCopy.ts);
-    this.familyMap = new TreeMap<>(Bytes.BYTES_COMPARATOR);
-    for(Map.Entry<byte [], List<Cell>> entry: putToCopy.getFamilyCellMap().entrySet()) {
-      this.familyMap.put(entry.getKey(), new ArrayList<>(entry.getValue()));
-    }
-    this.durability = putToCopy.durability;
-    for (Map.Entry<String, byte[]> entry : putToCopy.getAttributesMap().entrySet()) {
-      this.setAttribute(entry.getKey(), entry.getValue());
-    }
+    super(putToCopy);
+  }
+
+  /**
+   * Construct the Put with user defined data. NOTED:
+   * 1) all cells in the familyMap must have the Type.Put
+   * 2) the row of each cell must be same with passed row.
+   * @param row row. CAN'T be null
+   * @param ts timestamp
+   * @param familyMap the map to collect all cells internally. CAN'T be null
+   */
+  public Put(byte[] row, long ts, NavigableMap<byte [], List<Cell>> familyMap) {
+    super(row, ts, familyMap);
   }
 
   /**
@@ -273,30 +274,12 @@ public class Put extends Mutation implements HeapSize, Comparable<Row> {
    * Add the specified KeyValue to this Put operation.  Operation assumes that
    * the passed KeyValue is immutable and its backing array will not be modified
    * for the duration of this Put.
-   * @param kv individual KeyValue
+   * @param cell individual cell
    * @return this
    * @throws java.io.IOException e
    */
-  public Put add(Cell kv) throws IOException {
-    // Family can not be null, otherwise NullPointerException is thrown when putting
-    // the cell into familyMap
-    if (kv.getFamilyArray() == null) {
-      throw new IllegalArgumentException("Family cannot be null");
-    }
-
-    // Check timestamp
-    if (ts < 0) {
-      throw new IllegalArgumentException("Timestamp cannot be negative. ts=" + ts);
-    }
-
-    byte [] family = CellUtil.cloneFamily(kv);
-    List<Cell> list = getCellList(family);
-    //Checking that the row of the kv is the same as the put
-    if (!CellUtil.matchingRows(kv, this.row)) {
-      throw new WrongRowIOException("The row in " + kv.toString() +
-        " doesn't match the original one " +  Bytes.toStringBinary(this.row));
-    }
-    list.add(kv);
+  public Put add(Cell cell) throws IOException {
+    super.add(cell);
     return this;
   }
 
@@ -321,6 +304,12 @@ public class Put extends Mutation implements HeapSize, Comparable<Row> {
     return (Put) super.setDurability(d);
   }
 
+  /**
+   * Method for setting the put's familyMap
+   * @deprecated As of release 2.0.0, this will be removed in HBase 3.0.0.
+   *             Use {@link Put#Put(byte[], long, NavigableMap)} instead
+   */
+  @Deprecated
   @Override
   public Put setFamilyCellMap(NavigableMap<byte[], List<Cell>> map) {
     return (Put) super.setFamilyCellMap(map);

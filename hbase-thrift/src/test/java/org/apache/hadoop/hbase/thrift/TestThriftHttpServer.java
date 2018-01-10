@@ -23,8 +23,6 @@ import static org.junit.Assert.assertFalse;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
@@ -43,8 +41,9 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.ExpectedException;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Joiner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.base.Joiner;
 
 /**
  * Start the HBase Thrift HTTP server on a random port through the command-line
@@ -54,8 +53,8 @@ import org.apache.hadoop.hbase.shaded.com.google.common.base.Joiner;
 
 public class TestThriftHttpServer {
 
-  private static final Log LOG =
-      LogFactory.getLog(TestThriftHttpServer.class);
+  private static final Logger LOG =
+      LoggerFactory.getLogger(TestThriftHttpServer.class);
 
   private static final HBaseTestingUtility TEST_UTIL =
       new HBaseTestingUtility();

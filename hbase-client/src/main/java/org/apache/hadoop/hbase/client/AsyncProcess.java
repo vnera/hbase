@@ -20,7 +20,7 @@
 package org.apache.hadoop.hbase.client;
 
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -34,8 +34,6 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionLocation;
@@ -44,6 +42,8 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.yetus.audience.InterfaceStability;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hbase.client.AsyncProcessTask.SubmittedRows;
 import org.apache.hadoop.hbase.client.RequestController.ReturnCode;
 import org.apache.hadoop.hbase.ipc.RpcControllerFactory;
@@ -87,7 +87,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 class AsyncProcess {
-  private static final Log LOG = LogFactory.getLog(AsyncProcess.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AsyncProcess.class);
   private static final AtomicLong COUNTER = new AtomicLong();
 
   public static final String PRIMARY_CALL_TIMEOUT_KEY = "hbase.client.primaryCallTimeout.multiget";
@@ -95,12 +95,12 @@ class AsyncProcess {
   /**
    * Configure the number of failures after which the client will start logging. A few failures
    * is fine: region moved, then is not opened, then is overloaded. We try to have an acceptable
-   * heuristic for the number of errors we don't log. 9 was chosen because we wait for 1s at
+   * heuristic for the number of errors we don't log. 5 was chosen because we wait for 1s at
    * this stage.
    */
   public static final String START_LOG_ERRORS_AFTER_COUNT_KEY =
       "hbase.client.start.log.errors.counter";
-  public static final int DEFAULT_START_LOG_ERRORS_AFTER_COUNT = 9;
+  public static final int DEFAULT_START_LOG_ERRORS_AFTER_COUNT = 5;
 
   /**
    * Configuration to decide whether to log details for batch error
@@ -153,7 +153,7 @@ class AsyncProcess {
   final long pauseForCQTBE;// pause for CallQueueTooBigException, if specified
   final int numTries;
   @VisibleForTesting
-  int serverTrackerTimeout;
+  long serverTrackerTimeout;
   final long primaryCallTimeoutMicroseconds;
   /** Whether to log details for batch errors */
   final boolean logBatchErrorDetails;
@@ -204,9 +204,9 @@ class AsyncProcess {
     // If we keep hitting one server, the net effect will be the incremental backoff, and
     // essentially the same number of retries as planned. If we have to do faster retries,
     // we will do more retries in aggregate, but the user will be none the wiser.
-    this.serverTrackerTimeout = 0;
+    this.serverTrackerTimeout = 0L;
     for (int i = 0; i < this.numTries; ++i) {
-      serverTrackerTimeout += ConnectionUtils.getPauseTime(this.pause, i);
+      serverTrackerTimeout = serverTrackerTimeout + ConnectionUtils.getPauseTime(this.pause, i);
     }
 
     this.rpcCallerFactory = rpcCaller;

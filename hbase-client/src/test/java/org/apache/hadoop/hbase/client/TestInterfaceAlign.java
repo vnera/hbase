@@ -28,18 +28,18 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category({ ClientTests.class, SmallTests.class })
 public class TestInterfaceAlign {
 
-  private static final Log LOG = LogFactory.getLog(TestInterfaceAlign.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestInterfaceAlign.class);
 
   /**
    * Test methods name match up
@@ -75,7 +75,8 @@ public class TestInterfaceAlign {
   }
 
   private <T> List<String> getMethodNames(Class<T> c) {
-    return Arrays.asList(c.getDeclaredMethods()).stream().filter(m -> !isDeprecated(m))
+    // DON'T use the getDeclaredMethods as we want to check the Public APIs only.
+    return Arrays.asList(c.getMethods()).stream().filter(m -> !isDeprecated(m))
         .map(Method::getName).distinct().collect(Collectors.toList());
   }
 

@@ -17,18 +17,17 @@ import java.util.List;
 import java.util.OptionalInt;
 import java.util.Random;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.regionserver.HStoreFile;
 import org.apache.hadoop.hbase.regionserver.StoreConfigInformation;
 import org.apache.hadoop.hbase.regionserver.StoreUtils;
 import org.apache.yetus.audience.InterfaceAudience;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Predicate;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Collections2;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
+import org.apache.hbase.thirdparty.com.google.common.base.Predicate;
+import org.apache.hbase.thirdparty.com.google.common.collect.Collections2;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 
 /**
  * An abstract compaction policy that select files on seq id order.
@@ -36,7 +35,7 @@ import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 @InterfaceAudience.Private
 public abstract class SortedCompactionPolicy extends CompactionPolicy {
 
-  private static final Log LOG = LogFactory.getLog(SortedCompactionPolicy.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SortedCompactionPolicy.class);
 
   public SortedCompactionPolicy(Configuration conf, StoreConfigInformation storeConfigInfo) {
     super(conf, storeConfigInfo);
@@ -120,16 +119,21 @@ public abstract class SortedCompactionPolicy extends CompactionPolicy {
    * @return When to run next major compaction
    */
   public long getNextMajorCompactTime(Collection<HStoreFile> filesToCompact) {
-    // default = 24hrs
+    /** Default to {@link org.apache.hadoop.hbase.HConstants#DEFAULT_MAJOR_COMPACTION_PERIOD}. */
     long period = comConf.getMajorCompactionPeriod();
     if (period <= 0) {
       return period;
     }
-    // default = 20% = +/- 4.8 hrs
+
+    /**
+     * Default to {@link org.apache.hadoop.hbase.HConstants#DEFAULT_MAJOR_COMPACTION_JITTER},
+     * that is, +/- 3.5 days (7 days * 0.5).
+     */
     double jitterPct = comConf.getMajorCompactionJitter();
     if (jitterPct <= 0) {
       return period;
     }
+
     // deterministic jitter avoids a major compaction storm on restart
     OptionalInt seed = StoreUtils.getDeterministicRandomSeed(filesToCompact);
     if (seed.isPresent()) {

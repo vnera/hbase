@@ -40,13 +40,11 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ArrayBackedTag;
 import org.apache.hadoop.hbase.AuthUtil;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellBuilder;
+import org.apache.hadoop.hbase.Cell.Type;
 import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellUtil;
@@ -57,13 +55,11 @@ import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.TagType;
 import org.apache.hadoop.hbase.TagUtil;
-import org.apache.hadoop.hbase.coprocessor.HasRegionServerServices;
-import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Mutation;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.coprocessor.HasRegionServerServices;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
 import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.io.util.StreamUtils;
@@ -74,11 +70,15 @@ import org.apache.hadoop.hbase.security.Superusers;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @InterfaceAudience.Private
 public class DefaultVisibilityLabelServiceImpl implements VisibilityLabelService {
-
-  private static final Log LOG = LogFactory.getLog(DefaultVisibilityLabelServiceImpl.class);
+  private static final Logger LOG =
+      LoggerFactory.getLogger(DefaultVisibilityLabelServiceImpl.class);
 
   // "system" label is having an ordinal value 1.
   private static final int SYSTEM_LABEL_ORDINAL = 1;
@@ -218,7 +218,7 @@ public class DefaultVisibilityLabelServiceImpl implements VisibilityLabelService
                     .setFamily(LABELS_TABLE_FAMILY)
                     .setQualifier(LABEL_QUALIFIER)
                     .setTimestamp(p.getTimeStamp())
-                    .setType(CellBuilder.DataType.Put)
+                    .setType(Type.Put)
                     .setValue(Bytes.toBytes(SYSTEM_LABEL))
                     .build());
       region.put(p);
@@ -246,9 +246,9 @@ public class DefaultVisibilityLabelServiceImpl implements VisibilityLabelService
               .setFamily(LABELS_TABLE_FAMILY)
               .setQualifier(LABEL_QUALIFIER)
               .setTimestamp(p.getTimeStamp())
-              .setType(CellBuilder.DataType.Put)
+              .setType(Type.Put)
               .setValue(label)
-              .setTags(Tag.fromList(Arrays.asList(LABELS_TABLE_TAGS)))
+              .setTags(TagUtil.fromList(Arrays.asList(LABELS_TABLE_TAGS)))
               .build());
         if (LOG.isDebugEnabled()) {
           LOG.debug("Adding the label " + labelStr);
@@ -286,9 +286,9 @@ public class DefaultVisibilityLabelServiceImpl implements VisibilityLabelService
             .setFamily(LABELS_TABLE_FAMILY)
             .setQualifier(user)
             .setTimestamp(p.getTimeStamp())
-            .setType(CellBuilder.DataType.Put)
+            .setType(Cell.Type.Put)
             .setValue(DUMMY_VALUE)
-            .setTags(Tag.fromList(Arrays.asList(LABELS_TABLE_TAGS)))
+            .setTags(TagUtil.fromList(Arrays.asList(LABELS_TABLE_TAGS)))
             .build());
         puts.add(p);
       }
@@ -507,7 +507,7 @@ public class DefaultVisibilityLabelServiceImpl implements VisibilityLabelService
         authLabels = (authLabels == null) ? new ArrayList<>() : authLabels;
         authorizations = new Authorizations(authLabels);
       } catch (Throwable t) {
-        LOG.error(t);
+        LOG.error(t.toString(), t);
         throw new IOException(t);
       }
     }

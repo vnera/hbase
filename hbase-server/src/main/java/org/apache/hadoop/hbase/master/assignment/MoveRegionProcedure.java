@@ -1,4 +1,4 @@
-/**
+/*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -21,8 +21,6 @@ package org.apache.hadoop.hbase.master.assignment;
 
 import java.io.IOException;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.RegionInfo;
@@ -31,7 +29,8 @@ import org.apache.hadoop.hbase.master.procedure.AbstractStateMachineRegionProced
 import org.apache.hadoop.hbase.master.procedure.MasterProcedureEnv;
 import org.apache.hadoop.hbase.procedure2.ProcedureStateSerializer;
 import org.apache.yetus.audience.InterfaceAudience;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos.MoveRegionState;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos.MoveRegionStateData;
@@ -44,7 +43,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos.M
  */
 @InterfaceAudience.Private
 public class MoveRegionProcedure extends AbstractStateMachineRegionProcedure<MoveRegionState> {
-  private static final Log LOG = LogFactory.getLog(MoveRegionProcedure.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MoveRegionProcedure.class);
   private RegionPlan plan;
 
   public MoveRegionProcedure() {
@@ -71,7 +70,7 @@ public class MoveRegionProcedure extends AbstractStateMachineRegionProcedure<Mov
         break;
       case MOVE_REGION_ASSIGN:
         AssignProcedure assignProcedure = plan.getDestination() == null ?
-            new AssignProcedure(plan.getRegionInfo(), true) :
+            new AssignProcedure(plan.getRegionInfo()):
             new AssignProcedure(plan.getRegionInfo(), plan.getDestination());
         addChildProcedure(assignProcedure);
         return Flow.NO_MORE_STATE;

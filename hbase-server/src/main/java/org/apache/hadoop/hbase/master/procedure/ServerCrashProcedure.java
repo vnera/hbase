@@ -22,8 +22,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.RegionInfo;
@@ -38,6 +36,8 @@ import org.apache.hadoop.hbase.procedure2.ProcedureStateSerializer;
 import org.apache.hadoop.hbase.procedure2.ProcedureSuspendedException;
 import org.apache.hadoop.hbase.procedure2.ProcedureYieldException;
 import org.apache.hadoop.hbase.procedure2.StateMachineProcedure;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos;
@@ -56,7 +56,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos.S
 public class ServerCrashProcedure
 extends StateMachineProcedure<MasterProcedureEnv, ServerCrashState>
 implements ServerProcedureInterface {
-  private static final Log LOG = LogFactory.getLog(ServerCrashProcedure.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ServerCrashProcedure.class);
 
   /**
    * Name of the crashed server to process.
@@ -163,10 +163,8 @@ implements ServerProcedureInterface {
           }
           handleRIT(env, regionsOnCrashedServer);
           AssignmentManager am = env.getAssignmentManager();
-          // forceNewPlan is set to false. Balancer is expected to find most suitable target
-          // server if retention is not possible.
-          addChildProcedure(am.
-              createAssignProcedures(am.getOrderedRegions(regionsOnCrashedServer), false));
+          // createAssignProcedure will try to use the old location for the region deploy.
+          addChildProcedure(am.createAssignProcedures(regionsOnCrashedServer));
         }
         setNextState(ServerCrashState.SERVER_CRASH_FINISH);
         break;
@@ -184,6 +182,7 @@ implements ServerProcedureInterface {
     }
     return Flow.HAS_MORE_STATE;
   }
+
 
   /**
    * @param env

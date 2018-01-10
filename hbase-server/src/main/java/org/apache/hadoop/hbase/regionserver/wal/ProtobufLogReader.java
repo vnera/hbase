@@ -26,15 +26,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.hbase.codec.Codec;
-import org.apache.hadoop.hbase.io.LimitInputStream;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos;
@@ -43,9 +39,14 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.WALKey;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.WALTrailer;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.wal.WAL.Entry;
+import org.apache.yetus.audience.InterfaceAudience;
 
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.CodedInputStream;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.InvalidProtocolBufferException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.hbase.thirdparty.com.google.common.io.ByteStreams;
+import org.apache.hbase.thirdparty.com.google.protobuf.CodedInputStream;
+import org.apache.hbase.thirdparty.com.google.protobuf.InvalidProtocolBufferException;
 
 /**
  * A Protobuf based WAL has the following structure:
@@ -61,7 +62,7 @@ import org.apache.hadoop.hbase.shaded.com.google.protobuf.InvalidProtocolBufferE
 @InterfaceAudience.LimitedPrivate({HBaseInterfaceAudience.COPROC, HBaseInterfaceAudience.PHOENIX,
   HBaseInterfaceAudience.CONFIG})
 public class ProtobufLogReader extends ReaderBase {
-  private static final Log LOG = LogFactory.getLog(ProtobufLogReader.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ProtobufLogReader.class);
   // public for WALFactory until we move everything to o.a.h.h.wal
   @InterfaceAudience.Private
   public static final byte[] PB_WAL_MAGIC = Bytes.toBytes("PWAL");
@@ -350,7 +351,7 @@ public class ProtobufLogReader extends ReaderBase {
                 "inputStream.available()= " + this.inputStream.available() + ", " +
                 "entry size= " + size + " at offset = " + this.inputStream.getPos());
           }
-          ProtobufUtil.mergeFrom(builder, new LimitInputStream(this.inputStream, size),
+          ProtobufUtil.mergeFrom(builder, ByteStreams.limit(this.inputStream, size),
             (int)size);
         } catch (InvalidProtocolBufferException ipbe) {
           throw (EOFException) new EOFException("Invalid PB, EOF? Ignoring; originalPosition=" +

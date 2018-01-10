@@ -21,7 +21,7 @@ package org.apache.hadoop.hbase.quotas;
 import static org.apache.hadoop.hbase.util.CollectionUtils.computeIfAbsent;
 
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -30,14 +30,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ScheduledChore;
 import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.yetus.audience.InterfaceStability;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
@@ -57,7 +57,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class QuotaCache implements Stoppable {
-  private static final Log LOG = LogFactory.getLog(QuotaCache.class);
+  private static final Logger LOG = LoggerFactory.getLogger(QuotaCache.class);
 
   public static final String REFRESH_CONF_KEY = "hbase.quota.refresh.period";
   private static final int REFRESH_DEFAULT_PERIOD = 5 * 60000; // 5min

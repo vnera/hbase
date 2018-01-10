@@ -23,17 +23,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotFoundException;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
@@ -47,6 +44,8 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A write/read/verify load test on a mini HBase cluster. Tests reading
@@ -56,7 +55,7 @@ import org.junit.runners.Parameterized.Parameters;
 @RunWith(Parameterized.class)
 public class TestMiniClusterLoadSequential {
 
-  private static final Log LOG = LogFactory.getLog(
+  private static final Logger LOG = LoggerFactory.getLogger(
       TestMiniClusterLoadSequential.class);
 
   protected static final TableName TABLE =
@@ -154,8 +153,8 @@ public class TestMiniClusterLoadSequential {
         ", isMultiPut=" + isMultiPut);
     numKeys = numKeys();
     Admin admin = TEST_UTIL.getAdmin();
-    while (admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS))
-                .getServers().size() < NUM_RS) {
+    while (admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS))
+                .getLiveServerMetrics().size() < NUM_RS) {
       LOG.info("Sleeping until " + NUM_RS + " RSs are online");
       Threads.sleepWithoutInterrupt(1000);
     }

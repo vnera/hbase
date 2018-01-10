@@ -25,8 +25,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadPoolExecutor;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.MetaTableAccessor;
@@ -47,8 +45,9 @@ import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos.ProcedureDescription;
 
 @InterfaceAudience.LimitedPrivate(HBaseInterfaceAudience.CONFIG)
@@ -65,7 +64,7 @@ public class MasterFlushTableProcedureManager extends MasterProcedureManager {
       "hbase.flush.procedure.master.threads";
   private static final int FLUSH_PROC_POOL_THREADS_DEFAULT = 1;
 
-  private static final Log LOG = LogFactory.getLog(MasterFlushTableProcedureManager.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MasterFlushTableProcedureManager.class);
 
   private MasterServices master;
   private ProcedureCoordinator coordinator;

@@ -32,16 +32,14 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.ChoreService;
 import org.apache.hadoop.hbase.ClusterId;
 import org.apache.hadoop.hbase.CoordinatedStateManager;
-import org.apache.hadoop.hbase.ExtendedCellBuilder;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.RawCellBuilder;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.ClusterConnection;
@@ -57,6 +55,7 @@ import org.apache.hadoop.hbase.ipc.RpcServerFactory;
 import org.apache.hadoop.hbase.ipc.RpcServerInterface;
 import org.apache.hadoop.hbase.ipc.ServerRpcController;
 import org.apache.hadoop.hbase.ipc.SimpleRpcServer;
+import org.apache.hadoop.hbase.log.HBaseMarkers;
 import org.apache.hadoop.hbase.metrics.MetricRegistry;
 import org.apache.hadoop.hbase.protobuf.generated.AuthenticationProtos;
 import org.apache.hadoop.hbase.regionserver.HRegion;
@@ -64,9 +63,6 @@ import org.apache.hadoop.hbase.regionserver.OnlineRegions;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 import org.apache.hadoop.hbase.security.SecurityInfo;
 import org.apache.hadoop.hbase.security.User;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.Descriptors.MethodDescriptor;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.Descriptors.ServiceDescriptor;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.Message;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.SecurityTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -92,6 +88,12 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.hbase.thirdparty.com.google.protobuf.Descriptors.MethodDescriptor;
+import org.apache.hbase.thirdparty.com.google.protobuf.Descriptors.ServiceDescriptor;
+import org.apache.hbase.thirdparty.com.google.protobuf.Message;
 
 import com.google.protobuf.BlockingService;
 import com.google.protobuf.RpcController;
@@ -114,7 +116,7 @@ public class TestTokenAuthentication {
     System.setProperty("java.security.krb5.realm", "hbase");
     System.setProperty("java.security.krb5.kdc", "blah");
   }
-  private static final Log LOG = LogFactory.getLog(TestTokenAuthentication.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestTokenAuthentication.class);
 
   public interface AuthenticationServiceSecurityInfo {}
 
@@ -123,7 +125,7 @@ public class TestTokenAuthentication {
    */
   private static class TokenServer extends TokenProvider implements
       AuthenticationProtos.AuthenticationService.BlockingInterface, Runnable, Server {
-    private static final Log LOG = LogFactory.getLog(TokenServer.class);
+    private static final Logger LOG = LoggerFactory.getLogger(TokenServer.class);
     private Configuration conf;
     private HBaseTestingUtility TEST_UTIL;
     private RpcServerInterface rpcServer;
@@ -156,13 +158,13 @@ public class TestTokenAuthentication {
       // worked fine before we shaded PB. Now we need these proxies.
       final BlockingService service =
         AuthenticationProtos.AuthenticationService.newReflectiveBlockingService(this);
-      final org.apache.hadoop.hbase.shaded.com.google.protobuf.BlockingService proxy =
-          new org.apache.hadoop.hbase.shaded.com.google.protobuf.BlockingService() {
+      final org.apache.hbase.thirdparty.com.google.protobuf.BlockingService proxy =
+          new org.apache.hbase.thirdparty.com.google.protobuf.BlockingService() {
         @Override
         public Message callBlockingMethod(MethodDescriptor md,
-            org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController controller,
+            org.apache.hbase.thirdparty.com.google.protobuf.RpcController controller,
             Message param)
-                throws org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException {
+                throws org.apache.hbase.thirdparty.com.google.protobuf.ServiceException {
           com.google.protobuf.Descriptors.MethodDescriptor methodDescriptor =
               service.getDescriptorForType().findMethodByName(md.getName());
           com.google.protobuf.Message request = service.getRequestPrototype(methodDescriptor);
@@ -171,7 +173,7 @@ public class TestTokenAuthentication {
           try {
             response = service.callBlockingMethod(methodDescriptor, null, request);
           } catch (ServiceException e) {
-            throw new org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException(e);
+            throw new org.apache.hbase.thirdparty.com.google.protobuf.ServiceException(e);
           }
           return null;// Convert 'response'.
         }
@@ -252,7 +254,7 @@ public class TestTokenAuthentication {
 
     @Override
     public void abort(String reason, Throwable error) {
-      LOG.fatal("Aborting on: "+reason, error);
+      LOG.error(HBaseMarkers.FATAL, "Aborting on: "+reason, error);
       this.aborted = true;
       this.stopped = true;
       sleeper.skipSleepCycle();
@@ -331,7 +333,7 @@ public class TestTokenAuthentication {
         }
 
         @Override
-        public ExtendedCellBuilder getCellBuilder() {
+        public RawCellBuilder getCellBuilder() {
           return null;
         }
       });
@@ -339,6 +341,7 @@ public class TestTokenAuthentication {
       started = true;
     }
 
+    @Override
     public void run() {
       try {
         initialize();
@@ -527,7 +530,7 @@ public class TestTokenAuthentication {
 //          // non-shaded controller this CPEP is providing. This is because this test does a neat
 //          // little trick of testing the CPEP Service by inserting it as RpcServer Service. This
 //          // worked fine before we shaded PB. Now we need these proxies.
-//          final org.apache.hadoop.hbase.shaded.com.google.protobuf.BlockingRpcChannel channel =
+//          final org.apache.hbase.thirdparty.com.google.protobuf.BlockingRpcChannel channel =
 //              rpcClient.createBlockingRpcChannel(sn, User.getCurrent(), HConstants.DEFAULT_HBASE_RPC_TIMEOUT);
 //          AuthenticationProtos.AuthenticationService.BlockingInterface stub =
 //              AuthenticationProtos.AuthenticationService.newBlockingStub(channel);
@@ -575,7 +578,7 @@ public class TestTokenAuthentication {
   /**
    * A copy of the BlockingRpcCallback class for use locally. Only difference is that it makes
    * use of non-shaded protobufs; i.e. refers to com.google.protobuf.* rather than to
-   * org.apache.hadoop.hbase.shaded.com.google.protobuf.*
+   * org.apache.hbase.thirdparty.com.google.protobuf.*
    */
   private static class NonShadedBlockingRpcCallback<R> implements
       com.google.protobuf.RpcCallback<R> {

@@ -22,7 +22,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -52,17 +51,14 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.commons.logging.impl.Jdk14Logger;
 import org.apache.commons.logging.impl.Log4JLogger;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.Waiter.ExplainingPredicate;
 import org.apache.hadoop.hbase.Waiter.Predicate;
 import org.apache.hadoop.hbase.client.Admin;
@@ -145,10 +141,14 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.MiniMRCluster;
 import org.apache.hadoop.mapred.TaskLog;
 import org.apache.hadoop.minikdc.MiniKdc;
+import org.apache.log4j.LogManager;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.ZooKeeper.States;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.impl.Log4jLoggerAdapter;
 
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 
@@ -967,21 +967,28 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
     }
 
     // Start the MiniHBaseCluster
-    return startMiniHBaseCluster(numMasters, numSlaves, masterClass,
+    return startMiniHBaseCluster(numMasters, numSlaves, null, masterClass,
       regionserverClass, create, withWALDir);
   }
 
   public MiniHBaseCluster startMiniHBaseCluster(final int numMasters, final int numSlaves)
-      throws IOException, InterruptedException{
-    return startMiniHBaseCluster(numMasters, numSlaves, null, null, false, false);
+      throws IOException, InterruptedException {
+     return startMiniHBaseCluster(numMasters, numSlaves, null);
+  }
+
+  public MiniHBaseCluster startMiniHBaseCluster(final int numMasters, final int numSlaves,
+      List<Integer> rsPorts) throws IOException, InterruptedException {
+    return startMiniHBaseCluster(numMasters, numSlaves, rsPorts, null, null, false, false);
   }
 
   /**
    * Starts up mini hbase cluster.  Usually used after call to
    * {@link #startMiniCluster(int, int)} when doing stepped startup of clusters.
    * Usually you won't want this.  You'll usually want {@link #startMiniCluster()}.
-   * @param numMasters
-   * @param numSlaves
+   * @param rsPorts Ports that RegionServer should use; pass ports if you want to test cluster
+   *                restart where for sure the regionservers come up on same address+port (but
+   *                just with different startcode); by default mini hbase clusters choose new
+   *                arbitrary ports on each cluster start.
    * @param create Whether to create a
    * root or data directory path or not; will overwrite if exists already.
    * @return Reference to the hbase mini hbase cluster.
@@ -990,7 +997,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
    * @see {@link #startMiniCluster()}
    */
   public MiniHBaseCluster startMiniHBaseCluster(final int numMasters,
-        final int numSlaves, Class<? extends HMaster> masterClass,
+        final int numSlaves, List<Integer> rsPorts, Class<? extends HMaster> masterClass,
         Class<? extends MiniHBaseCluster.MiniHBaseClusterRegionServer> regionserverClass,
         boolean create, boolean withWALDir)
   throws IOException, InterruptedException {
@@ -1015,7 +1022,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
     Configuration c = new Configuration(this.conf);
     TraceUtil.initTracer(c);
     this.hbaseCluster =
-        new MiniHBaseCluster(c, numMasters, numSlaves, masterClass, regionserverClass);
+        new MiniHBaseCluster(c, numMasters, numSlaves, rsPorts, masterClass, regionserverClass);
     // Don't leave here till we've done a successful scan of the hbase:meta
     Table t = getConnection().getTable(TableName.META_TABLE_NAME);
     ResultScanner s = t.getScanner(new Scan());
@@ -2285,7 +2292,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
           .setStartKey(startKeys[i])
           .setEndKey(startKeys[j])
           .build();
-      MetaTableAccessor.addRegionToMeta(meta, hri);
+      MetaTableAccessor.addRegionToMeta(getConnection(), hri);
       newRegions.add(hri);
     }
 
@@ -2593,9 +2600,11 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
    * @param clazz  The class for which to switch to debug logging.
    */
   public void enableDebug(Class<?> clazz) {
-    Log l = LogFactory.getLog(clazz);
+    Logger l = LoggerFactory.getLogger(clazz);
     if (l instanceof Log4JLogger) {
       ((Log4JLogger) l).getLogger().setLevel(org.apache.log4j.Level.DEBUG);
+    } else if (l instanceof Log4jLoggerAdapter) {
+      LogManager.getLogger(clazz).setLevel(org.apache.log4j.Level.DEBUG);
     } else if (l instanceof Jdk14Logger) {
       ((Jdk14Logger) l).getLogger().setLevel(java.util.logging.Level.ALL);
     }
@@ -3224,7 +3233,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
    * @throws IOException
    */
   public void waitUntilAllRegionsAssigned(final TableName tableName) throws IOException {
-    waitUntilAllRegionsAssigned( tableName,
+    waitUntilAllRegionsAssigned(tableName,
       this.conf.getLong("hbase.client.sync.wait.timeout.msec", 60000));
   }
 
@@ -3248,59 +3257,59 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
    */
   public void waitUntilAllRegionsAssigned(final TableName tableName, final long timeout)
       throws IOException {
-    final Table meta = getConnection().getTable(TableName.META_TABLE_NAME);
-    try {
-      LOG.debug("Waiting until all regions of table " + tableName + " get assigned. Timeout = " +
-          timeout + "ms");
-      waitFor(timeout, 200, true, new ExplainingPredicate<IOException>() {
-        @Override
-        public String explainFailure() throws IOException {
-          return explainTableAvailability(tableName);
-        }
+    if (!TableName.isMetaTableName(tableName)) {
+      try (final Table meta = getConnection().getTable(TableName.META_TABLE_NAME)) {
+        LOG.debug("Waiting until all regions of table " + tableName + " get assigned. Timeout = " +
+            timeout + "ms");
+        waitFor(timeout, 200, true, new ExplainingPredicate<IOException>() {
+          @Override
+          public String explainFailure() throws IOException {
+            return explainTableAvailability(tableName);
+          }
 
-        @Override
-        public boolean evaluate() throws IOException {
-          Scan scan = new Scan();
-          scan.addFamily(HConstants.CATALOG_FAMILY);
-          ResultScanner s = meta.getScanner(scan);
-          try {
-            Result r;
-            while ((r = s.next()) != null) {
-              byte[] b = r.getValue(HConstants.CATALOG_FAMILY, HConstants.REGIONINFO_QUALIFIER);
-              HRegionInfo info = HRegionInfo.parseFromOrNull(b);
-              if (info != null && info.getTable().equals(tableName)) {
-                // Get server hosting this region from catalog family. Return false if no server
-                // hosting this region, or if the server hosting this region was recently killed
-                // (for fault tolerance testing).
-                byte[] server =
-                    r.getValue(HConstants.CATALOG_FAMILY, HConstants.SERVER_QUALIFIER);
-                if (server == null) {
-                  return false;
-                } else {
-                  byte[] startCode =
-                      r.getValue(HConstants.CATALOG_FAMILY, HConstants.STARTCODE_QUALIFIER);
-                  ServerName serverName =
-                      ServerName.valueOf(Bytes.toString(server).replaceFirst(":", ",") + "," +
-                          Bytes.toLong(startCode));
-                  if (!getHBaseClusterInterface().isDistributedCluster()
-                      && getHBaseCluster().isKilledRS(serverName)) {
+          @Override
+          public boolean evaluate() throws IOException {
+            Scan scan = new Scan();
+            scan.addFamily(HConstants.CATALOG_FAMILY);
+            boolean tableFound = false;
+            try (ResultScanner s = meta.getScanner(scan)) {
+              for (Result r; (r = s.next()) != null;) {
+                byte[] b = r.getValue(HConstants.CATALOG_FAMILY, HConstants.REGIONINFO_QUALIFIER);
+                HRegionInfo info = HRegionInfo.parseFromOrNull(b);
+                if (info != null && info.getTable().equals(tableName)) {
+                  // Get server hosting this region from catalog family. Return false if no server
+                  // hosting this region, or if the server hosting this region was recently killed
+                  // (for fault tolerance testing).
+                  tableFound = true;
+                  byte[] server =
+                      r.getValue(HConstants.CATALOG_FAMILY, HConstants.SERVER_QUALIFIER);
+                  if (server == null) {
+                    return false;
+                  } else {
+                    byte[] startCode =
+                        r.getValue(HConstants.CATALOG_FAMILY, HConstants.STARTCODE_QUALIFIER);
+                    ServerName serverName =
+                        ServerName.valueOf(Bytes.toString(server).replaceFirst(":", ",") + "," +
+                            Bytes.toLong(startCode));
+                    if (!getHBaseClusterInterface().isDistributedCluster() &&
+                        getHBaseCluster().isKilledRS(serverName)) {
+                      return false;
+                    }
+                  }
+                  if (RegionStateStore.getRegionState(r,
+                    info.getReplicaId()) != RegionState.State.OPEN) {
                     return false;
                   }
                 }
-                if (RegionStateStore.getRegionState(r, info.getReplicaId())
-                    != RegionState.State.OPEN) {
-                  return false;
-                }
               }
             }
-          } finally {
-            s.close();
+            if (!tableFound) {
+              LOG.warn("Didn't find the entries for table " + tableName + " in meta, already deleted?");
+            }
+            return tableFound;
           }
-          return true;
-        }
-      });
-    } finally {
-      meta.close();
+        });
+      }
     }
     LOG.info("All regions for table " + tableName + " assigned to meta. Checking AM states.");
     // check from the master state if we are using a mini cluster
@@ -3725,7 +3734,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
       // The number of splits is set as:
       //    region servers * regions per region server).
       int numberOfServers =
-          admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers()
+          admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS)).getLiveServerMetrics()
               .size();
       if (numberOfServers == 0) {
         throw new IllegalStateException("No live regionservers");

@@ -612,25 +612,13 @@
             <redirectTestOutputToFile>${test.output.tofile}</redirectTestOutputToFile>
             <systemPropertyVariables>
               <test.build.classes>${test.build.classes}</test.build.classes>
-              <!--For shaded netty, to find the relocated .so.
-                   Trick from
-                https://stackoverflow.com/questions/33825743/rename-files-inside-a-jar-using-some-maven-plugin
-
-                The netty jar has a .so in it. Shading requires rename of the .so and then passing a system
-                property so netty finds the renamed .so and associates it w/ the relocated netty files.
-
-                The relocated netty is in hbase-thirdparty dependency. Just set this propery globally rather
-                than per module.
-               -->
-              <org.apache.hadoop.hbase.shaded.io.netty.packagePrefix>org.apache.hadoop.hbase.shaded.</org.apache.hadoop.hbase.shaded.io.netty.packagePrefix>
             </systemPropertyVariables>
-
             <excludes>
-	      <!-- users can add -D option to skip particular test classes
-		   ex: mvn test -Dtest.exclude.pattern=**/TestFoo.java,**/TestBar.java
-	      -->
-	      <exclude>${test.exclude.pattern}</exclude>
-	    </excludes>
+              <!-- users can add -D option to skip particular test classes
+             ex: mvn test -Dtest.exclude.pattern=**/TestFoo.java,**/TestBar.java
+              -->
+              <exclude>${test.exclude.pattern}</exclude>
+            </excludes>
           </configuration>
           <executions>
             <execution>
@@ -1379,7 +1367,6 @@
     <!-- pretty outdated -->
     <commons-io.version>2.5</commons-io.version>
     <commons-lang3.version>3.6</commons-lang3.version>
-    <commons-logging.version>1.2</commons-logging.version>
     <commons-math.version>3.6.1</commons-math.version>
     <disruptor.version>3.3.6</disruptor.version>
     <!-- Do not use versions earlier than 3.2.2 due to a security vulnerability -->
@@ -1462,7 +1449,7 @@
     <spotbugs.version>3.1.0-RC3</spotbugs.version>
     <wagon.ssh.version>2.12</wagon.ssh.version>
     <xml.maven.version>1.0.1</xml.maven.version>
-    <hbase-thirdparty.version>1.0.1</hbase-thirdparty.version>
+    <hbase-thirdparty.version>2.0.0</hbase-thirdparty.version>
     <!-- General Packaging -->
     <package.prefix>/usr</package.prefix>
     <package.conf.dir>/etc/hbase</package.conf.dir>
@@ -1770,6 +1757,11 @@
         <version>${jettison.version}</version>
       </dependency>
       <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-log4j12</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
         <groupId>log4j</groupId>
         <artifactId>log4j</artifactId>
         <version>${log4j.version}</version>
@@ -1826,11 +1818,6 @@
         <groupId>org.apache.commons</groupId>
         <artifactId>commons-lang3</artifactId>
         <version>${commons-lang3.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>commons-logging</groupId>
-        <artifactId>commons-logging</artifactId>
-        <version>${commons-logging.version}</version>
       </dependency>
       <dependency>
         <groupId>org.apache.commons</groupId>
@@ -2731,10 +2718,15 @@
          <dependency>
            <groupId>org.apache.hadoop</groupId>
            <artifactId>hadoop-hdfs</artifactId>
+           <version>${hadoop-three.version}</version>
            <exclusions>
              <exclusion>
                <groupId>org.apache.htrace</groupId>
                <artifactId>htrace-core</artifactId>
+             </exclusion>
+             <exclusion>
+               <groupId>com.sun.jersey</groupId>
+               <artifactId>jersey-core</artifactId>
              </exclusion>
              <exclusion>
                <groupId>javax.servlet.jsp</groupId>
@@ -2765,7 +2757,6 @@
                 <artifactId>guava</artifactId>
               </exclusion>
            </exclusions>
-           <version>${hadoop-three.version}</version>
          </dependency>
          <dependency>
            <groupId>org.apache.hadoop</groupId>
@@ -2802,10 +2793,10 @@
                <groupId>org.codehaus.jackson</groupId>
                <artifactId>jackson-mapper-asl</artifactId>
              </exclusion>
-              <exclusion>
-                <groupId>com.google.guava</groupId>
-                <artifactId>guava</artifactId>
-              </exclusion>
+             <exclusion>
+               <groupId>com.google.guava</groupId>
+               <artifactId>guava</artifactId>
+             </exclusion>
            </exclusions>
          </dependency>
          <dependency>
@@ -2825,6 +2816,22 @@
            <version>${hadoop-three.version}</version>
            <exclusions>
              <exclusion>
+               <groupId>com.sun.jersey</groupId>
+               <artifactId>jersey-core</artifactId>
+             </exclusion>
+             <exclusion>
+               <groupId>com.sun.jersey</groupId>
+               <artifactId>jersey-json</artifactId>
+             </exclusion>
+             <exclusion>
+               <groupId>com.sun.jersey</groupId>
+               <artifactId>jersey-servlet</artifactId>
+             </exclusion>
+             <exclusion>
+              <groupId>com.sun.jersey</groupId>
+               <artifactId>jersey-server</artifactId>
+             </exclusion>
+             <exclusion>
                <groupId>org.apache.htrace</groupId>
                <artifactId>htrace-core</artifactId>
              </exclusion>
@@ -2838,7 +2845,7 @@
              </exclusion>
              <exclusion>
                <groupId>javax.servlet</groupId>
-               <artifactId>servlet-api</artifactId>
+               <artifactId>javax.servlet-api</artifactId>
              </exclusion>
              <exclusion>
                <groupId>stax</groupId>
@@ -2863,6 +2870,10 @@
              <exclusion>
                <groupId>org.codehause.jackson</groupId>
                <artifactId>jackson-mapper-asl</artifactId>
+             </exclusion>
+             <exclusion> <!-- CDH specific -->
+               <groupId>com.google.guava</groupId>
+               <artifactId>guava</artifactId>
              </exclusion>
            </exclusions>
          </dependency>
@@ -3512,6 +3523,7 @@
               <report>aggregate</report>
             </reports>
             <configuration>
+              <!-- Breaks build on branch-2. See HBASE-19663
               <doclet>
                 org.apache.yetus.audience.tools.IncludePublicAnnotationsStandardDoclet
               </doclet>
@@ -3521,6 +3533,7 @@
                 <version>${audience-annotations.version}</version>
               </docletArtifact>
               <useStandardDocletOptions>true</useStandardDocletOptions>
+              -->
               <destDir>apidocs</destDir>
               <name>User API</name>
               <description>The HBase Application Programmer's API</description>
@@ -3565,6 +3578,7 @@
               <report>test-aggregate</report>
             </reports>
             <configuration>
+              <!-- Breaks build on branch-2. See HBASE-19663
               <doclet>
                 org.apache.yetus.audience.tools.IncludePublicAnnotationsStandardDoclet
               </doclet>
@@ -3574,6 +3588,7 @@
                 <version>${audience-annotations.version}</version>
               </docletArtifact>
               <useStandardDocletOptions>true</useStandardDocletOptions>
+              -->
               <destDir>testapidocs</destDir>
               <name>User API</name>
               <description>The HBase Application Programmer's API</description>

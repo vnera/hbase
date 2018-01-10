@@ -44,11 +44,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.commons.lang3.mutable.MutableObject;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hbase.ByteBufferCell;
+import org.apache.hadoop.hbase.ByteBufferExtendedCell;
 import org.apache.hadoop.hbase.CacheEvictionStats;
 import org.apache.hadoop.hbase.CacheEvictionStatsBuilder;
 import org.apache.hadoop.hbase.Cell;
@@ -63,6 +61,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.MultiActionResultTooLarge;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.PrivateCellUtil;
+import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.UnknownScannerException;
@@ -77,6 +76,7 @@ import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.RegionReplicaUtil;
 import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.Row;
 import org.apache.hadoop.hbase.client.RowMutations;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.TableDescriptor;
@@ -98,6 +98,7 @@ import org.apache.hadoop.hbase.ipc.RpcServerFactory;
 import org.apache.hadoop.hbase.ipc.RpcServerInterface;
 import org.apache.hadoop.hbase.ipc.ServerNotRunningYetException;
 import org.apache.hadoop.hbase.ipc.ServerRpcController;
+import org.apache.hadoop.hbase.log.HBaseMarkers;
 import org.apache.hadoop.hbase.master.MasterRpcServices;
 import org.apache.hadoop.hbase.quotas.ActivePolicyEnforcement;
 import org.apache.hadoop.hbase.quotas.OperationQuota;
@@ -128,17 +129,19 @@ import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.wal.WALKey;
 import org.apache.hadoop.hbase.wal.WALSplitter;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-import org.apache.hadoop.hbase.shaded.com.google.common.cache.Cache;
-import org.apache.hadoop.hbase.shaded.com.google.common.cache.CacheBuilder;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.ByteString;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.Message;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.TextFormat;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.UnsafeByteOperations;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.cache.Cache;
+import org.apache.hbase.thirdparty.com.google.common.cache.CacheBuilder;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.protobuf.ByteString;
+import org.apache.hbase.thirdparty.com.google.protobuf.Message;
+import org.apache.hbase.thirdparty.com.google.protobuf.RpcController;
+import org.apache.hbase.thirdparty.com.google.protobuf.ServiceException;
+import org.apache.hbase.thirdparty.com.google.protobuf.TextFormat;
+import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.shaded.protobuf.ResponseConverter;
@@ -233,7 +236,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.RegionEventDe
 public class RSRpcServices implements HBaseRPCErrorHandler,
     AdminService.BlockingInterface, ClientService.BlockingInterface, PriorityFunction,
     ConfigurationObserver {
-  protected static final Log LOG = LogFactory.getLog(RSRpcServices.class);
+  protected static final Logger LOG = LoggerFactory.getLogger(RSRpcServices.class);
 
   /** RPC scheduler to use for the region server. */
   public static final String REGION_SERVER_RPC_SCHEDULER_FACTORY_CLASS =
@@ -259,6 +262,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
    * Default value of {@link RSRpcServices#BATCH_ROWS_THRESHOLD_NAME}
    */
   static final int BATCH_ROWS_THRESHOLD_DEFAULT = 5000;
+
+  protected static final String RESERVOIR_ENABLED_KEY = "hbase.ipc.server.reservoir.enabled";
 
   // Request counter. (Includes requests that are not serviced by regions.)
   // Count only once for requests with multiple actions like multi/caching-scan/replayBatch
@@ -790,7 +795,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           try {
             Get get = ProtobufUtil.toGet(action.getGet());
             if (context != null) {
-              r = get(get, ((HRegion) region), closeCallBack, context);
+              r = get(get, (region), closeCallBack, context);
             } else {
               r = region.get(get);
             }
@@ -965,7 +970,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       // Sort to improve lock efficiency for non-atomic batch of operations. If atomic (mostly
       // called from mutateRows()), order is preserved as its expected from the client
       if (!atomic) {
-        Arrays.sort(mArray);
+        Arrays.sort(mArray, (v1, v2) -> Row.COMPARATOR.compare(v1, v2));
       }
 
       OperationStatus[] codes = region.batchMutate(mArray, atomic, HConstants.NO_NONCE,
@@ -1048,7 +1053,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           for (Cell metaCell : metaCells) {
             CompactionDescriptor compactionDesc = WALEdit.getCompaction(metaCell);
             boolean isDefaultReplica = RegionReplicaUtil.isDefaultReplica(region.getRegionInfo());
-            HRegion hRegion = (HRegion)region;
+            HRegion hRegion = region;
             if (compactionDesc != null) {
               // replay the compaction. Remove the files from stores only if we are the primary
               // region replica (thus own the files)
@@ -1171,19 +1176,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     String name = rs.getProcessName() + "/" + initialIsa.toString();
     // Set how many times to retry talking to another server over Connection.
     ConnectionUtils.setServerSideHConnectionRetriesConfig(rs.conf, name, LOG);
-    try {
-      rpcServer = RpcServerFactory.createRpcServer(rs, name, getServices(),
-          bindAddress, // use final bindAddress for this server.
-          rs.conf,
-          rpcSchedulerFactory.create(rs.conf, this, rs));
-      rpcServer.setRsRpcServices(this);
-    } catch (BindException be) {
-      String configName = (this instanceof MasterRpcServices) ? HConstants.MASTER_PORT :
-          HConstants.REGIONSERVER_PORT;
-      throw new IOException(be.getMessage() + ". To switch ports use the '" + configName +
-          "' configuration property.", be.getCause() != null ? be.getCause() : be);
-    }
-
+    rpcServer = createRpcServer(rs, rs.conf, rpcSchedulerFactory, bindAddress, name);
+    rpcServer.setRsRpcServices(this);
     scannerLeaseTimeoutPeriod = rs.conf.getInt(
       HConstants.HBASE_CLIENT_SCANNER_TIMEOUT_PERIOD,
       HConstants.DEFAULT_HBASE_CLIENT_SCANNER_TIMEOUT_PERIOD);
@@ -1208,6 +1202,21 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
 
     closedScanners = CacheBuilder.newBuilder()
         .expireAfterAccess(scannerLeaseTimeoutPeriod, TimeUnit.MILLISECONDS).build();
+  }
+
+  protected RpcServerInterface createRpcServer(Server server, Configuration conf,
+      RpcSchedulerFactory rpcSchedulerFactory, InetSocketAddress bindAddress, String name)
+      throws IOException {
+    boolean reservoirEnabled = conf.getBoolean(RESERVOIR_ENABLED_KEY, true);
+    try {
+      return RpcServerFactory.createRpcServer(server, name, getServices(),
+          bindAddress, // use final bindAddress for this server.
+          conf, rpcSchedulerFactory.create(conf, this, server), reservoirEnabled);
+    } catch (BindException be) {
+      throw new IOException(be.getMessage() + ". To switch ports use the '"
+          + HConstants.REGIONSERVER_PORT + "' configuration property.",
+          be.getCause() != null ? be.getCause() : be);
+    }
   }
 
   @Override
@@ -1287,8 +1296,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         // Since byte buffers can point all kinds of crazy places it's harder to keep track
         // of which blocks are kept alive by what byte buffer.
         // So we make a guess.
-        if (c instanceof ByteBufferCell) {
-          ByteBufferCell bbCell = (ByteBufferCell) c;
+        if (c instanceof ByteBufferExtendedCell) {
+          ByteBufferExtendedCell bbCell = (ByteBufferExtendedCell) c;
           ByteBuffer bb = bbCell.getValueByteBuffer();
           if (bb != lastBlock) {
             context.incrementResponseBlockSize(bb.capacity());
@@ -1440,7 +1449,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       AdminService.newReflectiveBlockingService(this),
       AdminService.BlockingInterface.class));
     }
-    return new org.apache.hadoop.hbase.shaded.com.google.common.collect.
+    return new org.apache.hbase.thirdparty.com.google.common.collect.
         ImmutableList.Builder<BlockingServiceAndInterface>().addAll(bssi).build();
   }
 
@@ -1478,8 +1487,9 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           || (e.getMessage() != null && e.getMessage().contains(
               "java.lang.OutOfMemoryError"))) {
         stop = true;
-        LOG.fatal("Run out of memory; " + RSRpcServices.class.getSimpleName()
-          + " will abort itself immediately", e);
+        LOG.error(HBaseMarkers.FATAL, "Run out of memory; "
+          + RSRpcServices.class.getSimpleName() + " will abort itself immediately",
+          e);
       }
     } finally {
       if (stop) {
@@ -1544,7 +1554,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     try {
       checkOpen();
       requestCount.increment();
-      HRegion region = (HRegion) getRegion(request.getRegion());
+      HRegion region = getRegion(request.getRegion());
       // Quota support is enabled, the requesting user is not system/super user
       // and a quota policy is enforced that disables compactions.
       if (QuotaUtil.isQuotaEnabled(getConfiguration()) &&
@@ -1591,7 +1601,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     try {
       checkOpen();
       requestCount.increment();
-      HRegion region = (HRegion) getRegion(request.getRegion());
+      HRegion region = getRegion(request.getRegion());
       LOG.info("Flushing " + region.getRegionInfo().getRegionNameAsString());
       boolean shouldFlush = true;
       if (request.hasIfOlderThanTs()) {
@@ -1656,7 +1666,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       RegionInfo info = region.getRegionInfo();
       byte[] bestSplitRow = null;
       if (request.hasBestSplitRow() && request.getBestSplitRow()) {
-        HRegion r = (HRegion) region;
+        HRegion r = region;
         region.startRegionOperation(Operation.SPLIT_REGION);
         r.forceSplit(null);
         bestSplitRow = r.checkSplit();
@@ -2082,7 +2092,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         if(edits!=null && !edits.isEmpty()) {
           // HBASE-17924
           // sort to improve lock efficiency
-          Collections.sort(edits);
+          Collections.sort(edits, (v1, v2) -> Row.COMPARATOR.compare(v1.mutation, v2.mutation));
           long replaySeqId = (entry.getKey().hasOrigSequenceNumber()) ?
             entry.getKey().getOrigSequenceNumber() : entry.getKey().getLogSequenceNumber();
           OperationStatus[] result = doReplayBatchOp(region, edits, replaySeqId);
@@ -2317,7 +2327,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         RegionSpecifierType.REGION_NAME, region.getRegionInfo().getRegionName()));
       // TODO: COPIES!!!!!!
       builder.setValue(builder.getValueBuilder().setName(result.getClass().getName()).
-        setValue(org.apache.hadoop.hbase.shaded.com.google.protobuf.ByteString.
+        setValue(org.apache.hbase.thirdparty.com.google.protobuf.ByteString.
             copyFrom(result.toByteArray())));
       return builder.build();
     } catch (IOException ie) {
@@ -2364,7 +2374,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       }
       if (existence == null) {
         if (context != null) {
-          r = get(clientGet, ((HRegion) region), null, context);
+          r = get(clientGet, (region), null, context);
         } else {
           // for test purpose
           r = region.get(clientGet);
@@ -2401,9 +2411,12 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     } catch (IOException ie) {
       throw new ServiceException(ie);
     } finally {
-      if (regionServer.metricsRegionServer != null) {
-        regionServer.metricsRegionServer.updateGet(
-            region.getTableDescriptor().getTableName(), EnvironmentEdgeManager.currentTime() - before);
+      MetricsRegionServer mrs = regionServer.metricsRegionServer;
+      if (mrs != null) {
+        TableDescriptor td = region != null? region.getTableDescriptor(): null;
+        if (td != null) {
+          mrs.updateGet(td.getTableName(), EnvironmentEdgeManager.currentTime() - before);
+        }
       }
       if (quota != null) {
         quota.close();
@@ -3452,6 +3465,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         stats.addException(region.getRegionInfo().getRegionName(), e);
       }
     }
+    stats.withMaxCacheSize(regionServer.getCacheConfig().getBlockCache().getMaxSize());
     return builder.setStats(ProtobufUtil.toCacheEvictionStats(stats.build())).build();
   }
 }

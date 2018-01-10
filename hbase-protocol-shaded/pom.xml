@@ -120,7 +120,7 @@
             <replacements>
               <replacement>
                 <token>([^\.])com.google.protobuf</token> 
-                <value>$1org.apache.hadoop.hbase.shaded.com.google.protobuf</value> 
+                <value>$1org.apache.hbase.thirdparty.com.google.protobuf</value>
               </replacement>
             </replacements>
         </configuration> 
@@ -160,11 +160,28 @@
                   <exclude>junit:junit</exclude>
                   <exclude>log4j:log4j</exclude>
                   <exclude>commons-logging:commons-logging</exclude>
+                  <exclude>org.slf4j:slf4j-api</exclude>
                   <exclude>org.apache.yetus:audience-annotations</exclude>
                   <exclude>com.github.stephenc.fingbugs:*</exclude>
                   <exclude></exclude>
                 </excludes>
               </artifactSet>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>checkstyle</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <failOnViolation>true</failOnViolation>
             </configuration>
           </execution>
         </executions>

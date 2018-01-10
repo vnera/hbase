@@ -24,11 +24,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.List;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.ClusterStatus;
+import org.apache.hadoop.hbase.ClusterMetrics;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.LocalHBaseCluster;
@@ -41,10 +38,12 @@ import org.apache.hadoop.hbase.testclassification.MasterTests;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.MasterThread;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category({MasterTests.class, LargeTests.class})
 public class TestMasterShutdown {
-  private static final Log LOG = LogFactory.getLog(TestMasterShutdown.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestMasterShutdown.class);
 
   /**
    * Simple test of shutdown.
@@ -84,9 +83,8 @@ public class TestMasterShutdown {
     }
     assertNotNull(active);
     // make sure the other two are backup masters
-    ClusterStatus status = active.getClusterStatus();
-    assertEquals(2, status.getBackupMastersSize());
-    assertEquals(2, status.getBackupMasters().size());
+    ClusterMetrics status = active.getClusterMetrics();
+    assertEquals(2, status.getBackupMasterNames().size());
 
     // tell the active master to shutdown the cluster
     active.shutdown();

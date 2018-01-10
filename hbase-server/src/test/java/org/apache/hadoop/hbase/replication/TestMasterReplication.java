@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -30,27 +30,22 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.ClusterStatus;
+import org.apache.hadoop.hbase.ClusterMetrics;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
-import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
-import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
-import org.apache.hadoop.hbase.ServerLoad;
+import org.apache.hadoop.hbase.ServerMetrics;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Waiter;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
 import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Durability;
@@ -58,6 +53,8 @@ import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.client.TableDescriptor;
+import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.apache.hadoop.hbase.client.replication.ReplicationPeerConfigUtil;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
@@ -66,13 +63,13 @@ import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.RegionObserver;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.wal.WALActionsListener;
-import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.replication.regionserver.TestSourceFSConfigurationProvider;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.tool.LoadIncrementalHFiles;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.HFileTestUtil;
+import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.zookeeper.MiniZooKeeperCluster;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
@@ -81,11 +78,13 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category({ReplicationTests.class, LargeTests.class})
 public class TestMasterReplication {
 
-  private static final Log LOG = LogFactory.getLog(TestReplicationBase.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestReplicationBase.class);
 
   private Configuration baseConfiguration;
 
@@ -110,7 +109,7 @@ public class TestMasterReplication {
   private static final byte[] put = Bytes.toBytes("put");
   private static final byte[] delete = Bytes.toBytes("delete");
 
-  private HTableDescriptor table;
+  private TableDescriptor table;
 
   @Before
   public void setUp() throws Exception {
@@ -130,16 +129,12 @@ public class TestMasterReplication {
     baseConfiguration.setStrings(
         CoprocessorHost.USER_REGION_COPROCESSOR_CONF_KEY,
         CoprocessorCounter.class.getName());
-
-    table = new HTableDescriptor(tableName);
-    HColumnDescriptor fam = new HColumnDescriptor(famName);
-    fam.setScope(HConstants.REPLICATION_SCOPE_GLOBAL);
-    table.addFamily(fam);
-    fam = new HColumnDescriptor(famName1);
-    fam.setScope(HConstants.REPLICATION_SCOPE_GLOBAL);
-    table.addFamily(fam);
-    fam = new HColumnDescriptor(noRepfamName);
-    table.addFamily(fam);
+    table = TableDescriptorBuilder.newBuilder(tableName)
+        .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(famName)
+            .setScope(HConstants.REPLICATION_SCOPE_GLOBAL).build())
+        .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(famName1)
+            .setScope(HConstants.REPLICATION_SCOPE_GLOBAL).build())
+        .addColumnFamily(ColumnFamilyDescriptorBuilder.of(noRepfamName)).build();
   }
 
   /**
@@ -191,9 +186,9 @@ public class TestMasterReplication {
     Waiter.waitFor(baseConfiguration, 10000, new Waiter.Predicate<Exception>() {
       @Override
       public boolean evaluate() throws Exception {
-        ClusterStatus clusterStatus = utilities[0].getAdmin()
-            .getClusterStatus(EnumSet.of(Option.LIVE_SERVERS));
-        ServerLoad serverLoad = clusterStatus.getLoad(rsName);
+        ClusterMetrics clusterStatus = utilities[0].getAdmin()
+            .getClusterMetrics(EnumSet.of(ClusterMetrics.Option.LIVE_SERVERS));
+        ServerMetrics serverLoad = clusterStatus.getLiveServerMetrics().get(rsName);
         List<ReplicationLoadSource> replicationLoadSourceList =
             serverLoad.getReplicationLoadSourceList();
         return replicationLoadSourceList.isEmpty();
@@ -273,7 +268,7 @@ public class TestMasterReplication {
    */
   @Test(timeout = 300000)
   public void testCyclicReplication2() throws Exception {
-    LOG.info("testCyclicReplication1");
+    LOG.info("testCyclicReplication2");
     int numClusters = 3;
     Table[] htables = null;
     try {
@@ -312,7 +307,7 @@ public class TestMasterReplication {
       // without HBASE-9158 the edit for row4 would have been marked with
       // cluster 0's id
       // and hence not replicated to cluster 0
-      wait(row4, htables[0], true);
+      wait(row4, htables[0], false);
     } finally {
       close(htables);
       shutDownMiniClusters();
@@ -507,7 +502,7 @@ public class TestMasterReplication {
     miniZK.shutdown();
   }
 
-  private void createTableOnClusters(HTableDescriptor table) throws Exception {
+  private void createTableOnClusters(TableDescriptor table) throws Exception {
     for (HBaseTestingUtility utility : utilities) {
       utility.getAdmin().createTable(table);
     }
@@ -608,7 +603,7 @@ public class TestMasterReplication {
 
     Path dir = util.getDataTestDirOnTestFS(testName);
     FileSystem fs = util.getTestFileSystem();
-    dir = dir.makeQualified(fs);
+    dir = dir.makeQualified(fs.getUri(), fs.getWorkingDirectory());
     Path familyDir = new Path(dir, Bytes.toString(fam));
 
     int hfileIdx = 0;

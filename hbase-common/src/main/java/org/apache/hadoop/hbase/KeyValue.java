@@ -29,17 +29,19 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.hbase.util.ByteBufferUtils;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.ClassSize;
 import org.apache.hadoop.io.RawComparator;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+
 /**
  * An HBase Key/Value. This is the fundamental HBase Type.
  * <p>
@@ -77,9 +79,9 @@ import org.apache.yetus.audience.InterfaceAudience;
 public class KeyValue implements ExtendedCell {
   private static final ArrayList<Tag> EMPTY_ARRAY_LIST = new ArrayList<>();
 
-  private static final Log LOG = LogFactory.getLog(KeyValue.class);
+  private static final Logger LOG = LoggerFactory.getLogger(KeyValue.class);
 
-  public static final long FIXED_OVERHEAD = ClassSize.OBJECT + // the KeyValue object itself
+  public static final int FIXED_OVERHEAD = ClassSize.OBJECT + // the KeyValue object itself
       ClassSize.REFERENCE + // pointer to "bytes"
       2 * Bytes.SIZEOF_INT + // offset, length
       Bytes.SIZEOF_LONG;// memstoreTS
@@ -195,9 +197,9 @@ public class KeyValue implements ExtendedCell {
    */
   public static long getKeyValueDataStructureSize(int klength, int vlength, int tagsLength) {
     if (tagsLength == 0) {
-      return KeyValue.KEYVALUE_INFRASTRUCTURE_SIZE + klength + vlength;
+      return (long) KeyValue.KEYVALUE_INFRASTRUCTURE_SIZE + klength + vlength;
     }
-    return KeyValue.KEYVALUE_WITH_TAGS_INFRASTRUCTURE_SIZE + klength + vlength + tagsLength;
+    return (long) KeyValue.KEYVALUE_WITH_TAGS_INFRASTRUCTURE_SIZE + klength + vlength + tagsLength;
   }
 
   /**
@@ -211,7 +213,7 @@ public class KeyValue implements ExtendedCell {
    * @return the key data structure length
    */
   public static long getKeyDataStructureSize(int rlength, int flength, int qlength) {
-    return KeyValue.KEY_INFRASTRUCTURE_SIZE + rlength + flength + qlength;
+    return (long) KeyValue.KEY_INFRASTRUCTURE_SIZE + rlength + flength + qlength;
   }
 
   /**
@@ -734,9 +736,9 @@ public class KeyValue implements ExtendedCell {
   }
 
   public KeyValue(Cell c) {
-    this(c.getRowArray(), c.getRowOffset(), (int)c.getRowLength(),
-        c.getFamilyArray(), c.getFamilyOffset(), (int)c.getFamilyLength(),
-        c.getQualifierArray(), c.getQualifierOffset(), (int) c.getQualifierLength(),
+    this(c.getRowArray(), c.getRowOffset(), c.getRowLength(),
+        c.getFamilyArray(), c.getFamilyOffset(), c.getFamilyLength(),
+        c.getQualifierArray(), c.getQualifierOffset(), c.getQualifierLength(),
         c.getTimestamp(), Type.codeToType(c.getTypeByte()), c.getValueArray(), c.getValueOffset(),
         c.getValueLength(), c.getTagsArray(), c.getTagsOffset(), c.getTagsLength());
     this.seqId = c.getSequenceId();
@@ -1160,11 +1162,11 @@ public class KeyValue implements ExtendedCell {
       Bytes.toStringBinary(getQualifierArray(), getQualifierOffset(), getQualifierLength()));
     stringMap.put("timestamp", getTimestamp());
     stringMap.put("vlen", getValueLength());
-    List<Tag> tags = getTags();
+    Iterator<Tag> tags = getTags();
     if (tags != null) {
-      List<String> tagsString = new ArrayList<>(tags.size());
-      for (Tag t : tags) {
-        tagsString.add(t.toString());
+      List<String> tagsString = new ArrayList<String>();
+      while (tags.hasNext()) {
+        tagsString.add(tags.next().toString());
       }
       stringMap.put("tag", tagsString);
     }
@@ -1518,18 +1520,6 @@ public class KeyValue implements ExtendedCell {
       tagsLen -= TAGS_LENGTH_SIZE;
     }
     return tagsLen;
-  }
-
-  /**
-   * Returns any tags embedded in the KeyValue.  Used in testcases.
-   * @return The tags
-   */
-  public List<Tag> getTags() {
-    int tagsLength = getTagsLength();
-    if (tagsLength == 0) {
-      return EMPTY_ARRAY_LIST;
-    }
-    return TagUtil.asList(getTagsArray(), getTagsOffset(), tagsLength);
   }
 
   /**
@@ -2282,7 +2272,7 @@ public class KeyValue implements ExtendedCell {
     int length = kv.getLength();
     out.writeInt(length);
     out.write(kv.getBuffer(), kv.getOffset(), length);
-    return length + Bytes.SIZEOF_INT;
+    return (long) length + Bytes.SIZEOF_INT;
   }
 
   /**
@@ -2304,7 +2294,7 @@ public class KeyValue implements ExtendedCell {
   public static long oswrite(final KeyValue kv, final OutputStream out, final boolean withTags)
       throws IOException {
     ByteBufferUtils.putInt(out, kv.getSerializedSize(withTags));
-    return kv.write(out, withTags) + Bytes.SIZEOF_INT;
+    return (long) kv.write(out, withTags) + Bytes.SIZEOF_INT;
   }
 
   @Override
@@ -2350,13 +2340,12 @@ public class KeyValue implements ExtendedCell {
    */
   @Override
   public long heapSize() {
-    long sum = FIXED_OVERHEAD;
     /*
      * Deep object overhead for this KV consists of two parts. The first part is the KV object
      * itself, while the second part is the backing byte[]. We will only count the array overhead
      * from the byte[] only if this is the first KV in there.
      */
-    return ClassSize.align(sum) +
+    return ClassSize.align(FIXED_OVERHEAD) +
         (offset == 0
           ? ClassSize.sizeOfByteArray(length)  // count both length and object overhead
           : length);                           // only count the number of bytes

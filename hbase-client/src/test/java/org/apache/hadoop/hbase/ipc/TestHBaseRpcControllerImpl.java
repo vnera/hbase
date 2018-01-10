@@ -177,6 +177,12 @@ public class TestHBaseRpcControllerImpl {
                 // unused
                 return null;
               }
+
+              @Override
+              public Type getType() {
+                // unused
+                return null;
+              }
             };
           }
 

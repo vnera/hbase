@@ -23,10 +23,8 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellBuilder;
 import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.HConstants;
@@ -48,16 +46,18 @@ import org.apache.hadoop.hbase.util.MultiHConnection;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
 
 /**
  * Store Region State to hbase:meta table.
  */
 @InterfaceAudience.Private
 public class RegionStateStore {
-  private static final Log LOG = LogFactory.getLog(RegionStateStore.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RegionStateStore.class);
 
   /** The delimiter for meta columns for replicaIds &gt; 0 */
   protected static final char META_REPLICA_ID_DELIMITER = '_';
@@ -185,7 +185,7 @@ public class RegionStateStore {
           .setFamily(HConstants.CATALOG_FAMILY)
           .setQualifier(getServerNameColumn(replicaId))
           .setTimestamp(put.getTimeStamp())
-          .setType(CellBuilder.DataType.Put)
+          .setType(Cell.Type.Put)
           .setValue(Bytes.toBytes(regionLocation.getServerName()))
           .build());
       info.append(", regionLocation=").append(regionLocation);
@@ -195,10 +195,10 @@ public class RegionStateStore {
         .setFamily(HConstants.CATALOG_FAMILY)
         .setQualifier(getStateColumn(replicaId))
         .setTimestamp(put.getTimeStamp())
-        .setType(CellBuilder.DataType.Put)
+        .setType(Cell.Type.Put)
         .setValue(Bytes.toBytes(state.name()))
         .build());
-    LOG.info(info);
+    LOG.info(info.toString());
 
     final boolean serialReplication = hasSerialReplicationScope(regionInfo.getTable());
     if (serialReplication && state == State.OPEN) {

@@ -70,8 +70,6 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -149,14 +147,14 @@ import org.apache.hadoop.hbase.regionserver.throttle.NoLimitThroughputController
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputController;
 import org.apache.hadoop.hbase.regionserver.wal.WALUtil;
 import org.apache.hadoop.hbase.security.User;
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Maps;
-import org.apache.hadoop.hbase.shaded.com.google.common.io.Closeables;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.Service;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.TextFormat;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.UnsafeByteOperations;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.common.collect.Maps;
+import org.apache.hbase.thirdparty.com.google.common.io.Closeables;
+import org.apache.hbase.thirdparty.com.google.protobuf.Service;
+import org.apache.hbase.thirdparty.com.google.protobuf.TextFormat;
+import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.CoprocessorServiceCall;
@@ -198,6 +196,8 @@ import org.apache.hadoop.io.MultipleIOException;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.htrace.core.TraceScope;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
 
@@ -219,7 +219,7 @@ import edu.umd.cs.findbugs.annotations.Nullable;
 @SuppressWarnings("deprecation")
 @InterfaceAudience.Private
 public class HRegion implements HeapSize, PropagatingConfigurationObserver, Region {
-  private static final Log LOG = LogFactory.getLog(HRegion.class);
+  private static final Logger LOG = LoggerFactory.getLogger(HRegion.class);
 
   public static final String LOAD_CFS_ON_DEMAND_CONFIG_KEY =
     "hbase.hregion.scan.loadColumnFamiliesOnDemand";
@@ -4170,13 +4170,14 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     if (this.memstoreDataSize.get() > this.blockingMemStoreSize) {
       blockedRequestsCount.increment();
       requestFlush();
-      throw new RegionTooBusyException("Above memstore limit, " +
-          "regionName=" + (this.getRegionInfo() == null ? "unknown" :
-          this.getRegionInfo().getRegionNameAsString()) +
-          ", server=" + (this.getRegionServerServices() == null ? "unknown" :
+      // Don't print current limit because it will vary too much. The message is used as a key
+      // over in RetriesExhaustedWithDetailsException processing.
+      throw new RegionTooBusyException("Over memstore limit; regionName=" +
+          (this.getRegionInfo() == null? "unknown": this.getRegionInfo().getEncodedName()) +
+          ", server=" + (this.getRegionServerServices() == null ? "unknown":
           this.getRegionServerServices().getServerName()) +
-          ", memstoreSize=" + memstoreDataSize.get() +
-          ", blockingMemStoreSize=" + blockingMemStoreSize);
+          ", blockingMemStoreSize=" +
+          org.apache.hadoop.hbase.procedure2.util.StringUtils.humanSize(blockingMemStoreSize));
     }
   }
 
@@ -7585,7 +7586,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       }
       writeEntry = walKey.getWriteEntry();
     } catch (IOException ioe) {
-      if (walKey != null) {
+      if (walKey != null && walKey.getWriteEntry() != null) {
         mvcc.complete(walKey.getWriteEntry());
       }
       throw ioe;
@@ -7761,7 +7762,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
               .setTimestamp(Math.max(currentCell.getTimestamp() + 1, now))
               .setType(KeyValue.Type.Put.getCode())
               .setValue(newValue, 0, newValue.length)
-              .setTags(Tag.fromList(tags))
+              .setTags(TagUtil.fromList(tags))
               .build();
     } else {
       PrivateCellUtil.updateLatestStamp(delta, now);
@@ -8183,11 +8184,12 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       final long waitTime = Math.min(maxBusyWaitDuration,
           busyWaitDuration * Math.min(multiplier, maxBusyWaitMultiplier));
       if (!lock.tryLock(waitTime, TimeUnit.MILLISECONDS)) {
-        throw new RegionTooBusyException(
-            "failed to get a lock in " + waitTime + " ms. " +
-                "regionName=" + (this.getRegionInfo() == null ? "unknown" :
+        // Don't print millis. Message is used as a key over in
+        // RetriesExhaustedWithDetailsException processing.
+        throw new RegionTooBusyException("Failed to obtain lock; regionName=" +
+            (this.getRegionInfo() == null? "unknown":
                 this.getRegionInfo().getRegionNameAsString()) +
-                ", server=" + (this.getRegionServerServices() == null ? "unknown" :
+            ", server=" + (this.getRegionServerServices() == null? "unknown":
                 this.getRegionServerServices().getServerName()));
       }
     } catch (InterruptedException ie) {

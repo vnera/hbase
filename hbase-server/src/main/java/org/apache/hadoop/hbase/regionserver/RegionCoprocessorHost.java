@@ -32,19 +32,16 @@ import java.util.regex.Matcher;
 
 import org.apache.commons.collections4.map.AbstractReferenceMap;
 import org.apache.commons.collections4.map.ReferenceMap;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CompareOperator;
 import org.apache.hadoop.hbase.Coprocessor;
-import org.apache.hadoop.hbase.ExtendedCellBuilder;
-import org.apache.hadoop.hbase.ExtendedCellBuilderFactory;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.RawCellBuilder;
+import org.apache.hadoop.hbase.RawCellBuilderFactory;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.SharedConnection;
 import org.apache.hadoop.hbase.client.Append;
@@ -84,13 +81,15 @@ import org.apache.hadoop.hbase.regionserver.compactions.CompactionLifeCycleTrack
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest;
 import org.apache.hadoop.hbase.regionserver.querymatcher.DeleteTracker;
 import org.apache.hadoop.hbase.security.User;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CoprocessorClassLoader;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.wal.WALKey;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Implements the coprocessor environment and runtime support for coprocessors
@@ -100,7 +99,7 @@ import org.apache.yetus.audience.InterfaceAudience;
 public class RegionCoprocessorHost
     extends CoprocessorHost<RegionCoprocessor, RegionCoprocessorEnvironment> {
 
-  private static final Log LOG = LogFactory.getLog(RegionCoprocessorHost.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RegionCoprocessorHost.class);
   // The shared data map
   private static final ReferenceMap<String, ConcurrentMap<String, Object>> SHARED_DATA_MAP =
       new ReferenceMap<>(AbstractReferenceMap.ReferenceStrength.HARD,
@@ -142,6 +141,7 @@ public class RegionCoprocessorHost
       return region;
     }
 
+    @Override
     public OnlineRegions getOnlineRegions() {
       return this.services;
     }
@@ -184,10 +184,9 @@ public class RegionCoprocessorHost
     }
 
     @Override
-    public ExtendedCellBuilder getCellBuilder() {
-      // do not allow seqId update.
+    public RawCellBuilder getCellBuilder() {
       // We always do a DEEP_COPY only
-      return ExtendedCellBuilderFactory.create(CellBuilderType.DEEP_COPY, false);
+      return RawCellBuilderFactory.create();
     }
   }
 
@@ -210,6 +209,7 @@ public class RegionCoprocessorHost
      * @return An instance of RegionServerServices, an object NOT for general user-space Coprocessor
      * consumption.
      */
+    @Override
     public RegionServerServices getRegionServerServices() {
       return this.rsServices;
     }
@@ -553,7 +553,7 @@ public class RegionCoprocessorHost
         }
       });
     } catch (IOException e) {
-      LOG.warn(e);
+      LOG.warn(e.toString(), e);
     }
   }
 
@@ -588,7 +588,7 @@ public class RegionCoprocessorHost
         }
       });
     } catch (IOException e) {
-      LOG.warn(e);
+      LOG.warn(e.toString(), e);
     }
   }
 

@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hbase.client;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
@@ -895,6 +895,7 @@ public class ColumnFamilyDescriptorBuilder {
      * will mask a later Put with lower ts. Set this to true to enable new semantics of versions.
      * We will also consider mvcc in versions. See HBASE-15968 for details.
      */
+    @Override
     public boolean isNewVersionBehavior() {
       return getStringOrDefault(NEW_VERSION_BEHAVIOR_BYTES,
           Boolean::parseBoolean, DEFAULT_NEW_VERSION_BEHAVIOR);

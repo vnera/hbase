@@ -33,9 +33,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -101,9 +98,10 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.junit.rules.TestRule;
-
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.protobuf.RpcController;
+import org.apache.hbase.thirdparty.com.google.protobuf.ServiceException;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionStateTransition.TransitionCode;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionRequest;
@@ -115,7 +113,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProto
 @Category({RegionServerTests.class, LargeTests.class})
 @SuppressWarnings("deprecation")
 public class TestSplitTransactionOnCluster {
-  private static final Log LOG = LogFactory.getLog(TestSplitTransactionOnCluster.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestSplitTransactionOnCluster.class);
   @Rule public final TestRule timeout = CategoryBasedTimeout.builder().withTimeout(this.getClass()).
       withLookingForStuckThread(true).build();
   private Admin admin = null;
@@ -313,7 +311,7 @@ public class TestSplitTransactionOnCluster {
       // Get region pre-split.
       HRegionServer server = cluster.getRegionServer(tableRegionIndex);
       printOutRegions(server, "Initial regions: ");
-      int regionCount = ProtobufUtil.getOnlineRegions(server.getRSRpcServices()).size();
+      int regionCount = cluster.getRegions(hri.getTable()).size();
       regionStates.updateRegionState(hri, RegionState.State.CLOSING);
 
       // Now try splitting.... should fail.  And each should successfully
@@ -324,8 +322,7 @@ public class TestSplitTransactionOnCluster {
       // Wait around a while and assert count of regions remains constant.
       for (int i = 0; i < 10; i++) {
         Thread.sleep(100);
-        assertEquals(regionCount, ProtobufUtil.getOnlineRegions(
-          server.getRSRpcServices()).size());
+        assertEquals(regionCount, cluster.getRegions(hri.getTable()).size());
       }
       regionStates.updateRegionState(hri, State.OPEN);
       // Now try splitting and it should work.
@@ -367,13 +364,13 @@ public class TestSplitTransactionOnCluster {
       // Get region pre-split.
       HRegionServer server = cluster.getRegionServer(tableRegionIndex);
       printOutRegions(server, "Initial regions: ");
-      int regionCount = ProtobufUtil.getOnlineRegions(server.getRSRpcServices()).size();
+      int regionCount = cluster.getRegions(hri.getTable()).size();
       // Now split.
       split(hri, server, regionCount);
       // Get daughters
       List<HRegion> daughters = checkAndGetDaughters(tableName);
       // Now split one of the daughters.
-      regionCount = ProtobufUtil.getOnlineRegions(server.getRSRpcServices()).size();
+      regionCount = cluster.getRegions(hri.getTable()).size();
       RegionInfo daughter = daughters.get(0).getRegionInfo();
       LOG.info("Daughter we are going to split: " + daughter);
       // Compact first to ensure we have cleaned up references -- else the split
@@ -716,7 +713,7 @@ public class TestSplitTransactionOnCluster {
       assertTrue(regionStates.isRegionInState(daughters.get(1).getRegionInfo(), State.OPEN));
 
       // We should not be able to assign it again
-      am.assign(hri, true);
+      am.assign(hri);
       assertFalse("Split region can't be assigned",
         regionStates.isRegionInTransition(hri));
       assertTrue(regionStates.isRegionInState(hri, State.SPLIT));
@@ -809,14 +806,13 @@ public class TestSplitTransactionOnCluster {
 
   private void split(final RegionInfo hri, final HRegionServer server, final int regionCount)
       throws IOException, InterruptedException {
-    this.admin.splitRegion(hri.getRegionName());
-    for (int i = 0; this.cluster.getRegions(hri.getTable()).size() <= regionCount && i < 60; i++) {
+    admin.splitRegion(hri.getRegionName());
+    for (int i = 0; cluster.getRegions(hri.getTable()).size() <= regionCount && i < 60; i++) {
       LOG.debug("Waiting on region " + hri.getRegionNameAsString() + " to split");
       Thread.sleep(2000);
     }
-
     assertFalse("Waited too long for split",
-      this.cluster.getRegions(hri.getTable()).size() <= regionCount);
+        cluster.getRegions(hri.getTable()).size() <= regionCount);
   }
 
   /**
@@ -907,13 +903,14 @@ public class TestSplitTransactionOnCluster {
 
   private void waitUntilRegionServerDead() throws InterruptedException, IOException {
     // Wait until the master processes the RS shutdown
-    for (int i=0; (cluster.getMaster().getClusterStatus().getServers().size() > NB_SERVERS
+    for (int i=0; (cluster.getMaster().getClusterMetrics()
+        .getLiveServerMetrics().size() > NB_SERVERS
         || cluster.getLiveRegionServerThreads().size() > NB_SERVERS) && i<100; i++) {
       LOG.info("Waiting on server to go down");
       Thread.sleep(100);
     }
     assertFalse("Waited too long for RS to die",
-      cluster.getMaster().getClusterStatus(). getServers().size() > NB_SERVERS
+      cluster.getMaster().getClusterMetrics(). getLiveServerMetrics().size() > NB_SERVERS
         || cluster.getLiveRegionServerThreads().size() > NB_SERVERS);
   }
 

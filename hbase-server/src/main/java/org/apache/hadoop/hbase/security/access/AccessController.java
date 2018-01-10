@@ -22,7 +22,6 @@ import com.google.protobuf.Message;
 import com.google.protobuf.RpcCallback;
 import com.google.protobuf.RpcController;
 import com.google.protobuf.Service;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.security.PrivilegedExceptionAction;
@@ -38,9 +37,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ArrayBackedTag;
 import org.apache.hadoop.hbase.Cell;
@@ -123,13 +119,13 @@ import org.apache.hadoop.hbase.security.Superusers;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.security.access.Permission.Action;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ArrayListMultimap;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableSet;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ListMultimap;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.MapMaker;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Maps;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Sets;
+import org.apache.hbase.thirdparty.com.google.common.collect.ArrayListMultimap;
+import org.apache.hbase.thirdparty.com.google.common.collect.ImmutableSet;
+import org.apache.hbase.thirdparty.com.google.common.collect.ListMultimap;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.common.collect.MapMaker;
+import org.apache.hbase.thirdparty.com.google.common.collect.Maps;
+import org.apache.hbase.thirdparty.com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
 import org.apache.hadoop.hbase.util.ByteRange;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -139,6 +135,8 @@ import org.apache.hadoop.hbase.util.SimpleMutableByteRange;
 import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Provides basic authorization checks for data access and administrative
@@ -180,10 +178,10 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
     MasterObserver, RegionObserver, RegionServerObserver, EndpointObserver, BulkLoadObserver {
   // TODO: encapsulate observer functions into separate class/sub-class.
 
-  private static final Log LOG = LogFactory.getLog(AccessController.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AccessController.class);
 
-  private static final Log AUDITLOG =
-    LogFactory.getLog("SecurityLogger."+AccessController.class.getName());
+  private static final Logger AUDITLOG =
+    LoggerFactory.getLogger("SecurityLogger."+AccessController.class.getName());
   private static final String CHECK_COVERING_PERM = "check_covering_perm";
   private static final String TAG_CHECK_PASSED = "tag_check_passed";
   private static final byte[] TRUE = Bytes.toBytes(true);
@@ -2749,12 +2747,6 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
   public void preLockHeartbeat(ObserverContext<MasterCoprocessorEnvironment> ctx,
       TableName tableName, String description) throws IOException {
     checkLockPermissions(getActiveUser(ctx), null, tableName, null, description);
-  }
-
-  @Override
-  public void preGetClusterStatus(final ObserverContext<MasterCoprocessorEnvironment> ctx)
-      throws IOException {
-    requirePermission(getActiveUser(ctx), "getClusterStatus", Action.ADMIN);
   }
 
   private void checkLockPermissions(User user, String namespace,

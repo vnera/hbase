@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hbase;
 
-import java.util.List;
+import java.util.Iterator;
 import java.util.Optional;
 
 import org.apache.yetus.audience.InterfaceAudience;
@@ -41,8 +41,8 @@ public interface RawCell extends Cell {
    * Creates a list of tags in the current cell
    * @return a list of tags
    */
-  default List<Tag> getTags() {
-    return PrivateCellUtil.getTags(this);
+  default Iterator<Tag> getTags() {
+    return PrivateCellUtil.tagsIterator(this);
   }
 
   /**
@@ -50,7 +50,6 @@ public interface RawCell extends Cell {
    * @param type the type of the tag
    * @return the specific tag if available or null
    */
-  // TODO : Move to individual cell impl
   default Optional<Tag> getTag(byte type) {
     return PrivateCellUtil.getTag(this, type);
   }

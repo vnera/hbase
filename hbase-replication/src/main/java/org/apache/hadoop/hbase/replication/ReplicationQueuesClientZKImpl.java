@@ -21,24 +21,24 @@ package org.apache.hadoop.hbase.replication;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableSet;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Sets;
+import org.apache.hbase.thirdparty.com.google.common.collect.ImmutableSet;
+import org.apache.hbase.thirdparty.com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Stat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @InterfaceAudience.Private
 public class ReplicationQueuesClientZKImpl extends ReplicationStateZKBase implements
     ReplicationQueuesClient {
 
-  Log LOG = LogFactory.getLog(ReplicationQueuesClientZKImpl.class);
+  Logger LOG = LoggerFactory.getLogger(ReplicationQueuesClientZKImpl.class);
 
   public ReplicationQueuesClientZKImpl(ReplicationQueuesClientArguments args) {
     this(args.getZk(), args.getConf(), args.getAbortable());

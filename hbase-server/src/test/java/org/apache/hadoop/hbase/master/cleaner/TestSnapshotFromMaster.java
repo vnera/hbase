@@ -26,8 +26,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -67,11 +65,12 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.mockito.Mockito;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 
 /**
  * Test the master-related aspects of a snapshot
@@ -79,7 +78,7 @@ import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
 @Category({MasterTests.class, MediumTests.class})
 public class TestSnapshotFromMaster {
 
-  private static final Log LOG = LogFactory.getLog(TestSnapshotFromMaster.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestSnapshotFromMaster.class);
   private static final HBaseTestingUtility UTIL = new HBaseTestingUtility();
   private static final int NUM_RS = 2;
   private static Path rootDir;
@@ -258,7 +257,7 @@ public class TestSnapshotFromMaster {
     try {
       master.getMasterRpcServices().deleteSnapshot(null, request);
       fail("Master didn't throw exception when attempting to delete snapshot that doesn't exist");
-    } catch (org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException e) {
+    } catch (org.apache.hbase.thirdparty.com.google.protobuf.ServiceException e) {
       // Expected
     }
 

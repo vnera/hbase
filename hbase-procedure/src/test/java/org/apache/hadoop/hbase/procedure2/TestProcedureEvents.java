@@ -21,14 +21,12 @@ package org.apache.hadoop.hbase.procedure2;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseCommonTestingUtility;
 import org.apache.hadoop.hbase.procedure2.ProcedureTestingUtility.NoopProcedure;
 import org.apache.hadoop.hbase.procedure2.store.ProcedureStore;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.Int32Value;
+import org.apache.hbase.thirdparty.com.google.protobuf.Int32Value;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ProcedureProtos.ProcedureState;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.testclassification.MasterTests;
@@ -37,12 +35,14 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static org.junit.Assert.assertEquals;
 
 @Category({MasterTests.class, SmallTests.class})
 public class TestProcedureEvents {
-  private static final Log LOG = LogFactory.getLog(TestProcedureEvents.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestProcedureEvents.class);
 
   private TestProcEnv procEnv;
   private ProcedureStore procStore;

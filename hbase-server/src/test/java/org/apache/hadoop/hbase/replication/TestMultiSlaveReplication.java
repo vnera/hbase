@@ -30,8 +30,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.*;
@@ -53,11 +51,13 @@ import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category({ReplicationTests.class, LargeTests.class})
 public class TestMultiSlaveReplication {
 
-  private static final Log LOG = LogFactory.getLog(TestReplicationBase.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestReplicationBase.class);
 
   private static Configuration conf1;
   private static Configuration conf2;
@@ -94,8 +94,6 @@ public class TestMultiSlaveReplication {
     conf1.setStrings(CoprocessorHost.USER_REGION_COPROCESSOR_CONF_KEY,
         "org.apache.hadoop.hbase.replication.TestMasterReplication$CoprocessorCounter");
     conf1.setInt("hbase.master.cleaner.interval", 5 * 1000);
-    conf1.setClass("hbase.region.replica.replication.replicationQueues.class",
-        ReplicationQueuesZKImpl.class, ReplicationQueues.class);
 
     utility1 = new HBaseTestingUtility(conf1);
     utility1.startMiniZKCluster();

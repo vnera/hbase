@@ -19,15 +19,11 @@ package org.apache.hadoop.hbase.client;
 
 import static org.apache.hadoop.hbase.TableName.META_TABLE_NAME;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
 import com.google.protobuf.Message;
 import com.google.protobuf.RpcChannel;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -43,21 +39,20 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.AsyncMetaTableAccessor;
-import org.apache.hadoop.hbase.ClusterStatus;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
+import org.apache.hadoop.hbase.ClusterMetrics;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
+import org.apache.hadoop.hbase.ClusterMetricsBuilder;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.MetaTableAccessor;
 import org.apache.hadoop.hbase.MetaTableAccessor.QueryType;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
-import org.apache.hadoop.hbase.RegionLoad;
 import org.apache.hadoop.hbase.RegionLocations;
+import org.apache.hadoop.hbase.RegionMetrics;
+import org.apache.hadoop.hbase.RegionMetricsBuilder;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableExistsException;
 import org.apache.hadoop.hbase.TableName;
@@ -87,11 +82,16 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.ForeignExceptionUtil;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcCallback;
-import org.apache.hadoop.hbase.shaded.io.netty.util.HashedWheelTimer;
-import org.apache.hadoop.hbase.shaded.io.netty.util.Timeout;
-import org.apache.hadoop.hbase.shaded.io.netty.util.TimerTask;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
+import org.apache.hbase.thirdparty.com.google.protobuf.RpcCallback;
+import org.apache.hbase.thirdparty.io.netty.util.HashedWheelTimer;
+import org.apache.hbase.thirdparty.io.netty.util.Timeout;
+import org.apache.hbase.thirdparty.io.netty.util.TimerTask;
+
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.AdminService;
@@ -270,7 +270,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos;
 class RawAsyncHBaseAdmin implements AsyncAdmin {
   public static final String FLUSH_TABLE_PROCEDURE_SIGNATURE = "flush-table-proc";
 
-  private static final Log LOG = LogFactory.getLog(AsyncHBaseAdmin.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AsyncHBaseAdmin.class);
 
   private final AsyncConnectionImpl connection;
 
@@ -1595,7 +1595,7 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
 
   @Override
   public CompletableFuture<Void> appendReplicationPeerTableCFs(String id,
-      Map<TableName, ? extends Collection<String>> tableCfs) {
+      Map<TableName, List<String>> tableCfs) {
     if (tableCfs == null) {
       return failedFuture(new ReplicationException("tableCfs is null"));
     }
@@ -1603,8 +1603,9 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
     CompletableFuture<Void> future = new CompletableFuture<Void>();
     getReplicationPeerConfig(id).whenComplete((peerConfig, error) -> {
       if (!completeExceptionally(future, error)) {
-        ReplicationPeerConfigUtil.appendTableCFsToReplicationPeerConfig(tableCfs, peerConfig);
-        updateReplicationPeerConfig(id, peerConfig).whenComplete((result, err) -> {
+        ReplicationPeerConfig newPeerConfig =
+            ReplicationPeerConfigUtil.appendTableCFsToReplicationPeerConfig(tableCfs, peerConfig);
+        updateReplicationPeerConfig(id, newPeerConfig).whenComplete((result, err) -> {
           if (!completeExceptionally(future, error)) {
             future.complete(result);
           }
@@ -1616,7 +1617,7 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
 
   @Override
   public CompletableFuture<Void> removeReplicationPeerTableCFs(String id,
-      Map<TableName, ? extends Collection<String>> tableCfs) {
+      Map<TableName, List<String>> tableCfs) {
     if (tableCfs == null) {
       return failedFuture(new ReplicationException("tableCfs is null"));
     }
@@ -1625,14 +1626,15 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
     getReplicationPeerConfig(id).whenComplete(
       (peerConfig, error) -> {
         if (!completeExceptionally(future, error)) {
+          ReplicationPeerConfig newPeerConfig = null;
           try {
-            ReplicationPeerConfigUtil.removeTableCFsFromReplicationPeerConfig(tableCfs, peerConfig,
-              id);
+            newPeerConfig = ReplicationPeerConfigUtil
+                .removeTableCFsFromReplicationPeerConfig(tableCfs, peerConfig, id);
           } catch (ReplicationException e) {
             future.completeExceptionally(e);
             return;
           }
-          updateReplicationPeerConfig(id, peerConfig).whenComplete((result, err) -> {
+          updateReplicationPeerConfig(id, newPeerConfig).whenComplete((result, err) -> {
             if (!completeExceptionally(future, error)) {
               future.complete(result);
             }
@@ -2554,40 +2556,36 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
         future.completeExceptionally(error);
         return;
       }
-      getProcedureResult(procId, future);
+      getProcedureResult(procId, future, 0);
     });
     return future;
   }
 
-  private void getProcedureResult(final long procId, CompletableFuture<Void> future) {
-    this.<GetProcedureResultResponse> newMasterCaller()
-        .action(
-          (controller, stub) -> this
-              .<GetProcedureResultRequest, GetProcedureResultResponse, GetProcedureResultResponse> call(
-                controller, stub, GetProcedureResultRequest.newBuilder().setProcId(procId).build(),
-                (s, c, req, done) -> s.getProcedureResult(c, req, done), (resp) -> resp))
-        .call()
-        .whenComplete(
-          (response, error) -> {
-            if (error != null) {
-              LOG.warn("failed to get the procedure result procId=" + procId,
-                ConnectionUtils.translateException(error));
-              retryTimer.newTimeout(t -> getProcedureResult(procId, future), pauseNs,
-                TimeUnit.NANOSECONDS);
-              return;
-            }
-            if (response.getState() == GetProcedureResultResponse.State.RUNNING) {
-              retryTimer.newTimeout(t -> getProcedureResult(procId, future), pauseNs,
-                TimeUnit.NANOSECONDS);
-              return;
-            }
-            if (response.hasException()) {
-              IOException ioe = ForeignExceptionUtil.toIOException(response.getException());
-              future.completeExceptionally(ioe);
-            } else {
-              future.complete(null);
-            }
-          });
+  private void getProcedureResult(long procId, CompletableFuture<Void> future, int retries) {
+    this.<GetProcedureResultResponse> newMasterCaller().action((controller, stub) -> this
+        .<GetProcedureResultRequest, GetProcedureResultResponse, GetProcedureResultResponse> call(
+          controller, stub, GetProcedureResultRequest.newBuilder().setProcId(procId).build(),
+          (s, c, req, done) -> s.getProcedureResult(c, req, done), (resp) -> resp))
+        .call().whenComplete((response, error) -> {
+          if (error != null) {
+            LOG.warn("failed to get the procedure result procId={}", procId,
+              ConnectionUtils.translateException(error));
+            retryTimer.newTimeout(t -> getProcedureResult(procId, future, retries + 1),
+              ConnectionUtils.getPauseTime(pauseNs, retries), TimeUnit.NANOSECONDS);
+            return;
+          }
+          if (response.getState() == GetProcedureResultResponse.State.RUNNING) {
+            retryTimer.newTimeout(t -> getProcedureResult(procId, future, retries + 1),
+              ConnectionUtils.getPauseTime(pauseNs, retries), TimeUnit.NANOSECONDS);
+            return;
+          }
+          if (response.hasException()) {
+            IOException ioe = ForeignExceptionUtil.toIOException(response.getException());
+            future.completeExceptionally(ioe);
+          } else {
+            future.complete(null);
+          }
+        });
   }
 
   private <T> CompletableFuture<T> failedFuture(Throwable error) {
@@ -2605,20 +2603,20 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
   }
 
   @Override
-  public CompletableFuture<ClusterStatus> getClusterStatus() {
-    return getClusterStatus(EnumSet.allOf(Option.class));
+  public CompletableFuture<ClusterMetrics> getClusterMetrics() {
+    return getClusterMetrics(EnumSet.allOf(Option.class));
   }
 
   @Override
-  public CompletableFuture<ClusterStatus>getClusterStatus(EnumSet<Option> options) {
+  public CompletableFuture<ClusterMetrics> getClusterMetrics(EnumSet<Option> options) {
     return this
-        .<ClusterStatus> newMasterCaller()
+        .<ClusterMetrics> newMasterCaller()
         .action(
           (controller, stub) -> this
-              .<GetClusterStatusRequest, GetClusterStatusResponse, ClusterStatus> call(controller,
+              .<GetClusterStatusRequest, GetClusterStatusResponse, ClusterMetrics> call(controller,
                 stub, RequestConverter.buildGetClusterStatusRequest(options),
                 (s, c, req, done) -> s.getClusterStatus(c, req, done),
-                resp -> ProtobufUtil.convert(resp.getClusterStatus()))).call();
+                resp -> ClusterMetricsBuilder.toClusterMetrics(resp.getClusterStatus()))).call();
   }
 
   @Override
@@ -2669,17 +2667,16 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
   @Override
   public CompletableFuture<Void> updateConfiguration() {
     CompletableFuture<Void> future = new CompletableFuture<Void>();
-    getClusterStatus(
-      EnumSet.of(Option.LIVE_SERVERS, Option.MASTER, Option.BACKUP_MASTERS))
-          .whenComplete(
-      (status, err) -> {
+    getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS, Option.MASTER, Option.BACKUP_MASTERS))
+      .whenComplete((status, err) -> {
         if (err != null) {
           future.completeExceptionally(err);
         } else {
           List<CompletableFuture<Void>> futures = new ArrayList<>();
-          status.getServers().forEach((server) -> futures.add(updateConfiguration(server)));
-          futures.add(updateConfiguration(status.getMaster()));
-          status.getBackupMasters().forEach(master -> futures.add(updateConfiguration(master)));
+          status.getLiveServerMetrics().keySet()
+              .forEach(server -> futures.add(updateConfiguration(server)));
+          futures.add(updateConfiguration(status.getMasterName()));
+          status.getBackupMasterNames().forEach(master -> futures.add(updateConfiguration(master)));
           CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[futures.size()]))
               .whenComplete((result, err2) -> {
                 if (err2 != null) {
@@ -2729,25 +2726,25 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
   }
 
   @Override
-  public CompletableFuture<List<RegionLoad>> getRegionLoads(ServerName serverName) {
-    return getRegionLoad(GetRegionLoadRequest.newBuilder().build(), serverName);
+  public CompletableFuture<List<RegionMetrics>> getRegionMetrics(ServerName serverName) {
+    return getRegionMetrics(GetRegionLoadRequest.newBuilder().build(), serverName);
   }
 
   @Override
-  public CompletableFuture<List<RegionLoad>> getRegionLoads(ServerName serverName,
+  public CompletableFuture<List<RegionMetrics>> getRegionMetrics(ServerName serverName,
       TableName tableName) {
     Preconditions.checkNotNull(tableName,
       "tableName is null. If you don't specify a tableName, use getRegionLoads() instead");
-    return getRegionLoad(RequestConverter.buildGetRegionLoadRequest(tableName), serverName);
+    return getRegionMetrics(RequestConverter.buildGetRegionLoadRequest(tableName), serverName);
   }
 
-  private CompletableFuture<List<RegionLoad>> getRegionLoad(GetRegionLoadRequest request,
+  private CompletableFuture<List<RegionMetrics>> getRegionMetrics(GetRegionLoadRequest request,
       ServerName serverName) {
-    return this.<List<RegionLoad>> newAdminCaller()
+    return this.<List<RegionMetrics>> newAdminCaller()
         .action((controller, stub) -> this
-            .<GetRegionLoadRequest, GetRegionLoadResponse, List<RegionLoad>> adminCall(controller,
-              stub, request, (s, c, req, done) -> s.getRegionLoad(controller, req, done),
-              ProtobufUtil::getRegionLoadInfo))
+            .<GetRegionLoadRequest, GetRegionLoadResponse, List<RegionMetrics>>
+              adminCall(controller, stub, request, (s, c, req, done) ->
+                s.getRegionLoad(controller, req, done), RegionMetricsBuilder::toRegionMetrics))
         .serverName(serverName).call();
   }
 

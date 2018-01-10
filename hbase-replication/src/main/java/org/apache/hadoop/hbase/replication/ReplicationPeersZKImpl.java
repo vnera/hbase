@@ -28,8 +28,6 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.CompoundConfiguration;
@@ -47,6 +45,8 @@ import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class provides an implementation of the ReplicationPeers interface using ZooKeeper. The
@@ -82,7 +82,7 @@ public class ReplicationPeersZKImpl extends ReplicationStateZKBase implements Re
   private final ReplicationQueuesClient queuesClient;
   private Abortable abortable;
 
-  private static final Log LOG = LogFactory.getLog(ReplicationPeersZKImpl.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ReplicationPeersZKImpl.class);
 
   public ReplicationPeersZKImpl(final ZKWatcher zk, final Configuration conf,
                                 final ReplicationQueuesClient queuesClient, Abortable abortable) {
@@ -361,18 +361,20 @@ public class ReplicationPeersZKImpl extends ReplicationStateZKBase implements Re
           + existingConfig.getReplicationEndpointImpl()
           + "' does not match new class '" + newConfig.getReplicationEndpointImpl() + "'");
     }
-    //Update existingConfig's peer config and peer data with the new values, but don't touch config
+    // Update existingConfig's peer config and peer data with the new values, but don't touch config
     // or data that weren't explicitly changed
-    existingConfig.getConfiguration().putAll(newConfig.getConfiguration());
-    existingConfig.getPeerData().putAll(newConfig.getPeerData());
-    existingConfig.setTableCFsMap(newConfig.getTableCFsMap());
-    existingConfig.setNamespaces(newConfig.getNamespaces());
-    existingConfig.setBandwidth(newConfig.getBandwidth());
-    existingConfig.setReplicateAllUserTables(newConfig.replicateAllUserTables());
+    ReplicationPeerConfigBuilder builder = ReplicationPeerConfig.newBuilder(existingConfig);
+    builder.putAllConfiguration(newConfig.getConfiguration())
+        .putAllPeerData(newConfig.getPeerData())
+        .setReplicateAllUserTables(newConfig.replicateAllUserTables())
+        .setNamespaces(newConfig.getNamespaces()).setTableCFsMap(newConfig.getTableCFsMap())
+        .setExcludeNamespaces(newConfig.getExcludeNamespaces())
+        .setExcludeTableCFsMap(newConfig.getExcludeTableCFsMap())
+        .setBandwidth(newConfig.getBandwidth());
 
     try {
       ZKUtil.setData(this.zookeeper, getPeerNode(id),
-          ReplicationPeerConfigUtil.toByteArray(existingConfig));
+          ReplicationPeerConfigUtil.toByteArray(builder.build()));
     }
     catch(KeeperException ke){
       throw new ReplicationException("There was a problem trying to save changes to the " +

@@ -19,11 +19,18 @@
  */
 package org.apache.hadoop.hbase;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Maps;
-import org.apache.hadoop.hbase.ClusterStatus.Option;
+import java.io.IOException;
+import java.util.Collection;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
+import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
@@ -34,11 +41,8 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
-import java.io.IOException;
-import java.util.Collection;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.common.collect.Maps;
 
 @Category({MiscTests.class, MediumTests.class})
 public class TestRegionLoad {
@@ -81,9 +85,10 @@ public class TestRegionLoad {
 
     // Check if regions match with the regionLoad from the server
     for (ServerName serverName : admin
-        .getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers()) {
+        .getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS)).getLiveServerMetrics().keySet()) {
       List<HRegionInfo> regions = admin.getOnlineRegions(serverName);
-      Collection<RegionLoad> regionLoads = admin.getRegionLoad(serverName).values();
+      Collection<RegionLoad> regionLoads = admin.getRegionMetrics(serverName)
+        .stream().map(r -> new RegionLoad(r)).collect(Collectors.toList());
       checkRegionsAndRegionLoads(regions, regionLoads);
     }
 
@@ -93,17 +98,23 @@ public class TestRegionLoad {
 
       List<RegionLoad> regionLoads = Lists.newArrayList();
       for (ServerName serverName : admin
-          .getClusterStatus(EnumSet.of(Option.LIVE_SERVERS)).getServers()) {
-        regionLoads.addAll(admin.getRegionLoad(serverName, table).values());
+          .getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS)).getLiveServerMetrics().keySet()) {
+        regionLoads.addAll(admin.getRegionMetrics(serverName, table)
+          .stream().map(r -> new RegionLoad(r)).collect(Collectors.toList()));
       }
       checkRegionsAndRegionLoads(tableRegions, regionLoads);
     }
 
     // Check RegionLoad matches the regionLoad from ClusterStatus
-    ClusterStatus clusterStatus = admin.getClusterStatus(EnumSet.of(Option.LIVE_SERVERS));
+    ClusterStatus clusterStatus
+      = new ClusterStatus(admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS)));
     for (ServerName serverName : clusterStatus.getServers()) {
       ServerLoad serverLoad = clusterStatus.getLoad(serverName);
-      Map<byte[], RegionLoad> regionLoads = admin.getRegionLoad(serverName);
+      Map<byte[], RegionLoad> regionLoads = admin.getRegionMetrics(serverName).stream()
+        .collect(Collectors.toMap(e -> e.getRegionName(), e -> new RegionLoad(e),
+          (v1, v2) -> {
+            throw new RuntimeException("impossible!!");
+          }, () -> new TreeMap<>(Bytes.BYTES_COMPARATOR)));
       compareRegionLoads(serverLoad.getRegionsLoad(), regionLoads);
     }
   }
@@ -123,6 +134,10 @@ public class TestRegionLoad {
 
   private void checkRegionsAndRegionLoads(Collection<HRegionInfo> regions,
       Collection<RegionLoad> regionLoads) {
+
+    for (RegionLoad load : regionLoads) {
+      assertNotNull(load.regionLoadPB);
+    }
 
     assertEquals("No of regions and regionloads doesn't match",
         regions.size(), regionLoads.size());

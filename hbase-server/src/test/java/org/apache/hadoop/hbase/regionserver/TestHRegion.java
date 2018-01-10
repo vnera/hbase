@@ -29,9 +29,9 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyBoolean;
-import static org.mockito.Matchers.anyLong;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -51,6 +51,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -64,8 +65,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -74,7 +73,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.ArrayBackedTag;
 import org.apache.hadoop.hbase.CategoryBasedTimeout;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.CellBuilder;
+import org.apache.hadoop.hbase.Cell.Type;
 import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellUtil;
@@ -89,7 +88,6 @@ import org.apache.hadoop.hbase.HConstants.OperationStatusCode;
 import org.apache.hadoop.hbase.HDFSBlocksDistribution;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValueUtil;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
@@ -97,12 +95,14 @@ import org.apache.hadoop.hbase.MultithreadedTestUtil;
 import org.apache.hadoop.hbase.MultithreadedTestUtil.RepeatingTestThread;
 import org.apache.hadoop.hbase.MultithreadedTestUtil.TestThread;
 import org.apache.hadoop.hbase.NotServingRegionException;
+import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.RegionTooBusyException;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TagType;
 import org.apache.hadoop.hbase.Waiter;
 import org.apache.hadoop.hbase.client.Append;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Durability;
 import org.apache.hadoop.hbase.client.Get;
@@ -137,6 +137,7 @@ import org.apache.hadoop.hbase.regionserver.HRegion.MutationBatchOperation;
 import org.apache.hadoop.hbase.regionserver.HRegion.RegionScannerImpl;
 import org.apache.hadoop.hbase.regionserver.Region.RowLock;
 import org.apache.hadoop.hbase.regionserver.TestHStore.FaultyFileSystem;
+import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequestImpl;
 import org.apache.hadoop.hbase.regionserver.wal.FSHLog;
 import org.apache.hadoop.hbase.regionserver.wal.MetricsWAL;
 import org.apache.hadoop.hbase.regionserver.wal.MetricsWALSource;
@@ -158,7 +159,6 @@ import org.apache.hadoop.hbase.wal.FaultyFSLog;
 import org.apache.hadoop.hbase.wal.WAL;
 import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.wal.WALFactory;
-import org.apache.hadoop.hbase.wal.WALKey;
 import org.apache.hadoop.hbase.wal.WALKeyImpl;
 import org.apache.hadoop.hbase.wal.WALProvider;
 import org.apache.hadoop.hbase.wal.WALProvider.Writer;
@@ -178,9 +178,10 @@ import org.mockito.ArgumentMatcher;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.ByteString;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.protobuf.ByteString;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.CompactionDescriptor;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.FlushDescriptor;
@@ -200,7 +201,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.StoreDescript
 public class TestHRegion {
   // Do not spin up clusters in here. If you need to spin up a cluster, do it
   // over in TestHRegionOnCluster.
-  private static final Log LOG = LogFactory.getLog(TestHRegion.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestHRegion.class);
   @Rule
   public TestName name = new TestName();
   @ClassRule
@@ -844,6 +845,7 @@ public class TestHRegion {
   }
 
   public void testRecoveredEditsReplayCompaction(boolean mismatchedRegionName) throws Exception {
+    CONF.setClass(HConstants.REGION_IMPL, HRegionForTesting.class, Region.class);
     byte[] family = Bytes.toBytes("family");
     this.region = initHRegion(tableName, method, CONF, family);
     final WALFactory wals = new WALFactory(CONF, null, method);
@@ -928,7 +930,7 @@ public class TestHRegion {
       // now check whether we have only one store file, the compacted one
       Collection<HStoreFile> sfs = region.getStore(family).getStorefiles();
       for (HStoreFile sf : sfs) {
-        LOG.info(sf.getPath());
+        LOG.info(Objects.toString(sf.getPath()));
       }
       if (!mismatchedRegionName) {
         assertEquals(1, region.getStore(family).getStorefilesCount());
@@ -946,6 +948,7 @@ public class TestHRegion {
       HBaseTestingUtility.closeRegionAndWAL(this.region);
       this.region = null;
       wals.close();
+      CONF.setClass(HConstants.REGION_IMPL, HRegion.class, Region.class);
     }
   }
 
@@ -1082,7 +1085,7 @@ public class TestHRegion {
         try {
           desc = WALEdit.getFlushDescriptor(cells.get(0));
         } catch (IOException e) {
-          LOG.warn(e);
+          LOG.warn(e.toString(), e);
           return false;
         }
         if (desc != null) {
@@ -2144,8 +2147,8 @@ public class TestHRegion {
     byte[] value = Bytes.toBytes("value");
 
     Put put = new Put(row1);
-    put.addColumn(fam1, qual, (long) 1, value);
-    put.addColumn(fam1, qual, (long) 2, value);
+    put.addColumn(fam1, qual, 1, value);
+    put.addColumn(fam1, qual, 2, value);
 
     this.region = initHRegion(tableName, method, CONF, fam1);
     try {
@@ -2592,7 +2595,7 @@ public class TestHRegion {
       // extract the key values out the memstore:
       // This is kinda hacky, but better than nothing...
       long now = System.currentTimeMillis();
-      AbstractMemStore memstore = (AbstractMemStore)((HStore) region.getStore(fam1)).memstore;
+      AbstractMemStore memstore = (AbstractMemStore)region.getStore(fam1).memstore;
       Cell firstCell = memstore.getActive().first();
       assertTrue(firstCell.getTimestamp() <= now);
       now = firstCell.getTimestamp();
@@ -3880,7 +3883,7 @@ public class TestHRegion {
             byte[] value = Bytes.toBytes(String.valueOf(numPutsFinished));
             for (byte[] family : families) {
               for (byte[] qualifier : qualifiers) {
-                put.addColumn(family, qualifier, (long) numPutsFinished, value);
+                put.addColumn(family, qualifier, numPutsFinished, value);
               }
             }
             region.put(put);
@@ -4116,7 +4119,7 @@ public class TestHRegion {
         region.flush(true);
       }
       // before compaction
-      HStore store = (HStore) region.getStore(fam1);
+      HStore store = region.getStore(fam1);
       Collection<HStoreFile> storeFiles = store.getStorefiles();
       for (HStoreFile storefile : storeFiles) {
         StoreFileReader reader = storefile.getReader();
@@ -4209,7 +4212,7 @@ public class TestHRegion {
       byte col[] = Bytes.toBytes("col1");
 
       Put put = new Put(row);
-      put.addColumn(familyName, col, (long) 1, Bytes.toBytes("SomeRandomValue"));
+      put.addColumn(familyName, col, 1, Bytes.toBytes("SomeRandomValue"));
       region.put(put);
       region.flush(true);
 
@@ -4256,8 +4259,8 @@ public class TestHRegion {
       byte col[] = Bytes.toBytes("col1");
 
       Put put = new Put(row);
-      put.addColumn(fam1, col, (long) 1, Bytes.toBytes("test1"));
-      put.addColumn(fam2, col, (long) 1, Bytes.toBytes("test2"));
+      put.addColumn(fam1, col, 1, Bytes.toBytes("test1"));
+      put.addColumn(fam2, col, 1, Bytes.toBytes("test2"));
       ht.put(put);
 
       HRegion firstRegion = htu.getHBaseCluster().getRegions(tableName).get(0);
@@ -6282,20 +6285,20 @@ public class TestHRegion {
               .setRow(a)
               .setFamily(fam1)
               .setTimestamp(HConstants.LATEST_TIMESTAMP)
-              .setType(CellBuilder.DataType.Put)
+              .setType(Cell.Type.Put)
               .build()),
         // this is outside the region boundary
         new Put(c).add(CellBuilderFactory.create(CellBuilderType.SHALLOW_COPY)
               .setRow(c)
               .setFamily(fam1)
               .setTimestamp(HConstants.LATEST_TIMESTAMP)
-              .setType(CellBuilder.DataType.Put)
+              .setType(Type.Put)
               .build()),
         new Put(b).add(CellBuilderFactory.create(CellBuilderType.SHALLOW_COPY)
               .setRow(b)
               .setFamily(fam1)
               .setTimestamp(HConstants.LATEST_TIMESTAMP)
-              .setType(CellBuilder.DataType.Put)
+              .setType(Cell.Type.Put)
               .build())
     };
 
@@ -6331,13 +6334,13 @@ public class TestHRegion {
                 .setRow(a)
                 .setFamily(fam1)
                 .setTimestamp(HConstants.LATEST_TIMESTAMP)
-                .setType(CellBuilder.DataType.Put)
+                .setType(Cell.Type.Put)
                 .build()),
             new Put(b).add(CellBuilderFactory.create(CellBuilderType.SHALLOW_COPY)
                 .setRow(b)
                 .setFamily(fam1)
                 .setTimestamp(HConstants.LATEST_TIMESTAMP)
-                .setType(CellBuilder.DataType.Put)
+                .setType(Cell.Type.Put)
                 .build()),
         };
 
@@ -6431,7 +6434,7 @@ public class TestHRegion {
             byte[] value = Bytes.toBytes(String.valueOf(count));
             for (byte[] family : families) {
               for (byte[] qualifier : qualifiers) {
-                put.addColumn(family, qualifier, (long) count, value);
+                put.addColumn(family, qualifier, count, value);
               }
             }
             try {
@@ -6486,6 +6489,82 @@ public class TestHRegion {
     } finally {
       HBaseTestingUtility.closeRegionAndWAL(this.region);
       this.region = null;
+    }
+  }
+
+  /**
+   * The same as HRegion class, the only difference is that instantiateHStore will
+   * create a different HStore - HStoreForTesting. [HBASE-8518]
+   */
+  public static class HRegionForTesting extends HRegion {
+
+    public HRegionForTesting(final Path tableDir, final WAL wal, final FileSystem fs,
+                             final Configuration confParam, final RegionInfo regionInfo,
+                             final TableDescriptor htd, final RegionServerServices rsServices) {
+      this(new HRegionFileSystem(confParam, fs, tableDir, regionInfo),
+          wal, confParam, htd, rsServices);
+    }
+
+    public HRegionForTesting(HRegionFileSystem fs, WAL wal,
+                             Configuration confParam, TableDescriptor htd,
+                             RegionServerServices rsServices) {
+      super(fs, wal, confParam, htd, rsServices);
+    }
+
+    /**
+     * Create HStore instance.
+     * @return If Mob is enabled, return HMobStore, otherwise return HStoreForTesting.
+     */
+    @Override
+    protected HStore instantiateHStore(final ColumnFamilyDescriptor family) throws IOException {
+      if (family.isMobEnabled()) {
+        if (HFile.getFormatVersion(this.conf) < HFile.MIN_FORMAT_VERSION_WITH_TAGS) {
+          throw new IOException("A minimum HFile version of "
+              + HFile.MIN_FORMAT_VERSION_WITH_TAGS
+              + " is required for MOB feature. Consider setting " + HFile.FORMAT_VERSION_KEY
+              + " accordingly.");
+        }
+        return new HMobStore(this, family, this.conf);
+      }
+      return new HStoreForTesting(this, family, this.conf);
+    }
+  }
+
+  /**
+   * HStoreForTesting is merely the same as HStore, the difference is in the doCompaction method
+   * of HStoreForTesting there is a checkpoint "hbase.hstore.compaction.complete" which
+   * doesn't let hstore compaction complete. In the former edition, this config is set in
+   * HStore class inside compact method, though this is just for testing, otherwise it
+   * doesn't do any help. In HBASE-8518, we try to get rid of all "hbase.hstore.compaction.complete"
+   * config (except for testing code).
+   */
+  public static class HStoreForTesting extends HStore {
+
+    protected HStoreForTesting(final HRegion region,
+        final ColumnFamilyDescriptor family,
+        final Configuration confParam) throws IOException {
+      super(region, family, confParam);
+    }
+
+    @Override
+    protected List<HStoreFile> doCompaction(CompactionRequestImpl cr,
+        Collection<HStoreFile> filesToCompact, User user, long compactionStartTime,
+        List<Path> newFiles) throws IOException {
+      // let compaction incomplete.
+      if (!this.conf.getBoolean("hbase.hstore.compaction.complete", true)) {
+        LOG.warn("hbase.hstore.compaction.complete is set to false");
+        List<HStoreFile> sfs = new ArrayList<>(newFiles.size());
+        final boolean evictOnClose =
+            cacheConf != null? cacheConf.shouldEvictOnClose(): true;
+        for (Path newFile : newFiles) {
+          // Create storefile around what we wrote with a reader on it.
+          HStoreFile sf = createStoreFileAndReader(newFile);
+          sf.closeStoreFile(evictOnClose);
+          sfs.add(sf);
+        }
+        return sfs;
+      }
+      return super.doCompaction(cr, filesToCompact, user, compactionStartTime, newFiles);
     }
   }
 }

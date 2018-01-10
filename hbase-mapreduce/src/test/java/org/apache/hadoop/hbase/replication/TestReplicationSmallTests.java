@@ -21,6 +21,7 @@ package org.apache.hadoop.hbase.replication;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -30,9 +31,8 @@ import java.util.List;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
@@ -84,14 +84,15 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos;
 
 @Category({ReplicationTests.class, LargeTests.class})
 public class TestReplicationSmallTests extends TestReplicationBase {
 
-  private static final Log LOG = LogFactory.getLog(TestReplicationSmallTests.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestReplicationSmallTests.class);
   private static final String PEER_ID = "2";
 
   @Rule
@@ -908,6 +909,17 @@ public class TestReplicationSmallTests extends TestReplicationBase {
     assertTrue(Lists.newArrayList(args).toString(), new VerifyReplication().doCommandLine(args));
   }
 
+  private void checkRestoreTmpDir(Configuration conf, String restoreTmpDir, int expectedCount)
+      throws IOException {
+    FileSystem fs = FileSystem.get(conf);
+    FileStatus[] subDirectories = fs.listStatus(new Path(restoreTmpDir));
+    assertNotNull(subDirectories);
+    assertEquals(subDirectories.length, expectedCount);
+    for (int i = 0; i < expectedCount; i++) {
+      assertTrue(subDirectories[i].isDirectory());
+    }
+  }
+
   @Test(timeout = 300000)
   public void testVerifyReplicationWithSnapshotSupport() throws Exception {
     // Populate the tables, at the same time it guarantees that the tables are
@@ -949,6 +961,9 @@ public class TestReplicationSmallTests extends TestReplicationBase {
     assertEquals(0,
       job.getCounters().findCounter(VerifyReplication.Verifier.Counters.BADROWS).getValue());
 
+    checkRestoreTmpDir(conf1, temPath1, 1);
+    checkRestoreTmpDir(conf2, temPath2, 1);
+
     Scan scan = new Scan();
     ResultScanner rs = htable2.getScanner(scan);
     Put put = null;
@@ -986,6 +1001,9 @@ public class TestReplicationSmallTests extends TestReplicationBase {
       job.getCounters().findCounter(VerifyReplication.Verifier.Counters.GOODROWS).getValue());
     assertEquals(NB_ROWS_IN_BATCH,
       job.getCounters().findCounter(VerifyReplication.Verifier.Counters.BADROWS).getValue());
+
+    checkRestoreTmpDir(conf1, temPath1, 2);
+    checkRestoreTmpDir(conf2, temPath2, 2);
   }
 
   @Test

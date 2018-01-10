@@ -19,7 +19,7 @@
 
 package org.apache.hadoop.hbase.client;
 
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -37,8 +37,6 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.CallQueueTooBigException;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HConstants;
@@ -50,6 +48,8 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hbase.client.backoff.ServerStatistics;
 import org.apache.hadoop.hbase.client.coprocessor.Batch;
 import org.apache.hadoop.hbase.exceptions.ClientExceptionsUtil;
@@ -71,7 +71,7 @@ import org.apache.htrace.core.Tracer;
 @InterfaceAudience.Private
 class AsyncRequestFutureImpl<CResult> implements AsyncRequestFuture {
 
-  private static final Log LOG = LogFactory.getLog(AsyncRequestFutureImpl.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AsyncRequestFutureImpl.class);
 
   private RetryingTimeTracker tracker;
 
@@ -977,12 +977,12 @@ class AsyncRequestFutureImpl<CResult> implements AsyncRequestFuture {
                            Throwable error, long backOffTime, boolean willRetry, String startTime,
                            int failed, int stopped) {
     StringBuilder sb = new StringBuilder();
-    sb.append("#").append(asyncProcess.id).append(", table=").append(tableName).append(", ")
+    sb.append("id=").append(asyncProcess.id).append(", table=").append(tableName).append(", ")
         .append("attempt=").append(numAttempt)
         .append("/").append(asyncProcess.numTries).append(" ");
 
     if (failureCount > 0 || error != null){
-      sb.append("failed=").append(failureCount).append("ops").append(", last exception: ").
+      sb.append("failed=").append(failureCount).append("ops").append(", last exception=").
           append(error == null ? "null" : error);
     } else {
       sb.append("succeeded");

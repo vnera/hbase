@@ -25,8 +25,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -54,8 +52,9 @@ import org.apache.hadoop.hbase.util.FSTableDescriptors;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.yetus.audience.InterfaceAudience;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos;
@@ -65,7 +64,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos.Snapshot
 @InterfaceAudience.Private
 public class CloneSnapshotProcedure
     extends AbstractStateMachineTableProcedure<CloneSnapshotState> {
-  private static final Log LOG = LogFactory.getLog(CloneSnapshotProcedure.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CloneSnapshotProcedure.class);
 
   private TableDescriptor tableDescriptor;
   private SnapshotDescription snapshot;
@@ -150,7 +149,7 @@ public class CloneSnapshotProcedure
           break;
         case CLONE_SNAPSHOT_ASSIGN_REGIONS:
           CreateTableProcedure.setEnablingState(env, getTableName());
-          addChildProcedure(env.getAssignmentManager().createAssignProcedures(newRegions));
+          addChildProcedure(env.getAssignmentManager().createRoundRobinAssignProcedures(newRegions));
           setNextState(CloneSnapshotState.CLONE_SNAPSHOT_UPDATE_DESC_CACHE);
           break;
         case CLONE_SNAPSHOT_UPDATE_DESC_CACHE:
@@ -462,6 +461,8 @@ public class CloneSnapshotProcedure
   private void addRegionsToMeta(final MasterProcedureEnv env) throws IOException {
     newRegions = CreateTableProcedure.addTableToMeta(env, tableDescriptor, newRegions);
 
+    // TODO: parentsToChildrenPairMap is always empty, which makes updateMetaParentRegions()
+    // a no-op. This part seems unnecessary. Figure out. - Appy 12/21/17
     RestoreSnapshotHelper.RestoreMetaChanges metaChanges =
         new RestoreSnapshotHelper.RestoreMetaChanges(
                 tableDescriptor, parentsToChildrenPairMap);

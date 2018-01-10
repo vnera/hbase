@@ -19,8 +19,6 @@
 
 package org.apache.hadoop.hbase.client;
 
-
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
@@ -30,11 +28,9 @@ import java.net.NetworkInterface;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.ClusterStatus;
+import org.apache.hadoop.hbase.ClusterMetrics;
+import org.apache.hadoop.hbase.ClusterMetricsBuilder;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.ServerName;
@@ -42,18 +38,20 @@ import org.apache.hadoop.hbase.util.Addressing;
 import org.apache.hadoop.hbase.util.ExceptionUtil;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.hadoop.hbase.shaded.io.netty.bootstrap.Bootstrap;
-import org.apache.hadoop.hbase.shaded.io.netty.buffer.ByteBufInputStream;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.ChannelHandlerContext;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.ChannelOption;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.EventLoopGroup;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.SimpleChannelInboundHandler;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.nio.NioEventLoopGroup;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.socket.DatagramChannel;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.socket.DatagramPacket;
-import org.apache.hadoop.hbase.shaded.io.netty.channel.socket.nio.NioDatagramChannel;
-import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
+import org.apache.hbase.thirdparty.io.netty.bootstrap.Bootstrap;
+import org.apache.hbase.thirdparty.io.netty.buffer.ByteBufInputStream;
+import org.apache.hbase.thirdparty.io.netty.channel.ChannelHandlerContext;
+import org.apache.hbase.thirdparty.io.netty.channel.ChannelOption;
+import org.apache.hbase.thirdparty.io.netty.channel.EventLoopGroup;
+import org.apache.hbase.thirdparty.io.netty.channel.SimpleChannelInboundHandler;
+import org.apache.hbase.thirdparty.io.netty.channel.nio.NioEventLoopGroup;
+import org.apache.hbase.thirdparty.io.netty.channel.socket.DatagramChannel;
+import org.apache.hbase.thirdparty.io.netty.channel.socket.DatagramPacket;
+import org.apache.hbase.thirdparty.io.netty.channel.socket.nio.NioDatagramChannel;
+
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos;
 
 /**
@@ -63,7 +61,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos;
  */
 @InterfaceAudience.Private
 class ClusterStatusListener implements Closeable {
-  private static final Log LOG = LogFactory.getLog(ClusterStatusListener.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ClusterStatusListener.class);
   private final List<ServerName> deadServers = new ArrayList<>();
   protected final DeadServerHandler deadServerHandler;
   private final Listener listener;
@@ -134,7 +132,7 @@ class ClusterStatusListener implements Closeable {
    *
    * @param ncs the cluster status
    */
-  public void receive(ClusterStatus ncs) {
+  public void receive(ClusterMetrics ncs) {
     if (ncs.getDeadServerNames() != null) {
       for (ServerName sn : ncs.getDeadServerNames()) {
         if (!isDeadServer(sn)) {
@@ -265,7 +263,7 @@ class ClusterStatusListener implements Closeable {
         ByteBufInputStream bis = new ByteBufInputStream(dp.content());
         try {
           ClusterStatusProtos.ClusterStatus csp = ClusterStatusProtos.ClusterStatus.parseFrom(bis);
-          ClusterStatus ncs = ProtobufUtil.convert(csp);
+          ClusterMetrics ncs = ClusterMetricsBuilder.toClusterMetrics(csp);
           receive(ncs);
         } finally {
           bis.close();

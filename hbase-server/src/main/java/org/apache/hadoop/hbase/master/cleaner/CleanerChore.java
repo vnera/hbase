@@ -18,11 +18,11 @@
 package org.apache.hadoop.hbase.master.cleaner;
 
 import org.apache.hadoop.hbase.conf.ConfigurationObserver;
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Predicate;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.ImmutableSet;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Iterables;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.base.Predicate;
+import org.apache.hbase.thirdparty.com.google.common.collect.ImmutableSet;
+import org.apache.hbase.thirdparty.com.google.common.collect.Iterables;
+import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 
 import java.io.IOException;
 import java.util.Comparator;
@@ -35,8 +35,6 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -45,6 +43,8 @@ import org.apache.hadoop.hbase.ScheduledChore;
 import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.ipc.RemoteException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Abstract Cleaner that uses a chain of delegates to clean a directory of files
@@ -53,7 +53,7 @@ import org.apache.hadoop.ipc.RemoteException;
 public abstract class CleanerChore<T extends FileCleanerDelegate> extends ScheduledChore
     implements ConfigurationObserver {
 
-  private static final Log LOG = LogFactory.getLog(CleanerChore.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(CleanerChore.class);
   private static final int AVAIL_PROCESSORS = Runtime.getRuntime().availableProcessors();
 
   /**
@@ -110,7 +110,7 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
       chorePoolSize = chorePoolSize == 0 ?
           calculatePoolSize(DEFAULT_CHORE_POOL_SIZE) : chorePoolSize;
       this.chorePool = new ForkJoinPool(chorePoolSize);
-      LOG.info("Cleaner pool size is " + chorePoolSize);
+      LOG.info("Cleaner pool size is {}", chorePoolSize);
     }
   }
 
@@ -119,18 +119,24 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
    * @param poolSize size from configuration
    * @return size of pool after calculation
    */
-  private int calculatePoolSize(String poolSize) {
+  int calculatePoolSize(String poolSize) {
     if (poolSize.matches("[1-9][0-9]*")) {
       // If poolSize is an integer, return it directly,
       // but upmost to the number of available processors.
       int size = Math.min(Integer.valueOf(poolSize), AVAIL_PROCESSORS);
       if (size == AVAIL_PROCESSORS) {
-        LOG.warn("Use full core processors to scan dir");
+        LOG.warn("Use full core processors to scan dir, size={}", size);
       }
       return size;
     } else if (poolSize.matches("0.[0-9]+|1.0")) {
       // if poolSize is a double, return poolSize * availableProcessors;
-      return (int) (AVAIL_PROCESSORS * Double.valueOf(poolSize));
+      // Ensure that we always return at least one.
+      int computedThreads = (int) (AVAIL_PROCESSORS * Double.valueOf(poolSize));
+      if (computedThreads < 1) {
+        LOG.debug("Computed {} threads for CleanerChore, using 1 instead", computedThreads);
+        return 1;
+      }
+      return computedThreads;
     } else {
       LOG.error("Unrecognized value: " + poolSize + " for " + CHORE_POOL_SIZE +
           ", use default config: " + DEFAULT_CHORE_POOL_SIZE + " instead.");
@@ -157,7 +163,7 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
       for (String className : logCleaners) {
         T logCleaner = newFileCleaner(className, conf);
         if (logCleaner != null) {
-          LOG.debug("initialize cleaner=" + className);
+          LOG.debug("Initialize cleaner={}", className);
           this.cleanersChain.add(logCleaner);
         }
       }
@@ -168,10 +174,7 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
   public void onConfigurationChange(Configuration conf) {
     int updatedSize = calculatePoolSize(conf.get(CHORE_POOL_SIZE, DEFAULT_CHORE_POOL_SIZE));
     if (updatedSize == chorePoolSize) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Size from configuration is the same as previous which is " +
-          updatedSize + ", no need to update.");
-      }
+      LOG.trace("Size from configuration is same as previous={}, no need to update.", updatedSize);
       return;
     }
     chorePoolSize = updatedSize;
@@ -186,8 +189,7 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
 
   private void updateChorePoolSize(int updatedSize) {
     chorePool.shutdownNow();
-    LOG.info("Update chore's pool size from " +
-        chorePool.getParallelism() + " to " + updatedSize);
+    LOG.info("Update chore's pool size from {} to {}", chorePool.getParallelism(), updatedSize);
     chorePool = new ForkJoinPool(updatedSize);
   }
 
@@ -208,7 +210,7 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
       cleaner.init(this.params);
       return cleaner;
     } catch (Exception e) {
-      LOG.warn("Can NOT create CleanerDelegate: " + className, e);
+      LOG.warn("Can NOT create CleanerDelegate={}", className, e);
       // skipping if can't instantiate
       return null;
     }
@@ -218,11 +220,9 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
   protected void chore() {
     if (getEnabled()) {
       if (runCleaner()) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Cleaned old files/dirs under " + oldFileDir + " successfully.");
-        }
+        LOG.debug("Cleaned old files/dirs under {} successfully",  oldFileDir);
       } else {
-        LOG.warn("Failed to fully clean old files/dirs under " + oldFileDir + ".");
+        LOG.warn("Failed to fully clean old files/dirs under {}", oldFileDir);
       }
       // After each clean chore, checks if receives reconfigure notification while cleaning
       if (reconfig.compareAndSet(true, false)) {
@@ -274,9 +274,7 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
           directorySpaces.put(f, space);
           return space;
         } catch (IOException e) {
-          if (LOG.isTraceEnabled()) {
-            LOG.trace("failed to get space consumed by path " + f.getPath(), e);
-          }
+          LOG.trace("Failed to get space consumed by path={}", f, e);
           return -1;
         }
       }
@@ -343,9 +341,7 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
     int deletedFileCount = 0;
     for (FileStatus file : filesToDelete) {
       Path filePath = file.getPath();
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Removing: " + filePath + " from archive");
-      }
+      LOG.trace("Removing {} from archive", filePath);
       try {
         boolean success = this.fs.delete(filePath, false);
         if (success) {
@@ -426,14 +422,10 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
 
       boolean nullSubDirs = subDirs == null;
       if (nullSubDirs) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("There is no subdir under " + dir);
-        }
+        LOG.trace("There is no subdir under {}", dir);
       }
       if (files == null) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("There is no file under " + dir);
-        }
+        LOG.trace("There is no file under {}", dir);
       }
 
       int capacity = nullSubDirs ? 0 : subDirs.size();
@@ -449,7 +441,7 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
 
       boolean result = true;
       result &= deleteAction(() -> checkAndDeleteFiles(files), "files");
-      result &= deleteAction(() -> getCleanRusult(tasks), "subdirs");
+      result &= deleteAction(() -> getCleanResult(tasks), "subdirs");
       // if and only if files and subdirs under current dir are deleted successfully, and
       // it is not the root dir, then task will try to delete it.
       if (result && !root) {
@@ -478,24 +470,16 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
      */
     private boolean deleteAction(Action<Boolean> deletion, String type) {
       boolean deleted;
-      String errorMsg = "";
+      String errorMsg = null;
       try {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Start deleting " + type + " under " + dir);
-        }
+        LOG.trace("Start deleting {} under {}", type, dir);
         deleted = deletion.act();
       } catch (IOException ioe) {
         errorMsg = ioe.getMessage();
+        LOG.warn("Could not delete {} under {}; {}", type, dir, errorMsg);
         deleted = false;
       }
-      if (LOG.isDebugEnabled()) {
-        if (deleted) {
-          LOG.debug("Finish deleting " + type + " under " + dir);
-        } else {
-          LOG.debug("Couldn't delete " + type + " completely under " + dir +
-            " with reasons: " + (!errorMsg.equals("") ? errorMsg : " undeletable, please check."));
-        }
-      }
+      LOG.trace("Finish deleting {} under {}, deleted=", type, dir, deleted);
       return deleted;
     }
 
@@ -505,7 +489,7 @@ public abstract class CleanerChore<T extends FileCleanerDelegate> extends Schedu
      * @return true if all subdirs deleted successfully, false for patial/all failures
      * @throws IOException something happen during computation
      */
-    private boolean getCleanRusult(List<CleanerTask> tasks) throws IOException {
+    private boolean getCleanResult(List<CleanerTask> tasks) throws IOException {
       boolean cleaned = true;
       try {
         for (CleanerTask task : tasks) {

@@ -43,9 +43,9 @@
     </fluidoSkin>
   </custom>
   <bannerLeft>
-    <name>HBaseCon2017</name>
-    <src>images/hbasecon2017.png</src>
-    <href>https://easychair.org/cfp/hbasecon2017</href>
+    <name />
+    <src />
+    <href />
     <!--
     <name/>
     <height>0</height>

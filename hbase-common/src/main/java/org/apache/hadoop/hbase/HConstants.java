@@ -90,7 +90,7 @@ public final class HConstants {
     SUCCESS,
     BAD_FAMILY,
     SANITY_CHECK_FAILURE,
-    FAILURE;
+    FAILURE
   }
 
   /** long constant for zero */
@@ -285,8 +285,19 @@ public final class HConstants {
   /** Parameter name for how often we should try to write a version file, before failing */
   public static final int DEFAULT_VERSION_FILE_WRITE_ATTEMPTS = 3;
 
-  /** Parameter name for how often a region should should perform a major compaction */
+  /** Parameter name and default value for how often a region should perform a major compaction */
   public static final String MAJOR_COMPACTION_PERIOD = "hbase.hregion.majorcompaction";
+  public static final long   DEFAULT_MAJOR_COMPACTION_PERIOD = 1000 * 60 * 60 * 24 * 7; // 7 days
+
+  /**
+   * Parameter name and default value for major compaction jitter.
+   * Used as a multiplier applied to {@link HConstants#MAJOR_COMPACTION_PERIOD}
+   * to cause compaction to occur a given amount of time either side of
+   * {@link HConstants#MAJOR_COMPACTION_PERIOD}.
+   * Default to 0.5 so jitter has us fall evenly either side of when the compaction should run.
+   */
+  public static final String MAJOR_COMPACTION_JITTER = "hbase.hregion.majorcompaction.jitter";
+  public static final float  DEFAULT_MAJOR_COMPACTION_JITTER = 0.50F;
 
   /** Parameter name for the maximum batch of KVs to be used in flushes and compactions */
   public static final String COMPACTION_KV_MAX = "hbase.hstore.compaction.kv.max";
@@ -790,7 +801,7 @@ public final class HConstants {
   /**
    * Default value of {@link #HBASE_CLIENT_RETRIES_NUMBER}.
    */
-  public static final int DEFAULT_HBASE_CLIENT_RETRIES_NUMBER = 10;
+  public static final int DEFAULT_HBASE_CLIENT_RETRIES_NUMBER = 15;
 
   public static final String HBASE_CLIENT_SERVERSIDE_RETRIES_MULTIPLIER =
       "hbase.client.serverside.retries.multiplier";

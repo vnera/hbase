@@ -53,8 +53,6 @@ import java.util.function.Function;
 
 import org.apache.commons.lang3.RandomUtils;
 import org.apache.commons.lang3.SystemUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -113,6 +111,7 @@ import org.apache.hadoop.hbase.ipc.RpcServer;
 import org.apache.hadoop.hbase.ipc.RpcServerInterface;
 import org.apache.hadoop.hbase.ipc.ServerNotRunningYetException;
 import org.apache.hadoop.hbase.ipc.ServerRpcController;
+import org.apache.hadoop.hbase.log.HBaseMarkers;
 import org.apache.hadoop.hbase.master.HMaster;
 import org.apache.hadoop.hbase.master.LoadBalancer;
 import org.apache.hadoop.hbase.master.RegionState.State;
@@ -172,15 +171,16 @@ import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.annotations.VisibleForTesting;
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Preconditions;
-import org.apache.hadoop.hbase.shaded.com.google.common.collect.Maps;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.BlockingRpcChannel;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.RpcController;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.ServiceException;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.TextFormat;
-import org.apache.hadoop.hbase.shaded.com.google.protobuf.UnsafeByteOperations;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
+import org.apache.hbase.thirdparty.com.google.common.collect.Maps;
+import org.apache.hbase.thirdparty.com.google.protobuf.BlockingRpcChannel;
+import org.apache.hbase.thirdparty.com.google.protobuf.RpcController;
+import org.apache.hbase.thirdparty.com.google.protobuf.ServiceException;
+import org.apache.hbase.thirdparty.com.google.protobuf.TextFormat;
+import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.CoprocessorServiceCall;
@@ -224,7 +224,7 @@ public class HRegionServer extends HasThread implements
   // Time to pause if master says 'please hold'. Make configurable if needed.
   private static final int INIT_PAUSE_TIME_MS = 1000;
 
-  private static final Log LOG = LogFactory.getLog(HRegionServer.class);
+  private static final Logger LOG = LoggerFactory.getLogger(HRegionServer.class);
 
   /**
    * For testing only!  Set to true to skip notifying region assignment to master .
@@ -1614,7 +1614,7 @@ public class HRegionServer extends HasThread implements
     int storefileSizeMB = 0;
     int memstoreSizeMB = (int) (r.getMemStoreSize() / 1024 / 1024);
     long storefileIndexSizeKB = 0;
-    int rootIndexSizeKB = 0;
+    int rootLevelIndexSizeKB = 0;
     int totalStaticIndexSizeKB = 0;
     int totalStaticBloomSizeKB = 0;
     long totalCompactingKVs = 0;
@@ -1625,13 +1625,14 @@ public class HRegionServer extends HasThread implements
       storefiles += store.getStorefilesCount();
       storeUncompressedSizeMB += (int) (store.getStoreSizeUncompressed() / 1024 / 1024);
       storefileSizeMB += (int) (store.getStorefilesSize() / 1024 / 1024);
-      storefileIndexSizeKB += store.getStorefilesIndexSize() / 1024;
+      //TODO: storefileIndexSizeKB is same with rootLevelIndexSizeKB?
+      storefileIndexSizeKB += store.getStorefilesRootLevelIndexSize() / 1024;
       CompactionProgress progress = store.getCompactionProgress();
       if (progress != null) {
         totalCompactingKVs += progress.totalCompactingKVs;
         currentCompactedKVs += progress.currentCompactedKVs;
       }
-      rootIndexSizeKB += (int) (store.getStorefilesIndexSize() / 1024);
+      rootLevelIndexSizeKB += (int) (store.getStorefilesRootLevelIndexSize() / 1024);
       totalStaticIndexSizeKB += (int) (store.getTotalStaticIndexSize() / 1024);
       totalStaticBloomSizeKB += (int) (store.getTotalStaticBloomSize() / 1024);
     }
@@ -1653,7 +1654,7 @@ public class HRegionServer extends HasThread implements
       .setStorefileSizeMB(storefileSizeMB)
       .setMemStoreSizeMB(memstoreSizeMB)
       .setStorefileIndexSizeKB(storefileIndexSizeKB)
-      .setRootIndexSizeKB(rootIndexSizeKB)
+      .setRootIndexSizeKB(rootLevelIndexSizeKB)
       .setTotalStaticIndexSizeKB(totalStaticIndexSizeKB)
       .setTotalStaticBloomSizeKB(totalStaticBloomSizeKB)
       .setReadRequestsCount(r.getReadRequestsCount())
@@ -1663,7 +1664,7 @@ public class HRegionServer extends HasThread implements
       .setCurrentCompactedKVs(currentCompactedKVs)
       .setDataLocality(dataLocality)
       .setLastMajorCompactionTs(r.getOldestHfileTs(true));
-    ((HRegion)r).setCompleteSequenceId(regionLoadBldr);
+    r.setCompleteSequenceId(regionLoadBldr);
 
     return regionLoadBldr.build();
   }
@@ -2198,7 +2199,7 @@ public class HRegionServer extends HasThread implements
   @Override
   public void postOpenDeployTasks(final PostOpenDeployContext context)
       throws KeeperException, IOException {
-    HRegion r = (HRegion) context.getRegion();
+    HRegion r = context.getRegion();
     long masterSystemTime = context.getMasterSystemTime();
     rpcServices.checkOpen();
     LOG.info("Post open deploy tasks for " + r.getRegionInfo().getRegionNameAsString());
@@ -2223,7 +2224,7 @@ public class HRegionServer extends HasThread implements
         + r.getRegionInfo().getRegionNameAsString());
     }
 
-    triggerFlushInPrimaryRegion((HRegion)r);
+    triggerFlushInPrimaryRegion(r);
 
     LOG.debug("Finished post open deploy task for " + r.getRegionInfo().getRegionNameAsString());
   }
@@ -2275,7 +2276,10 @@ public class HRegionServer extends HasThread implements
     ReportRegionStateTransitionRequest request = builder.build();
     int tries = 0;
     long pauseTime = INIT_PAUSE_TIME_MS;
-    while (keepLooping()) {
+    // Keep looping till we get an error. We want to send reports even though server is going down.
+    // Only go down if clusterConnection is null. It is set to null almost as last thing as the
+    // HRegionServer does down.
+    while (this.clusterConnection != null && !this.clusterConnection.isClosed()) {
       RegionServerStatusService.BlockingInterface rss = rssStub;
       try {
         if (rss == null) {
@@ -2286,8 +2290,7 @@ public class HRegionServer extends HasThread implements
           rss.reportRegionStateTransition(null, request);
         if (response.hasErrorMessage()) {
           LOG.info("TRANSITION FAILED " + request + ": " + response.getErrorMessage());
-          // NOTE: Return mid-method!!!
-          return false;
+          break;
         }
         // Log if we had to retry else don't log unless TRACE. We want to
         // know if were successful after an attempt showed in logs as failed.
@@ -2319,7 +2322,6 @@ public class HRegionServer extends HasThread implements
         }
       }
     }
-    LOG.info("TRANSITION NOT REPORTED " + request);
     return false;
   }
 
@@ -2372,15 +2374,15 @@ public class HRegionServer extends HasThread implements
   public void abort(String reason, Throwable cause) {
     String msg = "***** ABORTING region server " + this + ": " + reason + " *****";
     if (cause != null) {
-      LOG.fatal(msg, cause);
+      LOG.error(HBaseMarkers.FATAL, msg, cause);
     } else {
-      LOG.fatal(msg);
+      LOG.error(HBaseMarkers.FATAL, msg);
     }
     this.abortRequested = true;
     // HBASE-4014: show list of coprocessors that were loaded to help debug
     // regionserver crashes.Note that we're implicitly using
     // java.util.HashSet's toString() method to print the coprocessor names.
-    LOG.fatal("RegionServer abort: loaded coprocessors are: " +
+    LOG.error(HBaseMarkers.FATAL, "RegionServer abort: loaded coprocessors are: " +
         CoprocessorHost.getLoadedCoprocessors());
     // Try and dump metrics if abort -- might give clue as to how fatal came about....
     try {
@@ -2630,7 +2632,8 @@ public class HRegionServer extends HasThread implements
     } catch (ServiceException se) {
       IOException ioe = ProtobufUtil.getRemoteException(se);
       if (ioe instanceof ClockOutOfSyncException) {
-        LOG.fatal("Master rejected startup because clock is out of sync", ioe);
+        LOG.error(HBaseMarkers.FATAL, "Master rejected startup because clock is out of sync",
+            ioe);
         // Re-throw IOE will cause RS to abort
         throw ioe;
       } else if (ioe instanceof ServerNotRunningYetException) {
@@ -3196,7 +3199,7 @@ public class HRegionServer extends HasThread implements
        Map<byte[], List<HStoreFile>> hstoreFiles = null;
        Exception exceptionToThrow = null;
        try{
-         hstoreFiles = ((HRegion)regionToClose).close(false);
+         hstoreFiles = regionToClose.close(false);
        } catch (Exception e) {
          exceptionToThrow = e;
        }
@@ -3631,7 +3634,6 @@ public class HRegionServer extends HasThread implements
 
     return CacheEvictionStats.builder()
         .withEvictedBlocks(evictedBlocks)
-        .withMaxCacheSize(blockCache.getMaxSize())
         .build();
   }
 

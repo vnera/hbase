@@ -1,5 +1,4 @@
 /*
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -49,9 +48,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.CallQueueTooBigException;
 import org.apache.hadoop.hbase.CategoryBasedTimeout;
@@ -80,20 +76,23 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestRule;
 import org.mockito.Mockito;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category({ClientTests.class, MediumTests.class})
 public class TestAsyncProcess {
   @Rule public final TestRule timeout = CategoryBasedTimeout.builder().withTimeout(this.getClass()).
       withLookingForStuckThread(true).build();
-  private static final Log LOG = LogFactory.getLog(TestAsyncProcess.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestAsyncProcess.class);
   private static final TableName DUMMY_TABLE =
       TableName.valueOf("DUMMY_TABLE");
-  private static final byte[] DUMMY_BYTES_1 = "DUMMY_BYTES_1".getBytes();
-  private static final byte[] DUMMY_BYTES_2 = "DUMMY_BYTES_2".getBytes();
-  private static final byte[] DUMMY_BYTES_3 = "DUMMY_BYTES_3".getBytes();
-  private static final byte[] FAILS = "FAILS".getBytes();
+  private static final byte[] DUMMY_BYTES_1 = Bytes.toBytes("DUMMY_BYTES_1");
+  private static final byte[] DUMMY_BYTES_2 = Bytes.toBytes("DUMMY_BYTES_2");
+  private static final byte[] DUMMY_BYTES_3 = Bytes.toBytes("DUMMY_BYTES_3");
+  private static final byte[] FAILS = Bytes.toBytes("FAILS");
   private static final Configuration CONF = new Configuration();
-  private static final ConnectionConfiguration CONNECTION_CONFIG = new ConnectionConfiguration(CONF);
+  private static final ConnectionConfiguration CONNECTION_CONFIG =
+      new ConnectionConfiguration(CONF);
   private static final ServerName sn = ServerName.valueOf("s1,1,1");
   private static final ServerName sn2 = ServerName.valueOf("s2,2,2");
   private static final ServerName sn3 = ServerName.valueOf("s3,3,3");
@@ -115,7 +114,8 @@ public class TestAsyncProcess {
       new HRegionLocation(hri1r1, sn2), new HRegionLocation(hri1r2, sn3));
   private static final RegionLocations hrls2 = new RegionLocations(new HRegionLocation(hri2, sn2),
       new HRegionLocation(hri2r1, sn3));
-  private static final RegionLocations hrls3 = new RegionLocations(new HRegionLocation(hri3, sn3), null);
+  private static final RegionLocations hrls3 =
+      new RegionLocations(new HRegionLocation(hri3, sn3), null);
 
   private static final String success = "success";
   private static Exception failure = new Exception("failure");
@@ -325,7 +325,7 @@ public class TestAsyncProcess {
     public AsyncProcessWithFailure(ClusterConnection hc, Configuration conf, IOException ioe) {
       super(hc, conf, true);
       this.ioe = ioe;
-      serverTrackerTimeout = 1;
+      serverTrackerTimeout = 1L;
     }
 
     @Override
@@ -351,7 +351,8 @@ public class TestAsyncProcess {
       return inc.getAndIncrement();
     }
   }
-  class MyAsyncProcessWithReplicas extends MyAsyncProcess {
+
+  static class MyAsyncProcessWithReplicas extends MyAsyncProcess {
     private Set<byte[]> failures = new TreeSet<>(new Bytes.ByteArrayComparator());
     private long primarySleepMs = 0, replicaSleepMs = 0;
     private Map<ServerName, Long> customPrimarySleepMs = new HashMap<>();
@@ -589,7 +590,13 @@ public class TestAsyncProcess {
     Random rn = new Random();
     final long limit = 10 * 1024 * 1024;
     final int requestCount = 1 + (int) (rn.nextDouble() * 3);
-    long putsHeapSize = Math.abs(rn.nextLong()) % limit;
+    long n = rn.nextLong();
+    if (n < 0) {
+      n = -n;
+    } else if (n == 0) {
+      n = 1;
+    }
+    long putsHeapSize = n % limit;
     long maxHeapSizePerRequest = putsHeapSize / requestCount;
     LOG.info("[testSubmitRandomSizeRequest] maxHeapSizePerRequest=" + maxHeapSizePerRequest +
         ", putsHeapSize=" + putsHeapSize);
@@ -612,13 +619,15 @@ public class TestAsyncProcess {
 
   private void doSubmitRequest(long maxHeapSizePerRequest, long putsHeapSize) throws Exception {
     ClusterConnection conn = createHConnection();
-    final String defaultClazz = conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
+    final String defaultClazz =
+        conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
     final long defaultHeapSizePerRequest = conn.getConfiguration().getLong(
       SimpleRequestController.HBASE_CLIENT_MAX_PERREQUEST_HEAPSIZE,
       SimpleRequestController.DEFAULT_HBASE_CLIENT_MAX_PERREQUEST_HEAPSIZE);
     conn.getConfiguration().set(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY,
       SimpleRequestController.class.getName());
-    conn.getConfiguration().setLong(SimpleRequestController.HBASE_CLIENT_MAX_PERREQUEST_HEAPSIZE, maxHeapSizePerRequest);
+    conn.getConfiguration().setLong(SimpleRequestController.HBASE_CLIENT_MAX_PERREQUEST_HEAPSIZE,
+        maxHeapSizePerRequest);
 
     // sn has two regions
     long putSizeSN = 0;
@@ -640,14 +649,15 @@ public class TestAsyncProcess {
 
     int minCountSnRequest = (int) calculateRequestCount(putSizeSN, maxHeapSizePerRequest);
     int minCountSn2Request = (int) calculateRequestCount(putSizeSN2, maxHeapSizePerRequest);
-    LOG.info("Total put count:" + puts.size() + ", putSizeSN:"+ putSizeSN + ", putSizeSN2:" + putSizeSN2
-      + ", maxHeapSizePerRequest:" + maxHeapSizePerRequest
-      + ", minCountSnRequest:" + minCountSnRequest
-      + ", minCountSn2Request:" + minCountSn2Request);
+    LOG.info("Total put count:" + puts.size() + ", putSizeSN:"+ putSizeSN
+        + ", putSizeSN2:" + putSizeSN2
+        + ", maxHeapSizePerRequest:" + maxHeapSizePerRequest
+        + ", minCountSnRequest:" + minCountSnRequest
+        + ", minCountSn2Request:" + minCountSn2Request);
 
     MyAsyncProcess ap = new MyAsyncProcess(conn, CONF, true);
     BufferedMutatorParams bufferParam = createBufferedMutatorParams(ap, DUMMY_TABLE);
-    try (BufferedMutatorImpl mutator = new BufferedMutatorImpl(conn, bufferParam, ap);) {
+    try (BufferedMutatorImpl mutator = new BufferedMutatorImpl(conn, bufferParam, ap)) {
       mutator.mutate(puts);
       mutator.flush();
       List<AsyncRequestFuture> reqs = ap.allReqs;
@@ -683,7 +693,7 @@ public class TestAsyncProcess {
             sum += size;
           }
           assertEquals(true, sum <= maxHeapSizePerRequest);
-          long value = sizePerServers.containsKey(entry.getKey()) ? sizePerServers.get(entry.getKey()) : 0L;
+          long value = sizePerServers.getOrDefault(entry.getKey(), 0L);
           sizePerServers.put(entry.getKey(), value + sum);
         }
       }
@@ -694,7 +704,8 @@ public class TestAsyncProcess {
       assertEquals(putSizeSN2, (long) sizePerServers.get(sn2));
     }
     // restore config.
-    conn.getConfiguration().setLong(SimpleRequestController.HBASE_CLIENT_MAX_PERREQUEST_HEAPSIZE, defaultHeapSizePerRequest);
+    conn.getConfiguration().setLong(SimpleRequestController.HBASE_CLIENT_MAX_PERREQUEST_HEAPSIZE,
+        defaultHeapSizePerRequest);
     if (defaultClazz != null) {
       conn.getConfiguration().set(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY,
         defaultClazz);
@@ -731,13 +742,14 @@ public class TestAsyncProcess {
     final AsyncRequestFuture ars = ap.submit(null, DUMMY_TABLE, puts, false, cb, false);
     Assert.assertTrue(puts.isEmpty());
     ars.waitUntilDone();
-    Assert.assertEquals(updateCalled.get(), 1);
+    Assert.assertEquals(1, updateCalled.get());
   }
 
   @Test
   public void testSubmitBusyRegion() throws Exception {
     ClusterConnection conn = createHConnection();
-    final String defaultClazz = conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
+    final String defaultClazz =
+        conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
     conn.getConfiguration().set(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY,
       SimpleRequestController.class.getName());
     MyAsyncProcess ap = new MyAsyncProcess(conn, CONF);
@@ -765,11 +777,13 @@ public class TestAsyncProcess {
   public void testSubmitBusyRegionServer() throws Exception {
     ClusterConnection conn = createHConnection();
     MyAsyncProcess ap = new MyAsyncProcess(conn, CONF);
-    final String defaultClazz = conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
+    final String defaultClazz =
+        conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
     conn.getConfiguration().set(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY,
       SimpleRequestController.class.getName());
     SimpleRequestController controller = (SimpleRequestController) ap.requestController;
-    controller.taskCounterPerServer.put(sn2, new AtomicInteger(controller.maxConcurrentTasksPerServer));
+    controller.taskCounterPerServer.put(sn2,
+        new AtomicInteger(controller.maxConcurrentTasksPerServer));
 
     List<Put> puts = new ArrayList<>(4);
     puts.add(createPut(1, true));
@@ -780,7 +794,8 @@ public class TestAsyncProcess {
     ap.submit(null, DUMMY_TABLE, puts, false, null, false);
     Assert.assertEquals(" puts=" + puts, 1, puts.size());
 
-    controller.taskCounterPerServer.put(sn2, new AtomicInteger(controller.maxConcurrentTasksPerServer - 1));
+    controller.taskCounterPerServer.put(sn2,
+        new AtomicInteger(controller.maxConcurrentTasksPerServer - 1));
     ap.submit(null, DUMMY_TABLE, puts, false, null, false);
     Assert.assertTrue(puts.isEmpty());
     if (defaultClazz != null) {
@@ -819,7 +834,8 @@ public class TestAsyncProcess {
   public void testSubmitTrue() throws IOException {
     ClusterConnection conn = createHConnection();
     final MyAsyncProcess ap = new MyAsyncProcess(conn, CONF, false);
-    final String defaultClazz = conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
+    final String defaultClazz =
+        conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
     conn.getConfiguration().set(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY,
       SimpleRequestController.class.getName());
     SimpleRequestController controller = (SimpleRequestController) ap.requestController;
@@ -923,7 +939,8 @@ public class TestAsyncProcess {
     Mockito.when(conn.getConfiguration()).thenReturn(copyConf);
     Mockito.when(conn.getStatisticsTracker()).thenReturn(ServerStatisticTracker.create(copyConf));
     Mockito.when(conn.getBackoffPolicy()).thenReturn(bp);
-    final String defaultClazz = conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
+    final String defaultClazz =
+        conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
     conn.getConfiguration().set(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY,
       SimpleRequestController.class.getName());
     MyAsyncProcess ap = new MyAsyncProcess(conn, copyConf, false);
@@ -934,7 +951,8 @@ public class TestAsyncProcess {
     }
   }
 
-  private void testTaskCount(MyAsyncProcess ap) throws InterruptedIOException, InterruptedException {
+  private void testTaskCount(MyAsyncProcess ap)
+      throws InterruptedIOException, InterruptedException {
     SimpleRequestController controller = (SimpleRequestController) ap.requestController;
     List<Put> puts = new ArrayList<>();
     for (int i = 0; i != 3; ++i) {
@@ -958,7 +976,8 @@ public class TestAsyncProcess {
   @Test
   public void testMaxTask() throws Exception {
     ClusterConnection conn = createHConnection();
-    final String defaultClazz = conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
+    final String defaultClazz =
+        conn.getConfiguration().get(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY);
     conn.getConfiguration().set(RequestControllerFactory.REQUEST_CONTROLLER_IMPL_CONF_KEY,
       SimpleRequestController.class.getName());
     final MyAsyncProcess ap = new MyAsyncProcess(conn, CONF, false);
@@ -966,7 +985,7 @@ public class TestAsyncProcess {
 
 
     for (int i = 0; i < 1000; i++) {
-      ap.incTaskCounters(Collections.singleton("dummy".getBytes()), sn);
+      ap.incTaskCounters(Collections.singleton(Bytes.toBytes("dummy")), sn);
     }
 
     final Thread myThread = Thread.currentThread();
@@ -997,7 +1016,7 @@ public class TestAsyncProcess {
       public void run() {
         Threads.sleep(sleepTime);
         while (controller.tasksInProgress.get() > 0) {
-          ap.decTaskCounters(Collections.singleton("dummy".getBytes()), sn);
+          ap.decTaskCounters(Collections.singleton(Bytes.toBytes("dummy")), sn);
         }
       }
     };
@@ -1020,8 +1039,8 @@ public class TestAsyncProcess {
     setMockLocation(hc, DUMMY_BYTES_1, new RegionLocations(loc1));
     setMockLocation(hc, DUMMY_BYTES_2, new RegionLocations(loc2));
     setMockLocation(hc, DUMMY_BYTES_3, new RegionLocations(loc3));
-    Mockito.when(hc.locateRegions(Mockito.eq(DUMMY_TABLE), Mockito.anyBoolean(), Mockito.anyBoolean()))
-           .thenReturn(Arrays.asList(loc1, loc2, loc3));
+    Mockito.when(hc.locateRegions(Mockito.eq(DUMMY_TABLE), Mockito.anyBoolean(),
+        Mockito.anyBoolean())).thenReturn(Arrays.asList(loc1, loc2, loc3));
     setMockLocation(hc, FAILS, new RegionLocations(loc2));
     return hc;
   }
@@ -1041,8 +1060,8 @@ public class TestAsyncProcess {
     for (HRegionLocation loc : hrls3.getRegionLocations()) {
       locations.add(loc);
     }
-    Mockito.when(hc.locateRegions(Mockito.eq(DUMMY_TABLE), Mockito.anyBoolean(), Mockito.anyBoolean()))
-           .thenReturn(locations);
+    Mockito.when(hc.locateRegions(Mockito.eq(DUMMY_TABLE), Mockito.anyBoolean(),
+        Mockito.anyBoolean())).thenReturn(locations);
     return hc;
   }
 
@@ -1073,12 +1092,126 @@ public class TestAsyncProcess {
 
     Put put = createPut(1, true);
 
-    Assert.assertEquals(conn.getConnectionConfiguration().getWriteBufferSize(), ht.getWriteBufferSize());
+    Assert.assertEquals(conn.getConnectionConfiguration().getWriteBufferSize(),
+        ht.getWriteBufferSize());
     Assert.assertEquals(0, ht.getCurrentWriteBufferSize());
     ht.mutate(put);
     ht.flush();
     Assert.assertEquals(0, ht.getCurrentWriteBufferSize());
   }
+
+  @Test
+  public void testSettingWriteBufferPeriodicFlushParameters() throws Exception {
+    ClusterConnection conn = createHConnection();
+    MyAsyncProcess ap = new MyAsyncProcess(conn, CONF, true);
+
+    checkPeriodicFlushParameters(conn, ap,
+            1234, 1234,
+            1234, 1234);
+    checkPeriodicFlushParameters(conn, ap,
+               0,    0,
+               0,    BufferedMutator.MIN_WRITE_BUFFER_PERIODIC_FLUSH_TIMERTICK_MS);
+    checkPeriodicFlushParameters(conn, ap,
+           -1234,    0,
+           -1234,    BufferedMutator.MIN_WRITE_BUFFER_PERIODIC_FLUSH_TIMERTICK_MS);
+    checkPeriodicFlushParameters(conn, ap,
+               1,    1,
+               1,    BufferedMutator.MIN_WRITE_BUFFER_PERIODIC_FLUSH_TIMERTICK_MS);
+  }
+
+  private void checkPeriodicFlushParameters(ClusterConnection conn,
+                                            MyAsyncProcess ap,
+                                            long setTO, long expectTO,
+                                            long setTT, long expectTT
+                                            ) {
+    BufferedMutatorParams bufferParam = createBufferedMutatorParams(ap, DUMMY_TABLE);
+
+    // The BufferedMutatorParams does nothing with the value
+    bufferParam.setWriteBufferPeriodicFlushTimeoutMs(setTO);
+    bufferParam.setWriteBufferPeriodicFlushTimerTickMs(setTT);
+    Assert.assertEquals(setTO, bufferParam.getWriteBufferPeriodicFlushTimeoutMs());
+    Assert.assertEquals(setTT, bufferParam.getWriteBufferPeriodicFlushTimerTickMs());
+
+    // The BufferedMutatorImpl corrects illegal values (indirect via BufferedMutatorParams)
+    BufferedMutatorImpl ht1 = new BufferedMutatorImpl(conn, bufferParam, ap);
+    Assert.assertEquals(expectTO, ht1.getWriteBufferPeriodicFlushTimeoutMs());
+    Assert.assertEquals(expectTT, ht1.getWriteBufferPeriodicFlushTimerTickMs());
+
+    // The BufferedMutatorImpl corrects illegal values (direct via setter)
+    BufferedMutatorImpl ht2 =
+            new BufferedMutatorImpl(conn, createBufferedMutatorParams(ap, DUMMY_TABLE), ap);
+    ht2.setWriteBufferPeriodicFlush(setTO, setTT);
+    Assert.assertEquals(expectTO, ht2.getWriteBufferPeriodicFlushTimeoutMs());
+    Assert.assertEquals(expectTT, ht2.getWriteBufferPeriodicFlushTimerTickMs());
+
+  }
+
+  @Test
+  public void testWriteBufferPeriodicFlushTimeoutMs() throws Exception {
+    ClusterConnection conn = createHConnection();
+    MyAsyncProcess ap = new MyAsyncProcess(conn, CONF, true);
+    BufferedMutatorParams bufferParam = createBufferedMutatorParams(ap, DUMMY_TABLE);
+
+    bufferParam.setWriteBufferPeriodicFlushTimeoutMs(1);     // Flush ASAP
+    bufferParam.setWriteBufferPeriodicFlushTimerTickMs(1); // Check every 100ms
+    bufferParam.writeBufferSize(10000);  // Write buffer set to much larger than the single record
+
+    BufferedMutatorImpl ht = new BufferedMutatorImpl(conn, bufferParam, ap);
+
+    // Verify if BufferedMutator has the right settings.
+    Assert.assertEquals(10000, ht.getWriteBufferSize());
+    Assert.assertEquals(1, ht.getWriteBufferPeriodicFlushTimeoutMs());
+    Assert.assertEquals(BufferedMutator.MIN_WRITE_BUFFER_PERIODIC_FLUSH_TIMERTICK_MS,
+            ht.getWriteBufferPeriodicFlushTimerTickMs());
+
+    Put put = createPut(1, true);
+
+    Assert.assertEquals(0, ht.getExecutedWriteBufferPeriodicFlushes());
+    Assert.assertEquals(0, ht.getCurrentWriteBufferSize());
+
+    // ----- Insert, flush immediately, MUST NOT flush automatically
+    ht.mutate(put);
+    ht.flush();
+
+    Thread.sleep(1000);
+    Assert.assertEquals(0, ht.getExecutedWriteBufferPeriodicFlushes());
+    Assert.assertEquals(0, ht.getCurrentWriteBufferSize());
+
+    // ----- Insert, NO flush, MUST flush automatically
+    ht.mutate(put);
+    Assert.assertEquals(0, ht.getExecutedWriteBufferPeriodicFlushes());
+    Assert.assertTrue(ht.getCurrentWriteBufferSize() > 0);
+
+    // The timerTick should fire every 100ms, so after twice that we must have
+    // seen at least 1 tick and we should see an automatic flush
+    Thread.sleep(200);
+    Assert.assertEquals(1, ht.getExecutedWriteBufferPeriodicFlushes());
+    Assert.assertEquals(0, ht.getCurrentWriteBufferSize());
+
+    // Ensure it does not flush twice
+    Thread.sleep(200);
+    Assert.assertEquals(1, ht.getExecutedWriteBufferPeriodicFlushes());
+    Assert.assertEquals(0, ht.getCurrentWriteBufferSize());
+
+    // ----- DISABLE AUTO FLUSH, Insert, NO flush, MUST NOT flush automatically
+    ht.disableWriteBufferPeriodicFlush();
+    ht.mutate(put);
+    Assert.assertEquals(1, ht.getExecutedWriteBufferPeriodicFlushes());
+    Assert.assertTrue(ht.getCurrentWriteBufferSize() > 0);
+
+    // Wait for at least 1 timerTick, we should see NO flushes.
+    Thread.sleep(200);
+    Assert.assertEquals(1, ht.getExecutedWriteBufferPeriodicFlushes());
+    Assert.assertTrue(ht.getCurrentWriteBufferSize() > 0);
+
+    // Reenable periodic flushing, a flush seems to take about 1 second
+    // so we wait for 2 seconds and it should have finished the flush.
+    ht.setWriteBufferPeriodicFlush(1, 100);
+    Thread.sleep(2000);
+    Assert.assertEquals(2, ht.getExecutedWriteBufferPeriodicFlushes());
+    Assert.assertEquals(0, ht.getCurrentWriteBufferSize());
+  }
+
 
   @Test
   public void testBufferedMutatorImplWithSharedPool() throws Exception {
@@ -1161,13 +1294,13 @@ public class TestAsyncProcess {
     } catch (RetriesExhaustedException expected) {
     }
 
-    Assert.assertEquals(res[0], success);
-    Assert.assertEquals(res[1], success);
-    Assert.assertEquals(res[2], success);
-    Assert.assertEquals(res[3], success);
-    Assert.assertEquals(res[4], failure);
-    Assert.assertEquals(res[5], success);
-    Assert.assertEquals(res[6], failure);
+    Assert.assertEquals(success, res[0]);
+    Assert.assertEquals(success, res[1]);
+    Assert.assertEquals(success, res[2]);
+    Assert.assertEquals(success, res[3]);
+    Assert.assertEquals(failure, res[4]);
+    Assert.assertEquals(success, res[5]);
+    Assert.assertEquals(failure, res[6]);
   }
   @Test
   public void testErrorsServers() throws IOException {
@@ -1179,8 +1312,8 @@ public class TestAsyncProcess {
     configuration.setBoolean(ConnectionImplementation.RETRIES_BY_SERVER_KEY, true);
 
     Assert.assertNotNull(ap.createServerErrorTracker());
-    Assert.assertTrue(ap.serverTrackerTimeout > 200);
-    ap.serverTrackerTimeout = 1;
+    Assert.assertTrue(ap.serverTrackerTimeout > 200L);
+    ap.serverTrackerTimeout = 1L;
 
     Put p = createPut(1, false);
     mutator.mutate(p);
@@ -1258,7 +1391,8 @@ public class TestAsyncProcess {
   @Test
   public void testCallQueueTooLarge() throws IOException {
     ClusterConnection conn = new MyConnectionImpl(CONF);
-    AsyncProcessWithFailure ap = new AsyncProcessWithFailure(conn, CONF, new CallQueueTooBigException());
+    AsyncProcessWithFailure ap =
+        new AsyncProcessWithFailure(conn, CONF, new CallQueueTooBigException());
     BufferedMutatorParams bufferParam = createBufferedMutatorParams(ap, DUMMY_TABLE);
     BufferedMutatorImpl mutator = new BufferedMutatorImpl(conn, bufferParam, ap);
     Assert.assertNotNull(ap.createServerErrorTracker());
@@ -1298,7 +1432,7 @@ public class TestAsyncProcess {
     ht.multiAp = ap;
     ht.batch(gets, null);
 
-    Assert.assertEquals(ap.nbActions.get(), NB_REGS);
+    Assert.assertEquals(NB_REGS, ap.nbActions.get());
     Assert.assertEquals("1 multi response per server", 2, ap.nbMultiResponse.get());
     Assert.assertEquals("1 thread per server", 2, con.nbThreads.get());
 
@@ -1306,7 +1440,7 @@ public class TestAsyncProcess {
     for (int i =0; i<NB_REGS; i++){
       if (con.usedRegions[i]) nbReg++;
     }
-    Assert.assertEquals("nbReg=" + nbReg, nbReg, NB_REGS);
+    Assert.assertEquals("nbReg=" + nbReg, NB_REGS, nbReg);
   }
 
   @Test
@@ -1479,7 +1613,8 @@ public class TestAsyncProcess {
     return ap;
   }
 
-  private static BufferedMutatorParams createBufferedMutatorParams(MyAsyncProcess ap, TableName name) {
+  private static BufferedMutatorParams createBufferedMutatorParams(MyAsyncProcess ap,
+      TableName name) {
     return new BufferedMutatorParams(name)
             .pool(ap.service)
             .rpcTimeout(RPC_TIMEOUT)

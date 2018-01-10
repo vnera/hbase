@@ -17,8 +17,6 @@
  */
 package org.apache.hadoop.hbase.master.balancer;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.Table;
@@ -36,6 +34,8 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.junit.rules.TestRule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -49,7 +49,7 @@ import static org.junit.Assert.assertTrue;
  */
 @Category({MediumTests.class})
 public class TestRegionsOnMasterOptions {
-  private static final Log LOG = LogFactory.getLog(TestRegionsOnMasterOptions.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestRegionsOnMasterOptions.class);
   @Rule public TestName name = new TestName();
   @Rule public final TestRule timeout = CategoryBasedTimeout.builder().withTimeout(this.getClass()).
     withLookingForStuckThread(true).build();
@@ -178,6 +178,11 @@ public class TestRegionsOnMasterOptions {
       while (!cluster.getMaster().isInitialized()) {
         Threads.sleep(10);
       }
+      while (cluster.getMaster().getAssignmentManager().
+          computeRegionInTransitionStat().getTotalRITs() > 0) {
+        Threads.sleep(100);
+        LOG.info("Waiting on RIT to go to zero before calling balancer...");
+      }
       LOG.info("Cluster is up; running balancer");
       cluster.getMaster().balance();
       regions = cluster.getMaster().getRegions();
@@ -187,6 +192,15 @@ public class TestRegionsOnMasterOptions {
         // If masterCount == SYSTEM_REGIONS, means master only carrying system regions and should
         // still only carry system regions post crash.
         assertEquals(masterCount, mNewActualCount);
+      }
+      // Disable balancer and wait till RIT done else cluster won't go down.
+      TEST_UTIL.getAdmin().balancerSwitch(false, true);
+      while (true) {
+        if (!TEST_UTIL.getHBaseCluster().getMaster().getAssignmentManager().
+            isMetaRegionInTransition()) {
+          break;
+        }
+        Threads.sleep(10);
       }
     } finally {
       LOG.info("Running shutdown of cluster");

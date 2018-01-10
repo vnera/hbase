@@ -38,17 +38,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.sasl.AuthorizeCallback;
 import javax.security.sasl.SaslServer;
+
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.Cell.Type;
 import org.apache.hadoop.hbase.CellBuilder;
 import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
@@ -81,6 +82,7 @@ import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.filter.ParseFilter;
 import org.apache.hadoop.hbase.filter.PrefixFilter;
 import org.apache.hadoop.hbase.filter.WhileMatchFilter;
+import org.apache.hadoop.hbase.log.HBaseMarkers;
 import org.apache.hadoop.hbase.security.SaslUtil;
 import org.apache.hadoop.hbase.security.SaslUtil.QualityOfProtection;
 import org.apache.hadoop.hbase.security.SecurityUtil;
@@ -136,10 +138,11 @@ import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
-
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Joiner;
-import org.apache.hadoop.hbase.shaded.com.google.common.base.Throwables;
-import org.apache.hadoop.hbase.shaded.com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.base.Joiner;
+import org.apache.hbase.thirdparty.com.google.common.base.Throwables;
+import org.apache.hbase.thirdparty.com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 /**
  * ThriftServerRunner - this class starts up a Thrift server which implements
@@ -148,7 +151,7 @@ import org.apache.hadoop.hbase.shaded.com.google.common.util.concurrent.ThreadFa
 @InterfaceAudience.Private
 public class ThriftServerRunner implements Runnable {
 
-  private static final Log LOG = LogFactory.getLog(ThriftServerRunner.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ThriftServerRunner.class);
 
   private static final int DEFAULT_HTTP_MAX_HEADER_SIZE = 64 * 1024; // 64k
 
@@ -383,7 +386,7 @@ public class ThriftServerRunner implements Runnable {
             tserver.serve();
           }
         } catch (Exception e) {
-          LOG.fatal("Cannot run ThriftServer", e);
+          LOG.error(HBaseMarkers.FATAL, "Cannot run ThriftServer", e);
           // Crash the process if the ThriftServer is not running
           System.exit(-1);
         }
@@ -711,7 +714,7 @@ public class ThriftServerRunner implements Runnable {
    */
   public static class HBaseHandler implements Hbase.Iface {
     protected Configuration conf;
-    protected static final Log LOG = LogFactory.getLog(HBaseHandler.class);
+    protected static final Logger LOG = LoggerFactory.getLogger(HBaseHandler.class);
 
     // nextScannerId and scannerMap are used to manage scanner state
     protected int nextScannerId = 0;
@@ -1350,7 +1353,7 @@ public class ThriftServerRunner implements Runnable {
                   .setFamily(famAndQf[0])
                   .setQualifier(famAndQf[1])
                   .setTimestamp(put.getTimeStamp())
-                  .setType(CellBuilder.DataType.Put)
+                  .setType(Type.Put)
                   .setValue(m.value != null ? getBytes(m.value)
                       : HConstants.EMPTY_BYTE_ARRAY)
                   .build());
@@ -1418,7 +1421,7 @@ public class ThriftServerRunner implements Runnable {
                     .setFamily(famAndQf[0])
                     .setQualifier(famAndQf[1])
                     .setTimestamp(put.getTimeStamp())
-                    .setType(CellBuilder.DataType.Put)
+                    .setType(Type.Put)
                     .setValue(m.value != null ? getBytes(m.value)
                         : HConstants.EMPTY_BYTE_ARRAY)
                     .build());
@@ -1901,7 +1904,7 @@ public class ThriftServerRunner implements Runnable {
             .setFamily(famAndQf[0])
             .setQualifier(famAndQf[1])
             .setTimestamp(put.getTimeStamp())
-            .setType(CellBuilder.DataType.Put)
+            .setType(Type.Put)
             .setValue(mput.value != null ? getBytes(mput.value)
                 : HConstants.EMPTY_BYTE_ARRAY)
             .build());

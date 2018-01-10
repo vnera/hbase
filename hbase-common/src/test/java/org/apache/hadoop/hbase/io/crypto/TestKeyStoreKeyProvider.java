@@ -26,22 +26,22 @@ import java.security.Key;
 import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.util.Properties;
-
 import javax.crypto.spec.SecretKeySpec;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HBaseCommonTestingUtility;
 import org.apache.hadoop.hbase.testclassification.MiscTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Category({MiscTests.class, SmallTests.class})
 public class TestKeyStoreKeyProvider {
 
-  private static final Log LOG = LogFactory.getLog(TestKeyStoreKeyProvider.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestKeyStoreKeyProvider.class);
   static final HBaseCommonTestingUtility TEST_UTIL = new HBaseCommonTestingUtility();
   static final String ALIAS = "test";
   static final String PASSWORD = "password";
@@ -52,7 +52,7 @@ public class TestKeyStoreKeyProvider {
 
   @BeforeClass
   public static void setUp() throws Exception {
-    KEY = MessageDigest.getInstance("SHA-256").digest(ALIAS.getBytes());
+    KEY = MessageDigest.getInstance("SHA-256").digest(Bytes.toBytes(ALIAS));
     // Create a JKECS store containing a test secret key
     KeyStore store = KeyStore.getInstance("JCEKS");
     store.load(null, PASSWORD.toCharArray());
