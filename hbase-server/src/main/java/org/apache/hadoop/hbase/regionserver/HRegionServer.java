@@ -243,7 +243,6 @@ public class HRegionServer extends HasThread implements
   protected MemStoreFlusher cacheFlusher;
 
   protected HeapMemoryManager hMemManager;
-  protected CountDownLatch initLatch = null;
 
   /**
    * Cluster connection to be shared by services.
@@ -445,7 +444,7 @@ public class HRegionServer extends HasThread implements
   /**
    * Unique identifier for the cluster we are a part of.
    */
-  private String clusterId;
+  protected String clusterId;
 
   /**
    * MX Bean for RegionServerInfo
@@ -696,10 +695,6 @@ public class HRegionServer extends HasThread implements
     return null;
   }
 
-  protected void setInitLatch(CountDownLatch latch) {
-    this.initLatch = latch;
-  }
-
   /*
    * Returns true if configured hostname should be used
    */
@@ -853,8 +848,6 @@ public class HRegionServer extends HasThread implements
     // Wait on cluster being up.  Master will set this flag up in zookeeper
     // when ready.
     blockAndCheckIfStopped(this.clusterStatusTracker);
-
-    doLatch(this.initLatch);
 
     // Retrieve clusterId
     // Since cluster status is now up
@@ -2105,8 +2098,6 @@ public class HRegionServer extends HasThread implements
     return healthy;
   }
 
-  private static final byte[] UNSPECIFIED_REGION = new byte[]{};
-
   @Override
   public List<WAL> getWALs() throws IOException {
     return walFactory.getWALs();
@@ -2114,17 +2105,7 @@ public class HRegionServer extends HasThread implements
 
   @Override
   public WAL getWAL(RegionInfo regionInfo) throws IOException {
-    WAL wal;
-    // _ROOT_ and hbase:meta regions have separate WAL.
-    if (regionInfo != null && regionInfo.isMetaRegion()
-        && regionInfo.getReplicaId() == RegionInfo.DEFAULT_REPLICA_ID) {
-      wal = walFactory.getMetaWAL(regionInfo.getEncodedNameAsBytes());
-    } else if (regionInfo == null) {
-      wal = walFactory.getWAL(UNSPECIFIED_REGION, null);
-    } else {
-      byte[] namespace = regionInfo.getTable().getNamespace();
-      wal = walFactory.getWAL(regionInfo.getEncodedNameAsBytes(), namespace);
-    }
+    WAL wal = walFactory.getWAL(regionInfo);
     if (this.walRoller != null) {
       this.walRoller.addWAL(wal);
     }
