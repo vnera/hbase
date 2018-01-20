@@ -277,6 +277,10 @@
           <groupId>org.apache.hadoop</groupId>
           <artifactId>hadoop-minicluster</artifactId>
           <exclusions>
+            <exclusion> <!-- CDH specific -->
+              <groupId>com.google.guava</groupId>
+              <artifactId>guava</artifactId>
+            </exclusion>
             <exclusion>
               <groupId>org.apache.htrace</groupId>
               <artifactId>htrace-core</artifactId>

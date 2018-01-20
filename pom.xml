@@ -2857,10 +2857,6 @@
                <groupId>org.codehause.jackson</groupId>
                <artifactId>jackson-mapper-asl</artifactId>
              </exclusion>
-             <exclusion> <!-- CDH specific -->
-               <groupId>com.google.guava</groupId>
-               <artifactId>guava</artifactId>
-             </exclusion>
            </exclusions>
          </dependency>
          <dependency>
