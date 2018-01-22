@@ -164,7 +164,8 @@ public class MiniHBaseCluster extends HBaseCluster {
     @Override
     public void run() {
       try {
-        this.user.runAs(new PrivilegedAction<Object>(){
+        this.user.runAs(new PrivilegedAction<Object>() {
+          @Override
           public Object run() {
             runRegionServer();
             return null;
@@ -194,6 +195,7 @@ public class MiniHBaseCluster extends HBaseCluster {
     @Override
     public void abort(final String reason, final Throwable cause) {
       this.user.runAs(new PrivilegedAction<Object>() {
+        @Override
         public Object run() {
           abortRegionServer(reason, cause);
           return null;
@@ -498,6 +500,7 @@ public class MiniHBaseCluster extends HBaseCluster {
    * Returns the current active master, if available.
    * @return the active HMaster, null if none is active.
    */
+  @Override
   public MasterService.BlockingInterface getMasterAdminService() {
     return this.hbaseCluster.getActiveMaster().getMasterRpcServices();
   }
@@ -589,6 +592,7 @@ public class MiniHBaseCluster extends HBaseCluster {
    *         masters left.
    * @throws InterruptedException
    */
+  @Override
   public boolean waitForActiveAndReadyMaster(long timeout) throws IOException {
     List<JVMClusterUtil.MasterThread> mts;
     long start = System.currentTimeMillis();
@@ -631,6 +635,7 @@ public class MiniHBaseCluster extends HBaseCluster {
    * @throws IOException
    */
   @SuppressWarnings("deprecation")
+  @Override
   public void shutdown() throws IOException {
     if (this.hbaseCluster != null) {
       this.hbaseCluster.shutdown();
