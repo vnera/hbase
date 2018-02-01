@@ -11,6 +11,9 @@
 # One minor complication is that yetus depends having a patch file to
 # apply to the current branch.
 
+# Because this is a pre-commit hook, not part of the product, docs are not
+# needed.  The sigil below causes shelldoc to ignore this file.
+# SHELLDOC-IGNORE
 
 # Entering this script, there are few required env var args and
 # optional args:
@@ -159,7 +162,15 @@ CDH_PARENT=`"${GIT}" log --first-parent --oneline | head -2 | tail -1 |  cut -d 
 "${GIT}" branch --set-upstream-to="origin/${GERRIT_BRANCH}" "${GERRIT_BRANCH}"
 cd "${WORKSPACE}"
 
-# TODO override mvn to use mvn-gbn
+# we have mvn-gbn downloaded by the gerrit setup infra.
+# in order to override all invocations of maven, we will copy it into a subdirectory, rename it to mvn, and place it first on the path.
+MVN_WRAPPER_DIR="$(mktemp -d)"
+function cleanup_mvn_wrapper {
+    rm -rf "$MVN_WRAPPER_DIR"
+}
+trap cleanup_mvn_wrapper EXIT
+cp mvn-gbn "$MVN_WRAPPER_DIR/mvn"
+export PATH="$MVN_WRAPPER_DIR:$PATH"
 
 # invoke test-patch and send results to a known HTML file.
 if ! /bin/bash "${TESTPATCHBIN}" \
