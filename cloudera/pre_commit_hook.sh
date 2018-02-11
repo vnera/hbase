@@ -17,7 +17,6 @@
 echo "GIT_COMMIT (hash of push under review):   $GIT_COMMIT"
 echo "GERRIT_BRANCH (branch name to commit to): $GERRIT_BRANCH"
 echo "YETUS_ARGS (env provided args):           $YETUS_ARGS"
-YETUS_VERSION_NUMBER=${YETUS_VERSION_NUMBER:-"0.4.0"}
 WORKSPACE=${WORKSPACE:-"."}
 RUN_IN_DOCKER=${RUN_IN_DOCKER:-"false"}
 DEBUG=${DEBUG:-"true"}
@@ -37,7 +36,7 @@ sed 's/#.*//' cloudera/excluded.txt |  grep -v '^\w*$' | tr '\n' ',' | sed 's/^/
 # Assumed from job environment
 export JAVA_HOME=$JAVA_1_8_HOME
 export PATH=${JAVA_HOME}/bin:${MAVEN_3_5_0_HOME}/bin:$PATH
-export YETUS_VERSION_NUMBER=0.4.0
+export YETUS_VERSION_NUMBER=0.7.0
 
 if [[ "true" = "${DEBUG}" ]]; then
   set -x
@@ -170,6 +169,7 @@ if ! /bin/bash "${TESTPATCHBIN}" \
         --git-cmd="${GIT}" \
         --branch="${GERRIT_BRANCH}" \
         --html-report-file="${PATCHPROCESS}/report_output.html" \
+        --whitespace-eol-ignore-list=".*stylesheet.css" \
         "${PATCHFILE}" ; then
   echo "[ERROR] test patch failed, grabbing test logs into artifact 'test_logs.zip'"
   echo "[DEBUG] If we failed but didn't run any junit tests, zip will fail. We can safely ignore that."
