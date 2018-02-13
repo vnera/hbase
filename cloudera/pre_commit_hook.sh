@@ -158,7 +158,8 @@ CDH_PARENT=`"${GIT}" log --first-parent --oneline | head -2 | tail -1 |  cut -d 
 "${GIT}" branch --set-upstream-to="origin/${GERRIT_BRANCH}" "${GERRIT_BRANCH}"
 cd "${WORKSPACE}"
 
-# TODO override mvn to use mvn-gbn
+# activate mvn-gbn wrapper
+mv "$(which mvn-gbn-wrapper)" "$(dirname "$(which mvn-gbn-wrapper)")/mvn"
 
 # invoke test-patch and send results to a known HTML file.
 if ! /bin/bash "${TESTPATCHBIN}" \
