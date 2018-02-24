@@ -1391,7 +1391,7 @@
     <jettison.version>1.3.8</jettison.version>
     <!--This property is for hadoops netty. HBase netty
          comes in via hbase-thirdparty hbase-shaded-netty-->
-    <netty.hadoop.version>3.6.2.Final</netty.hadoop.version>
+    <netty.hadoop.version>${cdh.io.netty.version}</netty.hadoop.version>
     <!--Make sure these joni/jcodings are compatible with the versions used by jruby-->
     <joni.version>2.1.11</joni.version>
     <jcodings.version>1.0.18</jcodings.version>
