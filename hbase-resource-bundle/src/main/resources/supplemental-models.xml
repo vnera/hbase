@@ -1410,7 +1410,7 @@ under the License.
       </licenses>
     </project>
   </supplement>
-  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha1-cdh6.0.x-SNAPSHOT --> 
+  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha1-cdh6.0.0-SNAPSHOT --> 
     <project>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-annotations</artifactId>
@@ -1426,7 +1426,7 @@ under the License.
     </project>
   </supplement>
 
-  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha2-cdh6.0.x-SNAPSHOT -->
+  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha2-cdh6.0.0-SNAPSHOT -->
     <project>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-core</artifactId>
@@ -1442,7 +1442,7 @@ under the License.
     </project>
   </supplement>
 
-  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha2-cdh6.0.x-SNAPSHOT -->
+  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha2-cdh6.0.0-SNAPSHOT -->
     <project>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
@@ -1458,7 +1458,7 @@ under the License.
     </project>
   </supplement>
 
-  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha2-cdh6.0.x-SNAPSHOT -->
+  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha2-cdh6.0.0-SNAPSHOT -->
     <project>
       <groupId>com.fasterxml.jackson.jaxrs</groupId>
       <artifactId>jackson-jaxrs-base</artifactId>
@@ -1474,7 +1474,7 @@ under the License.
     </project>
   </supplement>
 
-  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha2-cdh6.0.x-SNAPSHOT -->
+  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha2-cdh6.0.0-SNAPSHOT -->
     <project>
       <groupId>com.fasterxml.jackson.jaxrs</groupId>
       <artifactId>jackson-jaxrs-json-provider</artifactId>
@@ -1490,7 +1490,7 @@ under the License.
     </project>
   </supplement>
 
-  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha2-cdh6.0.x-SNAPSHOT -->
+  <supplement> <!-- comes from hadoop-hdfs-client:jar:3.0.0-alpha2-cdh6.0.0-SNAPSHOT -->
     <project>
       <groupId>com.fasterxml.jackson.module</groupId>
       <artifactId>jackson-module-jaxb-annotations</artifactId>
