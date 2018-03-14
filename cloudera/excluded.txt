@@ -68,3 +68,14 @@
 **/TestAsyncRegionLocatorTimeout.java
 #292
 **/TestRegionObserverInterface.java
+
+#5
+**/TestReplicationKillSlaveRS.java
+#10 HBASE-19836
+**/TestZooKeeper.java
+#11
+**/TestAdmin2.java
+#13
+**/TestRegionMetrics.java
+**/TestRegionsOnMasterOptions.java
+**/TestVisibilityLabelsWithDefaultVisLabelService.java

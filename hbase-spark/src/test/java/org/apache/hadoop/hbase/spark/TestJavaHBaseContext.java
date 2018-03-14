@@ -31,6 +31,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
@@ -57,6 +58,7 @@ import org.apache.spark.api.java.function.Function;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -65,11 +67,14 @@ import org.apache.hbase.thirdparty.com.google.common.io.Files;
 
 @Category({MiscTests.class, MediumTests.class})
 public class TestJavaHBaseContext implements Serializable {
+
+  @ClassRule
+  public static final HBaseClassTestRule TIMEOUT =
+      HBaseClassTestRule.forClass(TestJavaHBaseContext.class);
+
   private transient JavaSparkContext jsc;
   HBaseTestingUtility htu;
   protected static final Log LOG = LogFactory.getLog(TestJavaHBaseContext.class);
-
-
 
   byte[] tableName = Bytes.toBytes("t1");
   byte[] columnFamily = Bytes.toBytes("c");
