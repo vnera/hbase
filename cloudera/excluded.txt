@@ -87,3 +87,5 @@
 #17
 **/TestFullLogReconstruction.java
 **/TestMetaWithReplicas.java
+#18
+**/TestCompactingToCellFlatMapMemStore.java
