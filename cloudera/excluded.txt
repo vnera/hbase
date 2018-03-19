@@ -79,3 +79,11 @@
 **/TestRegionMetrics.java
 **/TestRegionsOnMasterOptions.java
 **/TestVisibilityLabelsWithDefaultVisLabelService.java
+#15
+**/TestQuotaObserverChoreWithMiniCluster.java
+**/TestReplicationKillMasterRSCompressedWithMultipleAsyncWAL.java
+#16
+**/TestSnapshotQuotaObserverChore.java
+#17
+**/TestFullLogReconstruction.java
+**/TestMetaWithReplicas.java
