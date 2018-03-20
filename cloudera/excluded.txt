@@ -89,3 +89,5 @@
 **/TestMetaWithReplicas.java
 #18
 **/TestCompactingToCellFlatMapMemStore.java
+#20
+**/TestRSGroupsOfflineMode.java
