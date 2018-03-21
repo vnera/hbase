@@ -93,3 +93,6 @@
 **/TestRSGroupsOfflineMode.java
 #22
 **/TestQuotaObserverChoreRegionReports.java
+#24
+**/TestSuperUserQuotaPermissions.java
+**/TestHTraceHooks.java
