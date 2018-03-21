@@ -91,3 +91,5 @@
 **/TestCompactingToCellFlatMapMemStore.java
 #20
 **/TestRSGroupsOfflineMode.java
+#22
+**/TestQuotaObserverChoreRegionReports.java
