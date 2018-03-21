@@ -96,3 +96,6 @@
 #24
 **/TestSuperUserQuotaPermissions.java
 **/TestHTraceHooks.java
+#25
+**/TestSpaceQuotasWithSnapshots.java
+**/TestRestartCluster.java
