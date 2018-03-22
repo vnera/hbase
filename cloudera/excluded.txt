@@ -99,3 +99,7 @@
 #25
 **/TestSpaceQuotasWithSnapshots.java
 **/TestRestartCluster.java
+#27
+**/TestAsyncTableGetMultiThreaded.java
+**/TestFlushSnapshotFromClient.java
+
