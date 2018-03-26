@@ -102,4 +102,8 @@
 #27
 **/TestAsyncTableGetMultiThreaded.java
 **/TestFlushSnapshotFromClient.java
+#34
+**/TestWALProcedureStore.java
+**/TestGlobalThrottler.java
+**/TestAvoidCellReferencesIntoShippedBlocks.java
 
