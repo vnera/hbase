@@ -106,4 +106,5 @@
 **/TestWALProcedureStore.java
 **/TestGlobalThrottler.java
 **/TestAvoidCellReferencesIntoShippedBlocks.java
-
+#40
+**/TestClientClusterMetrics.java
