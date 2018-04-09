@@ -77,6 +77,12 @@
       <property name="processJavadoc" value="true"/>
     </module>
     <module name="IllegalImport">
+<!--
+  TODO include the o.a.htrace package for HTrace v3 once we can upgrade
+  to checkstyle 8.6 plus and use a message filter to suppress
+  errors from proper use of o.a.htrace.core
+          org.apache.htrace,
+-->
       <property name="illegalPkgs" value="
           com.google.common,
           io.netty,
@@ -85,7 +91,8 @@
           org.apache.commons.collections4,
           org.apache.commons.lang,
           org.apache.curator.shaded,
-          org.apache.htrace.shaded"/>
+          org.apache.htrace.shaded,
+          org.htrace"/>
     </module>
     <!-- Javadoc Checks
     http://checkstyle.sourceforge.net/config_javadoc.html -->
