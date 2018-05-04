@@ -34,7 +34,9 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
-
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.ServerName;
@@ -59,7 +61,6 @@ import org.slf4j.LoggerFactory;
  */
 public class BalancerTestBase {
   private static final Logger LOG = LoggerFactory.getLogger(BalancerTestBase.class);
-  protected static Random rand = new Random();
   static int regionId = 0;
   protected static Configuration conf;
   protected static StochasticLoadBalancer loadBalancer;
@@ -159,12 +160,9 @@ public class BalancerTestBase {
     public MockMapping(Configuration conf) {
     }
 
+    @Override
     public List<String> resolve(List<String> names) {
-      List<String> ret = new ArrayList<>(names.size());
-      for (String name : names) {
-        ret.add("rack");
-      }
-      return ret;
+      return Stream.generate(() -> "rack").limit(names.size()).collect(Collectors.toList());
     }
 
     // do not add @Override annotations here. It mighty break compilation with earlier Hadoops
@@ -437,6 +435,7 @@ public class BalancerTestBase {
     List<RegionInfo> regions = new ArrayList<>(numRegions);
     byte[] start = new byte[16];
     byte[] end = new byte[16];
+    Random rand = ThreadLocalRandom.current();
     rand.nextBytes(start);
     rand.nextBytes(end);
     for (int i = 0; i < numRegions; i++) {
@@ -463,6 +462,7 @@ public class BalancerTestBase {
     List<RegionInfo> regions = new ArrayList<>(numRegions);
     byte[] start = new byte[16];
     byte[] end = new byte[16];
+    Random rand = ThreadLocalRandom.current();
     rand.nextBytes(start);
     rand.nextBytes(end);
     for (int i = 0; i < numRegions; i++) {
@@ -491,6 +491,7 @@ public class BalancerTestBase {
       ServerName sn = this.serverQueue.poll();
       return new ServerAndLoad(sn, numRegionsPerServer);
     }
+    Random rand = ThreadLocalRandom.current();
     String host = "srv" + rand.nextInt(Integer.MAX_VALUE);
     int port = rand.nextInt(60000);
     long startCode = rand.nextLong();

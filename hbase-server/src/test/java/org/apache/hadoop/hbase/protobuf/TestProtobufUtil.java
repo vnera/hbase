@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -21,20 +20,22 @@ package org.apache.hadoop.hbase.protobuf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import com.google.protobuf.ByteString;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-
 import org.apache.hadoop.hbase.ByteBufferKeyValue;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellComparatorImpl;
 import org.apache.hadoop.hbase.ExtendedCellBuilderFactory;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Increment;
 import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.io.TimeRange;
 import org.apache.hadoop.hbase.protobuf.generated.CellProtos;
 import org.apache.hadoop.hbase.protobuf.generated.ClientProtos;
 import org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Column;
@@ -47,16 +48,20 @@ import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.NameBytesPair;
 import org.apache.hadoop.hbase.testclassification.MiscTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
-
-import com.google.protobuf.ByteString;
 
 /**
  * Class to test ProtobufUtil.
  */
 @Category({MiscTests.class, SmallTests.class})
 public class TestProtobufUtil {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestProtobufUtil.class);
+
   @Test
   public void testException() throws IOException {
     NameBytesPair.Builder builder = NameBytesPair.newBuilder();
@@ -100,6 +105,7 @@ public class TestProtobufUtil {
     getBuilder = ClientProtos.Get.newBuilder(proto);
     getBuilder.setMaxVersions(1);
     getBuilder.setCacheBlocks(true);
+    getBuilder.setTimeRange(ProtobufUtil.toTimeRange(TimeRange.allTime()));
 
     Get get = ProtobufUtil.toGet(proto);
     assertEquals(getBuilder.build(), ProtobufUtil.toGet(get));
@@ -141,7 +147,8 @@ public class TestProtobufUtil {
 
     // append always use the latest timestamp,
     // reset the timestamp to the original mutate
-    mutateBuilder.setTimestamp(append.getTimeStamp());
+    mutateBuilder.setTimestamp(append.getTimestamp());
+    mutateBuilder.setTimeRange(ProtobufUtil.toTimeRange(append.getTimeRange()));
     assertEquals(mutateBuilder.build(), ProtobufUtil.toMutation(MutationType.APPEND, append));
   }
 
@@ -224,7 +231,8 @@ public class TestProtobufUtil {
     mutateBuilder.setDurability(MutationProto.Durability.USE_DEFAULT);
 
     Increment increment = ProtobufUtil.toIncrement(proto, null);
-    mutateBuilder.setTimestamp(increment.getTimeStamp());
+    mutateBuilder.setTimestamp(increment.getTimestamp());
+    mutateBuilder.setTimeRange(ProtobufUtil.toTimeRange(increment.getTimeRange()));
     assertEquals(mutateBuilder.build(), ProtobufUtil.toMutation(MutationType.INCREMENT, increment));
   }
 
@@ -264,7 +272,7 @@ public class TestProtobufUtil {
     // put value always use the default timestamp if no
     // value level timestamp specified,
     // add the timestamp to the original mutate
-    long timestamp = put.getTimeStamp();
+    long timestamp = put.getTimestamp();
     for (ColumnValue.Builder column:
         mutateBuilder.getColumnValueBuilderList()) {
       for (QualifierValue.Builder qualifier:
@@ -310,6 +318,7 @@ public class TestProtobufUtil {
     scanBuilder.setMaxVersions(2);
     scanBuilder.setCacheBlocks(false);
     scanBuilder.setCaching(1024);
+    scanBuilder.setTimeRange(ProtobufUtil.toTimeRange(TimeRange.allTime()));
     ClientProtos.Scan expectedProto = scanBuilder.build();
 
     ClientProtos.Scan actualProto = ProtobufUtil.toScan(

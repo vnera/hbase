@@ -482,6 +482,11 @@ public interface MasterServices extends Server {
 
   public String getRegionServerVersion(final ServerName sn);
 
+  /**
+   * Called when a new RegionServer is added to the cluster.
+   * Checks if new server has a newer version than any existing server and will move system tables
+   * there if so.
+   */
   public void checkIfShouldMoveSystemRegionAsync();
 
   /**
@@ -492,4 +497,9 @@ public interface MasterServices extends Server {
   boolean recoverMeta() throws IOException;
 
   String getClientIdAuditPrefix();
+
+  /**
+   * @return True if cluster is up; false if cluster is not up (we are shutting down).
+   */
+  boolean isClusterUp();
 }

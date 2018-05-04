@@ -26,8 +26,6 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.Option;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseCommonTestingUtility;
@@ -37,6 +35,9 @@ import org.apache.hadoop.hbase.procedure2.store.ProcedureStore;
 import org.apache.hadoop.hbase.procedure2.store.ProcedureStore.ProcedureIterator;
 import org.apache.hadoop.hbase.procedure2.util.StringUtils;
 import org.apache.hadoop.hbase.util.AbstractHBaseTool;
+
+import org.apache.hbase.thirdparty.org.apache.commons.cli.CommandLine;
+import org.apache.hbase.thirdparty.org.apache.commons.cli.Option;
 
 import static java.lang.System.currentTimeMillis;
 
@@ -70,7 +71,7 @@ public class ProcedureWALLoaderPerformanceEvaluation extends AbstractHBaseTool {
   private WALProcedureStore store;
   static byte[] serializedState;
 
-  private class LoadCounter implements ProcedureStore.ProcedureLoader {
+  private static class LoadCounter implements ProcedureStore.ProcedureLoader {
     public LoadCounter() {}
 
     @Override
@@ -165,8 +166,7 @@ public class ProcedureWALLoaderPerformanceEvaluation extends AbstractHBaseTool {
   private void writeWals() throws IOException {
     List<Integer> procStates = shuffleProcWriteSequence();
     TestProcedure[] procs = new TestProcedure[numProcs + 1];  // 0 is not used.
-    int numProcsPerWal = numWals > 0 ? (int)Math.ceil(procStates.size() / numWals)
-        : Integer.MAX_VALUE;
+    int numProcsPerWal = numWals > 0 ? procStates.size() / numWals : Integer.MAX_VALUE;
     long startTime = currentTimeMillis();
     long lastTime = startTime;
     for (int i = 0; i < procStates.size(); ++i) {

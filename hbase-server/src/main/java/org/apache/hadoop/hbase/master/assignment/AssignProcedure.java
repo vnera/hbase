@@ -26,7 +26,6 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.RetriesExhaustedException;
-import org.apache.hadoop.hbase.client.TableState;
 import org.apache.hadoop.hbase.exceptions.UnexpectedStateException;
 import org.apache.hadoop.hbase.master.RegionState.State;
 import org.apache.hadoop.hbase.master.TableStateManager;
@@ -158,15 +157,15 @@ public class AssignProcedure extends RegionTransitionProcedure {
       LOG.info("Assigned, not reassigning; " + this + "; " + regionNode.toShortString());
       return false;
     }
-    // Don't assign if table is in disabling of disabled state.
+    // Don't assign if table is in disabling or disabled state.
     TableStateManager tsm = env.getMasterServices().getTableStateManager();
     TableName tn = regionNode.getRegionInfo().getTable();
-    if (tsm.isTableState(tn, TableState.State.DISABLING, TableState.State.DISABLED)) {
+    if (tsm.getTableState(tn).isDisabledOrDisabling()) {
       LOG.info("Table " + tn + " state=" + tsm.getTableState(tn) + ", skipping " + this);
       return false;
     }
     // If the region is SPLIT, we can't assign it. But state might be CLOSED, rather than
-    // SPLIT which is what a region gets set to when Unassigned as part of SPLIT. FIX.
+    // SPLIT which is what a region gets set to when unassigned as part of SPLIT. FIX.
     if (regionNode.isInState(State.SPLIT) ||
         (regionNode.getRegionInfo().isOffline() && regionNode.getRegionInfo().isSplit())) {
       LOG.info("SPLIT, cannot be assigned; " + this + "; " + regionNode +
@@ -208,7 +207,7 @@ public class AssignProcedure extends RegionTransitionProcedure {
         }
       }
     }
-    LOG.info("Start " + this + "; " + regionNode.toShortString() +
+    LOG.info("Starting " + this + "; " + regionNode.toShortString() +
         "; forceNewPlan=" + this.forceNewPlan +
         ", retain=" + retain);
     env.getAssignmentManager().queueAssign(regionNode);

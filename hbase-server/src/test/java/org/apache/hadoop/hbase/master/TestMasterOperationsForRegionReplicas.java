@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -22,6 +21,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ClusterMetrics.Option;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -57,6 +58,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.JVMClusterUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
@@ -67,6 +69,11 @@ import org.slf4j.LoggerFactory;
 
 @Category({MasterTests.class, MediumTests.class})
 public class TestMasterOperationsForRegionReplicas {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestMasterOperationsForRegionReplicas.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestRegionPlacement.class);
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private static Connection CONNECTION = null;
@@ -242,7 +249,7 @@ public class TestMasterOperationsForRegionReplicas {
       }
       assert(defaultReplicas.size() == numRegions);
       Collection<Integer> counts = new HashSet<>(defaultReplicas.values());
-      assert(counts.size() == 1 && counts.contains(new Integer(numReplica)));
+      assert(counts.size() == 1 && counts.contains(numReplica));
     } finally {
       ADMIN.disableTable(tableName);
       ADMIN.deleteTable(tableName);
@@ -336,7 +343,7 @@ public class TestMasterOperationsForRegionReplicas {
         byte[] startKey = region.getStartKey();
         if (region.getTable().equals(table)) {
           setOfStartKeys.add(startKey); //ignore other tables
-          LOG.info("--STARTKEY " + new String(startKey)+"--");
+          LOG.info("--STARTKEY {}--", new String(startKey, StandardCharsets.UTF_8));
         }
       }
       // the number of startkeys will be equal to the number of regions hosted in each server

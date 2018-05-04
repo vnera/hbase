@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.hadoop.hbase.master.assignment;
 
 import static org.junit.Assert.assertEquals;
@@ -24,6 +23,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.net.SocketTimeoutException;
 import java.util.NavigableMap;
 import java.util.Random;
@@ -36,10 +36,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.CategoryBasedTimeout;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.ServerName;
@@ -61,22 +60,23 @@ import org.apache.hadoop.hbase.procedure2.store.wal.WALProcedureStore;
 import org.apache.hadoop.hbase.procedure2.util.StringUtils;
 import org.apache.hadoop.hbase.regionserver.RegionServerAbortedException;
 import org.apache.hadoop.hbase.regionserver.RegionServerStoppedException;
+import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.testclassification.MasterTests;
-import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.ipc.RemoteException;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.ExpectedException;
 import org.junit.rules.TestName;
-import org.junit.rules.TestRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.CloseRegionRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.CloseRegionResponse;
@@ -90,14 +90,16 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProto
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionStateTransition.TransitionCode;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionRequest;
 
-@Category({MasterTests.class, MediumTests.class})
+@Category({MasterTests.class, LargeTests.class})
 public class TestAssignmentManager {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestAssignmentManager.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestAssignmentManager.class);
 
   @Rule public TestName name = new TestName();
-  @Rule public final TestRule timeout =
-      CategoryBasedTimeout.builder().withTimeout(this.getClass()).
-        withLookingForStuckThread(true).build();
   @Rule public final ExpectedException exception = ExpectedException.none();
 
   private static final int PROC_NTHREADS = 64;
@@ -206,7 +208,7 @@ public class TestAssignmentManager {
     rsDispatcher.setMockRsExecutor(new RandRsExecutor());
     // Loop a bunch of times so we hit various combos of exceptions.
     for (int i = 0; i < 10; i++) {
-      LOG.info("" + i);
+      LOG.info("ROUND=" + i);
       AssignProcedure proc = am.createAssignProcedure(hri);
       waitOnFuture(submitProcedure(proc));
     }
@@ -445,6 +447,12 @@ public class TestAssignmentManager {
       return future.get(5, TimeUnit.SECONDS);
     } catch (ExecutionException e) {
       LOG.info("ExecutionException", e);
+      Exception ee = (Exception)e.getCause();
+      if (ee instanceof InterruptedIOException) {
+        for (Procedure p: this.master.getMasterProcedureExecutor().getProcedures()) {
+          LOG.info(p.toStringDetails());
+        }
+      }
       throw (Exception)e.getCause();
     }
   }

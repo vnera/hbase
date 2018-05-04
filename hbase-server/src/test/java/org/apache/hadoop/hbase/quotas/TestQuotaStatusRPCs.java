@@ -1,12 +1,13 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to you under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,8 +26,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Waiter;
@@ -42,6 +43,7 @@ import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -54,6 +56,11 @@ import org.slf4j.LoggerFactory;
  */
 @Category({MediumTests.class})
 public class TestQuotaStatusRPCs {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestQuotaStatusRPCs.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestQuotaStatusRPCs.class);
   private static final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private static final AtomicLong COUNTER = new AtomicLong(0);
@@ -142,7 +149,7 @@ public class TestQuotaStatusRPCs {
     assertTrue(
         "Observed table usage was " + snapshot.getUsage(),
         snapshot.getUsage() >= tableSize);
-    assertEquals(snapshot.getLimit(), sizeLimit);
+    assertEquals(sizeLimit, snapshot.getLimit());
     SpaceQuotaStatus pbStatus = snapshot.getQuotaStatus();
     assertFalse(pbStatus.isInViolation());
   }
@@ -192,8 +199,11 @@ public class TestQuotaStatusRPCs {
 
   @Test
   public void testQuotaStatusFromMaster() throws Exception {
-    final long sizeLimit = 1024L * 10L; // 10KB
-    final long tableSize = 1024L * 5; // 5KB
+    final long sizeLimit = 1024L * 25L; // 25KB
+    // As of 2.0.0-beta-2, this 1KB of "Cells" actually results in about 15KB on disk (HFiles)
+    // This is skewed a bit since we're writing such little data, so the test needs to keep
+    // this in mind; else, the quota will be in violation before the test expects it to be.
+    final long tableSize = 1024L * 1; // 1KB
     final long nsLimit = Long.MAX_VALUE;
     final int numRegions = 10;
     final TableName tn = helper.createTableWithRegions(numRegions);
@@ -237,6 +247,12 @@ public class TestQuotaStatusRPCs {
         return snapshot.getLimit() == nsLimit && snapshot.getUsage() > 0;
       }
     });
+
+    // Sanity check: the below assertions will fail if we somehow write too much data
+    // and force the table to move into violation before we write the second bit of data.
+    SpaceQuotaSnapshot snapshot = QuotaTableUtil.getCurrentSnapshot(conn, tn);
+    assertTrue("QuotaSnapshot for " + tn + " should be non-null and not in violation",
+        snapshot != null && !snapshot.getQuotaStatus().isInViolation());
 
     try {
       helper.writeData(tn, tableSize * 2L);

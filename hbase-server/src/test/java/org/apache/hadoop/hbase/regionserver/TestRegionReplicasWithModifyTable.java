@@ -21,8 +21,8 @@ import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
 import java.util.List;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -34,6 +34,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.RegionSplitter;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -41,6 +42,11 @@ import org.junit.rules.TestName;
 
 @Category({ RegionServerTests.class, MediumTests.class })
 public class TestRegionReplicasWithModifyTable {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestRegionReplicasWithModifyTable.class);
+
   private static final int NB_SERVERS = 3;
   private static Table table;
   private static final byte[] row = "TestRegionReplicasWithModifyTable".getBytes();
@@ -101,7 +107,7 @@ public class TestRegionReplicasWithModifyTable {
     return HTU.getMiniHBaseCluster().getRegionServer(2);
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testRegionReplicasUsingEnableTable() throws Exception {
     TableName tableName = null;
     try {
@@ -111,7 +117,7 @@ public class TestRegionReplicasWithModifyTable {
       List<HRegion> onlineRegions2 = getSecondaryRS().getRegions(tableName);
       List<HRegion> onlineRegions3 = getTertiaryRS().getRegions(tableName);
       int totalRegions = onlineRegions.size() + onlineRegions2.size() + onlineRegions3.size();
-      assertEquals("the number of regions should be more than 1", totalRegions, 3);
+      assertEquals("the number of regions should be more than 1", 3, totalRegions);
     } finally {
       disableAndDeleteTable(tableName);
     }
@@ -122,7 +128,7 @@ public class TestRegionReplicasWithModifyTable {
     HTU.getAdmin().deleteTable(tableName);
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testRegionReplicasUsingEnableTableForMultipleRegions() throws Exception {
     TableName tableName = null;
     try {
@@ -132,13 +138,13 @@ public class TestRegionReplicasWithModifyTable {
       List<HRegion> onlineRegions2 = getSecondaryRS().getRegions(tableName);
       List<HRegion> onlineRegions3 = getTertiaryRS().getRegions(tableName);
       int totalRegions = onlineRegions.size() + onlineRegions2.size() + onlineRegions3.size();
-      assertEquals("the number of regions should be equal to 30", totalRegions, 30);
+      assertEquals("the number of regions should be equal to 30", 30, totalRegions);
     } finally {
       disableAndDeleteTable(tableName);
     }
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testRegionReplicasByEnableTableWhenReplicaCountIsIncreased() throws Exception {
     TableName tableName = null;
     try {
@@ -148,13 +154,13 @@ public class TestRegionReplicasWithModifyTable {
       List<HRegion> onlineRegions2 = getSecondaryRS().getRegions(tableName);
       List<HRegion> onlineRegions3 = getTertiaryRS().getRegions(tableName);
       int totalRegions = onlineRegions.size() + onlineRegions2.size() + onlineRegions3.size();
-      assertEquals("the number of regions should be 3", totalRegions, 3);
+      assertEquals("the number of regions should be 3", 3, totalRegions);
     } finally {
       disableAndDeleteTable(tableName);
     }
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testRegionReplicasByEnableTableWhenReplicaCountIsDecreased() throws Exception {
     TableName tableName = null;
     try {
@@ -164,13 +170,13 @@ public class TestRegionReplicasWithModifyTable {
       List<HRegion> onlineRegions2 = getSecondaryRS().getRegions(tableName);
       List<HRegion> onlineRegions3 = getTertiaryRS().getRegions(tableName);
       int totalRegions = onlineRegions.size() + onlineRegions2.size() + onlineRegions3.size();
-      assertEquals("the number of regions should be reduced to 2", totalRegions, 2);
+      assertEquals("the number of regions should be reduced to 2", 2, totalRegions);
     } finally {
       disableAndDeleteTable(tableName);
     }
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testRegionReplicasByEnableTableWhenReplicaCountIsDecreasedWithMultipleRegions()
       throws Exception {
     TableName tableName = null;
@@ -181,13 +187,13 @@ public class TestRegionReplicasWithModifyTable {
       List<HRegion> onlineRegions2 = getSecondaryRS().getRegions(tableName);
       List<HRegion> onlineRegions3 = getTertiaryRS().getRegions(tableName);
       int totalRegions = onlineRegions.size() + onlineRegions2.size() + onlineRegions3.size();
-      assertEquals("the number of regions should be reduced to 40", totalRegions, 40);
+      assertEquals("the number of regions should be reduced to 40", 40, totalRegions);
     } finally {
       disableAndDeleteTable(tableName);
     }
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testRegionReplicasByEnableTableWhenReplicaCountIsIncreasedWithmultipleRegions()
       throws Exception {
     TableName tableName = null;
@@ -198,7 +204,7 @@ public class TestRegionReplicasWithModifyTable {
       List<HRegion> onlineRegions2 = getSecondaryRS().getRegions(tableName);
       List<HRegion> onlineRegions3 = getTertiaryRS().getRegions(tableName);
       int totalRegions = onlineRegions.size() + onlineRegions2.size() + onlineRegions3.size();
-      assertEquals("the number of regions should be equal to 45", totalRegions, 3 * 15);
+      assertEquals("the number of regions should be equal to 45", 3 * 15, totalRegions);
     } finally {
       disableAndDeleteTable(tableName);
     }

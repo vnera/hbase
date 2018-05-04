@@ -29,12 +29,12 @@ import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
-
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellComparator;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.regionserver.querymatcher.NewVersionBehaviorTracker;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +42,7 @@ import org.slf4j.LoggerFactory;
  * Similar to MvccSensitiveTracker but tracks the visibility expression also before
  * deciding if a Cell can be considered deleted
  */
+@InterfaceAudience.Private
 public class VisibilityNewVersionBehaivorTracker extends NewVersionBehaviorTracker {
   private static final Logger LOG =
       LoggerFactory.getLogger(VisibilityNewVersionBehaivorTracker.class);
@@ -149,7 +150,7 @@ public class VisibilityNewVersionBehaivorTracker extends NewVersionBehaviorTrack
     List<Tag> putVisTags = new ArrayList<>();
     Byte putCellVisTagsFormat = VisibilityUtils.extractVisibilityTags(put, putVisTags);
     return putVisTags.isEmpty() == delInfo.tags.isEmpty() && (
-        putVisTags.isEmpty() && delInfo.tags.isEmpty() || VisibilityLabelServiceManager
+        (putVisTags.isEmpty() && delInfo.tags.isEmpty()) || VisibilityLabelServiceManager
             .getInstance().getVisibilityLabelService()
             .matchVisibility(putVisTags, putCellVisTagsFormat, delInfo.tags, delInfo.format));
   }

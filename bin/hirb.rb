@@ -78,6 +78,10 @@ for arg in ARGV
   elsif arg == '-n' || arg == '--noninteractive'
     interactive = false
     found.push(arg)
+  elsif arg == '-r' || arg == '--return-values'
+    warn '[INFO] the -r | --return-values option is ignored. we always behave '\
+         'as though it was given.'
+    found.push(arg)
   else
     # Presume it a script. Save it off for running later below
     # after we've set up some environment.

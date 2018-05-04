@@ -37,13 +37,12 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ClockOutOfSyncException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.NotServingRegionException;
-import org.apache.hadoop.hbase.RegionLoad;
-import org.apache.hadoop.hbase.ServerLoad;
+import org.apache.hadoop.hbase.RegionMetrics;
+import org.apache.hadoop.hbase.ServerMetrics;
 import org.apache.hadoop.hbase.ServerMetricsBuilder;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.YouAreDeadException;
@@ -62,8 +61,10 @@ import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
+
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.AdminService;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos.RegionStoreSequenceIds;
@@ -91,9 +92,6 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProto
  * the server cannot be fully processed, and be queued up for further processing.
  * A server is fully processed only after the handler is fully enabled
  * and has completed the handling.
- */
-/**
- *
  */
 @InterfaceAudience.Private
 public class ServerManager {
@@ -127,7 +125,8 @@ public class ServerManager {
     storeFlushedSequenceIdsByRegion = new ConcurrentSkipListMap<>(Bytes.BYTES_COMPARATOR);
 
   /** Map of registered servers to their current load */
-  private final ConcurrentNavigableMap<ServerName, ServerLoad> onlineServers = new ConcurrentSkipListMap<>();
+  private final ConcurrentNavigableMap<ServerName, ServerMetrics> onlineServers =
+    new ConcurrentSkipListMap<>();
 
   /**
    * Map of admin interfaces per registered regionserver; these interfaces we use to control
@@ -243,7 +242,7 @@ public class ServerManager {
       request.getServerStartCode());
     checkClockSkew(sn, request.getServerCurrentTime());
     checkIsDead(sn, "STARTUP");
-    if (!checkAndRecordNewServer(sn, new ServerLoad(ServerMetricsBuilder.of(sn)))) {
+    if (!checkAndRecordNewServer(sn, ServerMetricsBuilder.of(sn))) {
       LOG.warn("THIS SHOULD NOT HAPPEN, RegionServerStartup"
         + " could not record the server: " + sn);
     }
@@ -255,12 +254,11 @@ public class ServerManager {
    * @param sn
    * @param hsl
    */
-  private void updateLastFlushedSequenceIds(ServerName sn, ServerLoad hsl) {
-    Map<byte[], RegionLoad> regionsLoad = hsl.getRegionsLoad();
-    for (Entry<byte[], RegionLoad> entry : regionsLoad.entrySet()) {
+  private void updateLastFlushedSequenceIds(ServerName sn, ServerMetrics hsl) {
+    for (Entry<byte[], RegionMetrics> entry : hsl.getRegionMetrics().entrySet()) {
       byte[] encodedRegionName = Bytes.toBytes(RegionInfo.encodeRegionName(entry.getKey()));
       Long existingValue = flushedSequenceIdByRegion.get(encodedRegionName);
-      long l = entry.getValue().getCompleteSequenceId();
+      long l = entry.getValue().getCompletedSequenceId();
       // Don't let smaller sequence ids override greater sequence ids.
       if (LOG.isTraceEnabled()) {
         LOG.trace(Bytes.toString(encodedRegionName) + ", existingValue=" + existingValue +
@@ -276,10 +274,10 @@ public class ServerManager {
       ConcurrentNavigableMap<byte[], Long> storeFlushedSequenceId =
           computeIfAbsent(storeFlushedSequenceIdsByRegion, encodedRegionName,
             () -> new ConcurrentSkipListMap<>(Bytes.BYTES_COMPARATOR));
-      for (StoreSequenceId storeSeqId : entry.getValue().getStoreCompleteSequenceId()) {
-        byte[] family = storeSeqId.getFamilyName().toByteArray();
+      for (Entry<byte[], Long> storeSeqId : entry.getValue().getStoreSequenceId().entrySet()) {
+        byte[] family = storeSeqId.getKey();
         existingValue = storeFlushedSequenceId.get(family);
-        l = storeSeqId.getSequenceId();
+        l = storeSeqId.getValue();
         if (LOG.isTraceEnabled()) {
           LOG.trace(Bytes.toString(encodedRegionName) + ", family=" + Bytes.toString(family) +
             ", existingValue=" + existingValue + ", completeSequenceId=" + l);
@@ -294,7 +292,7 @@ public class ServerManager {
 
   @VisibleForTesting
   public void regionServerReport(ServerName sn,
-      ServerLoad sl) throws YouAreDeadException {
+    ServerMetrics sl) throws YouAreDeadException {
     checkIsDead(sn, "REPORT");
     if (null == this.onlineServers.replace(sn, sl)) {
       // Already have this host+port combo and its just different start code?
@@ -319,7 +317,7 @@ public class ServerManager {
    * @param sl the server load on the server
    * @return true if the server is recorded, otherwise, false
    */
-  boolean checkAndRecordNewServer(final ServerName serverName, final ServerLoad sl) {
+  boolean checkAndRecordNewServer(final ServerName serverName, final ServerMetrics sl) {
     ServerName existingServer = null;
     synchronized (this.onlineServers) {
       existingServer = findServerWithSameHostnamePortWithLock(serverName);
@@ -426,8 +424,8 @@ public class ServerManager {
    * @param serverName The remote servers name.
    */
   @VisibleForTesting
-  void recordNewServerWithLock(final ServerName serverName, final ServerLoad sl) {
-    LOG.info("Registering server=" + serverName);
+  void recordNewServerWithLock(final ServerName serverName, final ServerMetrics sl) {
+    LOG.info("Registering regionserver=" + serverName);
     this.onlineServers.put(serverName, sl);
     this.rsAdmins.remove(serverName);
   }
@@ -450,9 +448,9 @@ public class ServerManager {
 
   /**
    * @param serverName
-   * @return ServerLoad if serverName is known else null
+   * @return ServerMetrics if serverName is known else null
    */
-  public ServerLoad getLoad(final ServerName serverName) {
+  public ServerMetrics getLoad(final ServerName serverName) {
     return this.onlineServers.get(serverName);
   }
 
@@ -465,9 +463,9 @@ public class ServerManager {
   public double getAverageLoad() {
     int totalLoad = 0;
     int numServers = 0;
-    for (ServerLoad sl: this.onlineServers.values()) {
-        numServers++;
-        totalLoad += sl.getNumberOfRegions();
+    for (ServerMetrics sl : this.onlineServers.values()) {
+      numServers++;
+      totalLoad += sl.getRegionMetrics().size();
     }
     return numServers == 0 ? 0 :
       (double)totalLoad / (double)numServers;
@@ -482,7 +480,7 @@ public class ServerManager {
   /**
    * @return Read-only map of servers to serverinfo
    */
-  public Map<ServerName, ServerLoad> getOnlineServers() {
+  public Map<ServerName, ServerMetrics> getOnlineServers() {
     // Presumption is that iterating the returned Map is OK.
     synchronized (this.onlineServers) {
       return Collections.unmodifiableMap(this.onlineServers);
@@ -524,7 +522,7 @@ public class ServerManager {
           }
           sb.append(key);
         }
-        LOG.info("Waiting on regionserver(s) to go down " + sb.toString());
+        LOG.info("Waiting on regionserver(s) " + sb.toString());
         previousLogTime = System.currentTimeMillis();
       }
 
@@ -587,7 +585,7 @@ public class ServerManager {
 
     // If cluster is going down, yes, servers are going to be expiring; don't
     // process as a dead server
-    if (this.clusterShutdown.get()) {
+    if (isClusterShutdown()) {
       LOG.info("Cluster shutdown set; " + serverName +
         " expired; onlineServers=" + this.onlineServers.size());
       if (this.onlineServers.isEmpty()) {
@@ -863,7 +861,7 @@ public class ServerManager {
       if (oldCount != count || lastLogTime + interval < now) {
         lastLogTime = now;
         String msg =
-            "Waiting on RegionServer count=" + count + " to settle; waited="+
+            "Waiting on regionserver count=" + count + "; waited="+
                 slept + "ms, expecting min=" + minToStart + " server(s), max="+ getStrForMax(maxToStart) +
                 " server(s), " + "timeout=" + timeout + "ms, lastChange=" + (lastCountChange - now) + "ms";
         LOG.info(msg);
@@ -886,7 +884,7 @@ public class ServerManager {
     if (isClusterShutdown()) {
       this.master.stop("Cluster shutdown");
     }
-    LOG.info("Finished wait on RegionServer count=" + count + "; waited=" + slept + "ms," +
+    LOG.info("Finished waiting on RegionServer count=" + count + "; waited=" + slept + "ms," +
         " expected min=" + minToStart + " server(s), max=" +  getStrForMax(maxToStart) + " server(s),"+
         " master is "+ (this.master.isStopped() ? "stopped.": "running"));
   }
@@ -910,11 +908,11 @@ public class ServerManager {
    * @return A copy of the internal list of online servers matched by the predicator
    */
   public List<ServerName> getOnlineServersListWithPredicator(List<ServerName> keys,
-    Predicate<ServerLoad> idleServerPredicator) {
+    Predicate<ServerMetrics> idleServerPredicator) {
     List<ServerName> names = new ArrayList<>();
     if (keys != null && idleServerPredicator != null) {
       keys.forEach(name -> {
-        ServerLoad load = onlineServers.get(name);
+        ServerMetrics load = onlineServers.get(name);
         if (load != null) {
           if (idleServerPredicator.test(load)) {
             names.add(name);
@@ -959,9 +957,13 @@ public class ServerManager {
     String statusStr = "Cluster shutdown requested of master=" + this.master.getServerName();
     LOG.info(statusStr);
     this.clusterShutdown.set(true);
+    if (onlineServers.isEmpty()) {
+      // we do not synchronize here so this may cause a double stop, but not a big deal
+      master.stop("OnlineServer=0 right after cluster shutdown set");
+    }
   }
 
-  public boolean isClusterShutdown() {
+  boolean isClusterShutdown() {
     return this.clusterShutdown.get();
   }
 

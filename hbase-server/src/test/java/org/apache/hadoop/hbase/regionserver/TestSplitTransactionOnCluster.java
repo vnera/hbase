@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -36,9 +35,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hbase.CategoryBasedTimeout;
 import org.apache.hadoop.hbase.Coprocessor;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -53,6 +52,7 @@ import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Consistency;
 import org.apache.hadoop.hbase.client.Delete;
+import org.apache.hadoop.hbase.client.DoNotRetryRegionException;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Mutation;
 import org.apache.hadoop.hbase.client.Put;
@@ -93,15 +93,17 @@ import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
-import org.junit.rules.TestRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.com.google.protobuf.RpcController;
 import org.apache.hbase.thirdparty.com.google.protobuf.ServiceException;
+
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.RegionStateTransition.TransitionCode;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionRequest;
@@ -113,9 +115,12 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProto
 @Category({RegionServerTests.class, LargeTests.class})
 @SuppressWarnings("deprecation")
 public class TestSplitTransactionOnCluster {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestSplitTransactionOnCluster.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestSplitTransactionOnCluster.class);
-  @Rule public final TestRule timeout = CategoryBasedTimeout.builder().withTimeout(this.getClass()).
-      withLookingForStuckThread(true).build();
   private Admin admin = null;
   private MiniHBaseCluster cluster = null;
   private static final int NB_SERVERS = 3;
@@ -316,9 +321,14 @@ public class TestSplitTransactionOnCluster {
 
       // Now try splitting.... should fail.  And each should successfully
       // rollback.
-      this.admin.splitRegion(hri.getRegionName());
-      this.admin.splitRegion(hri.getRegionName());
-      this.admin.splitRegion(hri.getRegionName());
+      // We don't roll back here anymore. Instead we fail-fast on construction of the
+      // split transaction. Catch the exception instead.
+      try {
+        this.admin.splitRegion(hri.getRegionName());
+        fail();
+      } catch (DoNotRetryRegionException e) {
+        // Expected
+      }
       // Wait around a while and assert count of regions remains constant.
       for (int i = 0; i < 10; i++) {
         Thread.sleep(100);
@@ -673,7 +683,7 @@ public class TestSplitTransactionOnCluster {
       FileSystem fs = TESTING_UTIL.getDFSCluster().getFileSystem();
       Map<String, Path> storefiles =
           FSUtils.getTableStoreFilePathMap(null, fs, rootDir, tableName);
-      assertEquals("Expected nothing but found " + storefiles.toString(), storefiles.size(), 0);
+      assertEquals("Expected nothing but found " + storefiles.toString(), 0, storefiles.size());
 
       // find a splittable region.  Refresh the regions list
       regions = cluster.getRegions(tableName);
@@ -696,8 +706,8 @@ public class TestSplitTransactionOnCluster {
       HBaseFsck.debugLsr(conf, new Path("/"));
       Map<String, Path> storefilesAfter =
           FSUtils.getTableStoreFilePathMap(null, fs, rootDir, tableName);
-      assertEquals("Expected nothing but found " + storefilesAfter.toString(),
-          storefilesAfter.size(), 0);
+      assertEquals("Expected nothing but found " + storefilesAfter.toString(), 0,
+          storefilesAfter.size());
 
       hri = region.getRegionInfo(); // split parent
       AssignmentManager am = cluster.getMaster().getAssignmentManager();
@@ -755,7 +765,7 @@ public class TestSplitTransactionOnCluster {
       region.flush(true);
       HStore store = region.getStore(Bytes.toBytes("f"));
       Collection<HStoreFile> storefiles = store.getStorefiles();
-      assertEquals(storefiles.size(), 1);
+      assertEquals(1, storefiles.size());
       assertFalse(region.hasReferences());
       Path referencePath =
           region.getRegionFileSystem().splitStoreFile(region.getRegionInfo(), "f",
@@ -986,7 +996,7 @@ public class TestSplitTransactionOnCluster {
     }
   }
 
-  static class CustomSplitPolicy extends RegionSplitPolicy {
+  static class CustomSplitPolicy extends IncreasingToUpperBoundRegionSplitPolicy {
 
     @Override
     protected boolean shouldSplit() {

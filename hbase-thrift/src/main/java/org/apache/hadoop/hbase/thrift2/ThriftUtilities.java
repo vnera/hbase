@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.collections4.MapUtils;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
@@ -73,6 +72,8 @@ import org.apache.hadoop.hbase.thrift2.generated.TTimeRange;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.yetus.audience.InterfaceAudience;
 
+import org.apache.hbase.thirdparty.org.apache.commons.collections4.MapUtils;
+
 @InterfaceAudience.Private
 public class ThriftUtilities {
 
@@ -96,7 +97,7 @@ public class ThriftUtilities {
 
     // Timestamp overwrites time range if both are set
     if (in.isSetTimestamp()) {
-      out.setTimeStamp(in.getTimestamp());
+      out.setTimestamp(in.getTimestamp());
     } else if (in.isSetTimeRange()) {
       out.setTimeRange(in.getTimeRange().getMinStamp(), in.getTimeRange().getMaxStamp());
     }
@@ -234,7 +235,7 @@ public class ThriftUtilities {
               .setRow(out.getRow())
               .setFamily(columnValue.getFamily())
               .setQualifier(columnValue.getQualifier())
-              .setTimestamp(out.getTimeStamp())
+              .setTimestamp(out.getTimestamp())
               .setType(Cell.Type.Put)
               .setValue(columnValue.getValue())
               .build());
@@ -362,7 +363,7 @@ public class ThriftUtilities {
     TDelete out = new TDelete(ByteBuffer.wrap(in.getRow()));
 
     List<TColumn> columns = new ArrayList<>(in.getFamilyCellMap().entrySet().size());
-    long rowTimestamp = in.getTimeStamp();
+    long rowTimestamp = in.getTimestamp();
     if (rowTimestamp != HConstants.LATEST_TIMESTAMP) {
       out.setTimestamp(rowTimestamp);
     }

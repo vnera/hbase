@@ -17,14 +17,10 @@
  */
 package org.apache.hadoop.hbase.regionserver.wal;
 
-import static org.apache.hadoop.hbase.io.asyncfs.FanOutOneBlockAsyncDFSOutputHelper.shouldRetryCreate;
-
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.Sequence;
 import com.lmax.disruptor.Sequencer;
-
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.lang.reflect.Field;
 import java.util.ArrayDeque;
 import java.util.Comparator;
@@ -44,26 +40,24 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
-import org.apache.hadoop.hbase.client.ConnectionUtils;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.io.asyncfs.AsyncFSOutput;
-import org.apache.hadoop.hbase.io.asyncfs.FanOutOneBlockAsyncDFSOutputHelper.NameNodeException;
 import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.hadoop.hbase.wal.AsyncFSWALProvider;
 import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.wal.WALKeyImpl;
 import org.apache.hadoop.hbase.wal.WALProvider.AsyncWriter;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
-import org.apache.hadoop.ipc.RemoteException;
+import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
 import org.apache.htrace.core.TraceScope;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.hbase.thirdparty.io.netty.channel.Channel;
 import org.apache.hbase.thirdparty.io.netty.channel.EventLoop;
@@ -140,9 +134,6 @@ public class AsyncFSWAL extends AbstractFSWAL<AsyncWriter> {
   public static final String WAL_BATCH_SIZE = "hbase.wal.batch.size";
   public static final long DEFAULT_WAL_BATCH_SIZE = 64L * 1024;
 
-  public static final String ASYNC_WAL_CREATE_MAX_RETRIES = "hbase.wal.async.create.retries";
-  public static final int DEFAULT_ASYNC_WAL_CREATE_MAX_RETRIES = 10;
-
   public static final String ASYNC_WAL_USE_SHARED_EVENT_LOOP =
     "hbase.wal.async.use-shared-event-loop";
   public static final boolean DEFAULT_ASYNC_WAL_USE_SHARED_EVENT_LOOP = false;
@@ -188,8 +179,6 @@ public class AsyncFSWAL extends AbstractFSWAL<AsyncWriter> {
   private final AtomicBoolean consumerScheduled = new AtomicBoolean(false);
 
   private final long batchSize;
-
-  private final int createMaxRetries;
 
   private final ExecutorService closeExecutor = Executors.newCachedThreadPool(
     new ThreadFactoryBuilder().setDaemon(true).setNameFormat("Close-WAL-Writer-%d").build());
@@ -257,8 +246,6 @@ public class AsyncFSWAL extends AbstractFSWAL<AsyncWriter> {
     waitingConsumePayloadsGatingSequence.set(waitingConsumePayloads.getCursor());
 
     batchSize = conf.getLong(WAL_BATCH_SIZE, DEFAULT_WAL_BATCH_SIZE);
-    createMaxRetries =
-      conf.getInt(ASYNC_WAL_CREATE_MAX_RETRIES, DEFAULT_ASYNC_WAL_CREATE_MAX_RETRIES);
     waitOnShutdownInSeconds = conf.getInt(ASYNC_WAL_WAIT_ON_SHUTDOWN_IN_SECONDS,
       DEFAULT_ASYNC_WAL_WAIT_ON_SHUTDOWN_IN_SECONDS);
     rollWriter();
@@ -360,7 +347,7 @@ public class AsyncFSWAL extends AbstractFSWAL<AsyncWriter> {
     long currentHighestProcessedAppendTxid = highestProcessedAppendTxid;
     highestProcessedAppendTxidAtLastSync = currentHighestProcessedAppendTxid;
     final long startTimeNs = System.nanoTime();
-    final long epoch = epochAndState >>> 2;
+    final long epoch = (long) epochAndState >>> 2L;
     writer.sync().whenCompleteAsync((result, error) -> {
       if (error != null) {
         syncFailed(epoch, error);
@@ -622,46 +609,8 @@ public class AsyncFSWAL extends AbstractFSWAL<AsyncWriter> {
 
   @Override
   protected AsyncWriter createWriterInstance(Path path) throws IOException {
-    boolean overwrite = false;
-    for (int retry = 0;; retry++) {
-      try {
-        return AsyncFSWALProvider.createAsyncWriter(conf, fs, path, overwrite, eventLoopGroup,
-          channelClass);
-      } catch (RemoteException e) {
-        LOG.warn("create wal log writer " + path + " failed, retry = " + retry, e);
-        if (shouldRetryCreate(e)) {
-          if (retry >= createMaxRetries) {
-            break;
-          }
-        } else {
-          IOException ioe = e.unwrapRemoteException();
-          // this usually means master already think we are dead so let's fail all the pending
-          // syncs. The shutdown process of RS will wait for all regions to be closed before calling
-          // WAL.close so if we do not wake up the thread blocked by sync here it will cause dead
-          // lock.
-          if (e.getMessage().contains("Parent directory doesn't exist:")) {
-            syncFutures.forEach(f -> f.done(f.getTxid(), ioe));
-          }
-          throw ioe;
-        }
-      } catch (NameNodeException e) {
-        throw e;
-      } catch (IOException e) {
-        LOG.warn("create wal log writer " + path + " failed, retry = " + retry, e);
-        if (retry >= createMaxRetries) {
-          break;
-        }
-        // overwrite the old broken file.
-        overwrite = true;
-        try {
-          Thread.sleep(ConnectionUtils.getPauseTime(100, retry));
-        } catch (InterruptedException ie) {
-          throw new InterruptedIOException();
-        }
-      }
-    }
-    throw new IOException("Failed to create wal log writer " + path + " after retrying " +
-      createMaxRetries + " time(s)");
+    return AsyncFSWALProvider.createAsyncWriter(conf, fs, path, false, eventLoopGroup,
+      channelClass);
   }
 
   private void waitForSafePoint() {
@@ -683,13 +632,32 @@ public class AsyncFSWAL extends AbstractFSWAL<AsyncWriter> {
     }
   }
 
+  private long closeWriter() {
+    AsyncWriter oldWriter = this.writer;
+    if (oldWriter != null) {
+      long fileLength = oldWriter.getLength();
+      closeExecutor.execute(() -> {
+        try {
+          oldWriter.close();
+        } catch (IOException e) {
+          LOG.warn("close old writer failed", e);
+        }
+      });
+      return fileLength;
+    } else {
+      return 0L;
+    }
+  }
+
   @Override
-  protected long doReplaceWriter(Path oldPath, Path newPath, AsyncWriter nextWriter)
+  protected void doReplaceWriter(Path oldPath, Path newPath, AsyncWriter nextWriter)
       throws IOException {
+    Preconditions.checkNotNull(nextWriter);
     waitForSafePoint();
-    final AsyncWriter oldWriter = this.writer;
+    long oldFileLen = closeWriter();
+    logRollAndSetupWalProps(oldPath, newPath, oldFileLen);
     this.writer = nextWriter;
-    if (nextWriter != null && nextWriter instanceof AsyncProtobufLogWriter) {
+    if (nextWriter instanceof AsyncProtobufLogWriter) {
       this.fsOut = ((AsyncProtobufLogWriter) nextWriter).getOutput();
     }
     this.fileLengthAtLastSync = nextWriter.getLength();
@@ -706,48 +674,47 @@ public class AsyncFSWAL extends AbstractFSWAL<AsyncWriter> {
     } finally {
       consumeLock.unlock();
     }
-    return executeClose(closeExecutor, oldWriter);
   }
 
   @Override
   protected void doShutdown() throws IOException {
     waitForSafePoint();
-    executeClose(closeExecutor, writer);
+    closeWriter();
     closeExecutor.shutdown();
     try {
       if (!closeExecutor.awaitTermination(waitOnShutdownInSeconds, TimeUnit.SECONDS)) {
-        LOG.error("We have waited " + waitOnShutdownInSeconds + " seconds but"
-          + " the close of async writer doesn't complete."
-          + "Please check the status of underlying filesystem"
-          + " or increase the wait time by the config \""
-          + ASYNC_WAL_WAIT_ON_SHUTDOWN_IN_SECONDS + "\"");
+        LOG.error("We have waited " + waitOnShutdownInSeconds + " seconds but" +
+          " the close of async writer doesn't complete." +
+          "Please check the status of underlying filesystem" +
+          " or increase the wait time by the config \"" + ASYNC_WAL_WAIT_ON_SHUTDOWN_IN_SECONDS +
+          "\"");
       }
     } catch (InterruptedException e) {
       LOG.error("The wait for close of async writer is interrupted");
       Thread.currentThread().interrupt();
     }
     IOException error = new IOException("WAL has been closed");
+    long nextCursor = waitingConsumePayloadsGatingSequence.get() + 1;
+    // drain all the pending sync requests
+    for (long cursorBound = waitingConsumePayloads.getCursor(); nextCursor <= cursorBound;
+      nextCursor++) {
+      if (!waitingConsumePayloads.isPublished(nextCursor)) {
+        break;
+      }
+      RingBufferTruck truck = waitingConsumePayloads.get(nextCursor);
+      switch (truck.type()) {
+        case SYNC:
+          syncFutures.add(truck.unloadSync());
+          break;
+        default:
+          break;
+      }
+    }
+    // and fail them
     syncFutures.forEach(f -> f.done(f.getTxid(), error));
     if (!(consumeExecutor instanceof EventLoop)) {
       consumeExecutor.shutdown();
     }
-  }
-
-  private static long executeClose(ExecutorService closeExecutor, AsyncWriter writer) {
-    long fileLength;
-    if (writer != null) {
-      fileLength = writer.getLength();
-      closeExecutor.execute(() -> {
-        try {
-          writer.close();
-        } catch (IOException e) {
-          LOG.warn("close old writer failed", e);
-        }
-      });
-    } else {
-      fileLength = 0L;
-    }
-    return fileLength;
   }
 
   @Override

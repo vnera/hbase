@@ -20,14 +20,16 @@ package org.apache.hadoop.hbase;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.List;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
 import org.apache.hadoop.fs.Path;
-import org.apache.yetus.audience.InterfaceAudience;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder.ModifyableColumnFamilyDescriptor;
+import org.apache.hadoop.hbase.client.CoprocessorDescriptor;
+import org.apache.hadoop.hbase.client.CoprocessorDescriptorBuilder;
 import org.apache.hadoop.hbase.client.Durability;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
@@ -35,8 +37,7 @@ import org.apache.hadoop.hbase.client.TableDescriptorBuilder.ModifyableTableDesc
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
-import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder.ModifyableColumnFamilyDescriptor;
+import org.apache.yetus.audience.InterfaceAudience;
 
 /**
  * HTableDescriptor contains the details about an HBase table  such as the descriptors of
@@ -433,7 +434,7 @@ public class HTableDescriptor implements TableDescriptor, Comparable<HTableDescr
    * @param family HColumnDescriptor of family to add.
    */
   public HTableDescriptor addFamily(final HColumnDescriptor family) {
-    getDelegateeForModification().addColumnFamily(family);
+    getDelegateeForModification().setColumnFamily(family);
     return this;
   }
 
@@ -535,14 +536,6 @@ public class HTableDescriptor implements TableDescriptor, Comparable<HTableDescr
     return Stream.of(delegatee.getColumnFamilies())
             .map(this::toHColumnDescriptor)
             .collect(Collectors.toList());
-  }
-
-  /**
-   * Return true if there are at least one cf whose replication scope is serial.
-   */
-  @Override
-  public boolean hasSerialReplicationScope() {
-    return delegatee.hasSerialReplicationScope();
   }
 
   /**
@@ -707,7 +700,7 @@ public class HTableDescriptor implements TableDescriptor, Comparable<HTableDescr
    * @throws IOException
    */
   public HTableDescriptor addCoprocessor(String className) throws IOException {
-    getDelegateeForModification().addCoprocessor(className);
+    getDelegateeForModification().setCoprocessor(className);
     return this;
   }
 
@@ -727,7 +720,12 @@ public class HTableDescriptor implements TableDescriptor, Comparable<HTableDescr
   public HTableDescriptor addCoprocessor(String className, Path jarFilePath,
                              int priority, final Map<String, String> kvs)
   throws IOException {
-    getDelegateeForModification().addCoprocessor(className, jarFilePath, priority, kvs);
+    getDelegateeForModification().setCoprocessor(
+      CoprocessorDescriptorBuilder.newBuilder(className)
+        .setJarPath(jarFilePath == null ? null : jarFilePath.toString())
+        .setPriority(priority)
+        .setProperties(kvs == null ? Collections.emptyMap() : kvs)
+        .build());
     return this;
   }
 
@@ -742,7 +740,7 @@ public class HTableDescriptor implements TableDescriptor, Comparable<HTableDescr
    * @throws IOException
    */
   public HTableDescriptor addCoprocessorWithSpec(final String specStr) throws IOException {
-    getDelegateeForModification().addCoprocessorWithSpec(specStr);
+    getDelegateeForModification().setCoprocessorWithSpec(specStr);
     return this;
   }
 
@@ -757,14 +755,9 @@ public class HTableDescriptor implements TableDescriptor, Comparable<HTableDescr
     return delegatee.hasCoprocessor(classNameToMatch);
   }
 
-  /**
-   * Return the list of attached co-processor represented by their name className
-   *
-   * @return The list of co-processors classNames
-   */
   @Override
-  public List<String> getCoprocessors() {
-    return delegatee.getCoprocessors();
+  public Collection<CoprocessorDescriptor> getCoprocessorDescriptors() {
+    return delegatee.getCoprocessorDescriptors();
   }
 
   /**

@@ -108,7 +108,7 @@ public class LogCleaner extends CleanerChore<BaseLogCleanerDelegate> {
   }
 
   @Override
-  public void cleanup() {
+  public synchronized void cleanup() {
     super.cleanup();
     interruptOldWALsCleaner();
   }
@@ -119,7 +119,7 @@ public class LogCleaner extends CleanerChore<BaseLogCleanerDelegate> {
   }
 
   private List<Thread> createOldWalsCleaner(int size) {
-    LOG.info("Creating OldWALs cleaners with size: " + size);
+    LOG.info("Creating OldWALs cleaners with size=" + size);
 
     List<Thread> oldWALsCleaner = new ArrayList<>(size);
     for (int i = 0; i < size; i++) {
@@ -174,6 +174,14 @@ public class LogCleaner extends CleanerChore<BaseLogCleanerDelegate> {
     }
     if (LOG.isDebugEnabled()) {
       LOG.debug("Exiting cleaner.");
+    }
+  }
+
+  @Override
+  public synchronized void cancel(boolean mayInterruptIfRunning) {
+    super.cancel(mayInterruptIfRunning);
+    for (Thread t : oldWALsCleaner) {
+      t.interrupt();
     }
   }
 

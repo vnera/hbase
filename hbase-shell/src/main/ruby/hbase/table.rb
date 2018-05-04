@@ -19,9 +19,13 @@
 
 include Java
 
+java_import org.apache.hadoop.hbase.util.Bytes
+java_import org.apache.hadoop.hbase.client.RegionReplicaUtil
+
 # Wrapper for org.apache.hadoop.hbase.client.Table
 
 module Hbase
+  # rubocop:disable Metrics/ClassLength
   class Table
     include HBaseConstants
     @@thread_pool = nil
@@ -804,12 +808,13 @@ EOF
     # Get the split points for the table
     def _get_splits_internal
       locator = @table.getRegionLocator
-      splits = locator.getAllRegionLocations
-                      .map { |i| Bytes.toStringBinary(i.getRegionInfo.getStartKey) }.delete_if { |k| k == '' }
+      locator.getAllRegionLocations
+             .select { |s| RegionReplicaUtil.isDefaultReplica(s.getRegion) }
+             .map { |i| Bytes.toStringBinary(i.getRegionInfo.getStartKey) }
+             .delete_if { |k| k == '' }
+    ensure
       locator.close
-      puts(format('Total number of splits = %s', splits.size + 1))
-      puts splits
-      splits
     end
   end
+  # rubocop:enable Metrics/ClassLength
 end

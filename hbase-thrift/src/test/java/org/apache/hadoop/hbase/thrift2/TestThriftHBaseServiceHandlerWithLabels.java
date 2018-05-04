@@ -18,7 +18,6 @@
 package org.apache.hadoop.hbase.thrift2;
 
 import static java.nio.ByteBuffer.wrap;
-
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -31,8 +30,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -68,6 +67,7 @@ import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -75,6 +75,10 @@ import org.slf4j.LoggerFactory;
 
 @Category({ClientTests.class, MediumTests.class})
 public class TestThriftHBaseServiceHandlerWithLabels {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestThriftHBaseServiceHandlerWithLabels.class);
 
   private static final Logger LOG = LoggerFactory
     .getLogger(TestThriftHBaseServiceHandlerWithLabels.class);
@@ -151,6 +155,7 @@ public class TestThriftHBaseServiceHandlerWithLabels {
   private static void createLabels() throws IOException, InterruptedException {
     PrivilegedExceptionAction<VisibilityLabelsResponse> action =
         new PrivilegedExceptionAction<VisibilityLabelsResponse>() {
+      @Override
       public VisibilityLabelsResponse run() throws Exception {
         String[] labels = { SECRET, CONFIDENTIAL, PRIVATE, PUBLIC, TOPSECRET };
         try (Connection conn = ConnectionFactory.createConnection(conf)) {
@@ -198,7 +203,7 @@ public class TestThriftHBaseServiceHandlerWithLabels {
     List<TColumnValue> columnValues = new ArrayList<>(1);
     columnValues.add(columnValue);
     for (int i = 0; i < 10; i++) {
-      TPut put = new TPut(wrap(("testScan" + i).getBytes()), columnValues);
+      TPut put = new TPut(wrap(Bytes.toBytes("testScan" + i)), columnValues);
       if (i == 5) {
         put.setCellVisibility(new TCellVisibility().setExpression(PUBLIC));
       } else {
@@ -216,8 +221,8 @@ public class TestThriftHBaseServiceHandlerWithLabels {
     column.setQualifier(qualifierAname);
     columns.add(column);
     scan.setColumns(columns);
-    scan.setStartRow("testScan".getBytes());
-    scan.setStopRow("testScan\uffff".getBytes());
+    scan.setStartRow(Bytes.toBytes("testScan"));
+    scan.setStopRow(Bytes.toBytes("testScan\uffff"));
 
     TAuthorization tauth = new TAuthorization();
     List<String> labels = new ArrayList<>(2);
@@ -229,15 +234,14 @@ public class TestThriftHBaseServiceHandlerWithLabels {
     int scanId = handler.openScanner(table, scan);
     List<TResult> results = handler.getScannerRows(scanId, 10);
     assertEquals(9, results.size());
-    Assert.assertFalse(Bytes.equals(results.get(5).getRow(),
-        ("testScan" + 5).getBytes()));
+    Assert.assertFalse(Bytes.equals(results.get(5).getRow(), Bytes.toBytes("testScan" + 5)));
     for (int i = 0; i < 9; i++) {
       if (i < 5) {
-        assertArrayEquals(("testScan" + i).getBytes(), results.get(i).getRow());
+        assertArrayEquals(Bytes.toBytes("testScan" + i), results.get(i).getRow());
       } else if (i == 5) {
         continue;
       } else {
-        assertArrayEquals(("testScan" + (i + 1)).getBytes(), results.get(i)
+        assertArrayEquals(Bytes.toBytes("testScan" + (i + 1)), results.get(i)
             .getRow());
       }
     }
@@ -267,8 +271,7 @@ public class TestThriftHBaseServiceHandlerWithLabels {
     columnValues.add(columnValue);
     for (int i = 0; i < 20; i++) {
       TPut put = new TPut(
-          wrap(("testGetScannerResults" + pad(i, (byte) 2)).getBytes()),
-          columnValues);
+          wrap(Bytes.toBytes("testGetScannerResults" + pad(i, (byte) 2))), columnValues);
       if (i == 3) {
         put.setCellVisibility(new TCellVisibility().setExpression(PUBLIC));
       } else {
@@ -286,10 +289,10 @@ public class TestThriftHBaseServiceHandlerWithLabels {
     column.setQualifier(qualifierAname);
     columns.add(column);
     scan.setColumns(columns);
-    scan.setStartRow("testGetScannerResults".getBytes());
+    scan.setStartRow(Bytes.toBytes("testGetScannerResults"));
 
     // get 5 rows and check the returned results
-    scan.setStopRow("testGetScannerResults05".getBytes());
+    scan.setStopRow(Bytes.toBytes("testGetScannerResults05"));
     TAuthorization tauth = new TAuthorization();
     List<String> labels = new ArrayList<>(2);
     labels.add(SECRET);
@@ -301,14 +304,12 @@ public class TestThriftHBaseServiceHandlerWithLabels {
     for (int i = 0; i < 4; i++) {
       if (i < 3) {
         assertArrayEquals(
-            ("testGetScannerResults" + pad(i, (byte) 2)).getBytes(),
-            results.get(i).getRow());
+            Bytes.toBytes("testGetScannerResults" + pad(i, (byte) 2)), results.get(i).getRow());
       } else if (i == 3) {
         continue;
       } else {
         assertArrayEquals(
-            ("testGetScannerResults" + pad(i + 1, (byte) 2)).getBytes(), results
-                .get(i).getRow());
+            Bytes.toBytes("testGetScannerResults" + pad(i + 1, (byte) 2)), results.get(i).getRow());
       }
     }
   }
@@ -316,7 +317,7 @@ public class TestThriftHBaseServiceHandlerWithLabels {
   @Test
   public void testGetsWithLabels() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testPutGet".getBytes();
+    byte[] rowName = Bytes.toBytes("testPutGet");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValues = new ArrayList<>(2);
@@ -346,7 +347,7 @@ public class TestThriftHBaseServiceHandlerWithLabels {
   @Test
   public void testIncrementWithTags() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testIncrementWithTags".getBytes();
+    byte[] rowName = Bytes.toBytes("testIncrementWithTags");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValues = new ArrayList<>(1);
@@ -381,7 +382,7 @@ public class TestThriftHBaseServiceHandlerWithLabels {
   @Test
   public void testIncrementWithTagsWithNotMatchLabels() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testIncrementWithTagsWithNotMatchLabels".getBytes();
+    byte[] rowName = Bytes.toBytes("testIncrementWithTagsWithNotMatchLabels");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValues = new ArrayList<>(1);
@@ -412,7 +413,7 @@ public class TestThriftHBaseServiceHandlerWithLabels {
   @Test
   public void testAppend() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testAppend".getBytes();
+    byte[] rowName = Bytes.toBytes("testAppend");
     ByteBuffer table = wrap(tableAname);
     byte[] v1 = Bytes.toBytes(1L);
     byte[] v2 = Bytes.toBytes(5L);

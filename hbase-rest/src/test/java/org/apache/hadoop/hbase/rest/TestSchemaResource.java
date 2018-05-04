@@ -1,5 +1,4 @@
-/*
- *
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,19 +17,19 @@
  */
 package org.apache.hadoop.hbase.rest;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.util.Collection;
-
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
-
-import org.apache.hadoop.hbase.HBaseCommonTestingUtility;
-import org.apache.http.Header;
-import org.apache.http.message.BasicHeader;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
+import org.apache.hadoop.hbase.HBaseCommonTestingUtility;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
@@ -43,12 +42,12 @@ import org.apache.hadoop.hbase.rest.model.TestTableSchemaModel;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.RestTests;
 import org.apache.hadoop.hbase.util.Bytes;
-
-import static org.junit.Assert.*;
-
+import org.apache.http.Header;
+import org.apache.http.message.BasicHeader;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -59,6 +58,11 @@ import org.slf4j.LoggerFactory;
 @Category({RestTests.class, MediumTests.class})
 @RunWith(Parameterized.class)
 public class TestSchemaResource {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestSchemaResource.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestSchemaResource.class);
 
   private static String TABLE1 = "TestSchemaResource1";
@@ -72,7 +76,7 @@ public class TestSchemaResource {
   private static Configuration conf;
   private static TestTableSchemaModel testTableSchemaModel;
   private static Header extraHdr = null;
-  
+
   private static boolean csrfEnabled = true;
 
   @Parameterized.Parameters
@@ -220,11 +224,11 @@ public class TestSchemaResource {
     response = client.put(schemaPath, Constants.MIMETYPE_PROTOBUF,
       model.createProtobufOutput(), extraHdr);
     assertNotNull(extraHdr);
-    assertEquals(response.getCode(), 403);
+    assertEquals(403, response.getCode());
 
     // retrieve the schema and validate it
     response = client.get(schemaPath, Constants.MIMETYPE_PROTOBUF);
-    assertEquals(response.getCode(), 200);
+    assertEquals(200, response.getCode());
     assertEquals(Constants.MIMETYPE_PROTOBUF, response.getHeader("content-type"));
     model = new TableSchemaModel();
     model.getObjectFromMessage(response.getBody());
@@ -232,7 +236,7 @@ public class TestSchemaResource {
 
     // retrieve the schema and validate it with alternate pbuf type
     response = client.get(schemaPath, Constants.MIMETYPE_PROTOBUF_IETF);
-    assertEquals(response.getCode(), 200);
+    assertEquals(200, response.getCode());
     assertEquals(Constants.MIMETYPE_PROTOBUF_IETF, response.getHeader("content-type"));
     model = new TableSchemaModel();
     model.getObjectFromMessage(response.getBody());
@@ -246,14 +250,14 @@ public class TestSchemaResource {
 
     // test delete schema operation is forbidden in read-only mode
     response = client.delete(schemaPath, extraHdr);
-    assertEquals(response.getCode(), 403);
+    assertEquals(403, response.getCode());
 
     // return read-only setting back to default
     conf.set("hbase.rest.readonly", "false");
 
     // delete the table and make sure HBase concurs
     response = client.delete(schemaPath, extraHdr);
-    assertEquals(response.getCode(), 200);
+    assertEquals(200, response.getCode());
     assertFalse(admin.tableExists(TableName.valueOf(TABLE2)));
   }
 

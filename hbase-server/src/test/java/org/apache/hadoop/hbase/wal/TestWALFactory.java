@@ -38,6 +38,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.Coprocessor;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.KeyValue;
@@ -65,6 +66,7 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -77,6 +79,11 @@ import org.slf4j.LoggerFactory;
  */
 @Category({RegionServerTests.class, MediumTests.class})
 public class TestWALFactory {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestWALFactory.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestWALFactory.class);
 
   protected static Configuration conf;
@@ -98,7 +105,7 @@ public class TestWALFactory {
     fs = cluster.getFileSystem();
     dir = new Path(hbaseDir, currentTest.getMethodName());
     this.currentServername = ServerName.valueOf(currentTest.getMethodName(), 16010, 1);
-    wals = new WALFactory(conf, null, this.currentServername.toString());
+    wals = new WALFactory(conf, this.currentServername.toString());
   }
 
   @After
@@ -361,7 +368,7 @@ public class TestWALFactory {
    *              [FSNamesystem.nextGenerationStampForBlock])
    * 3. HDFS-142 (on restart, maintain pendingCreates)
    */
-  @Test (timeout=300000)
+  @Test
   public void testAppendClose() throws Exception {
     TableName tableName =
         TableName.valueOf(currentTest.getMethodName());
@@ -476,7 +483,7 @@ public class TestWALFactory {
     reader.close();
 
     // Reset the lease period
-    setLeasePeriod.invoke(cluster, new Object[]{new Long(60000), new Long(3600000)});
+    setLeasePeriod.invoke(cluster, new Object[]{ 60000L, 3600000L });
   }
 
   /**
@@ -487,7 +494,7 @@ public class TestWALFactory {
     int colCount = 10;
     TableDescriptor htd =
         TableDescriptorBuilder.newBuilder(TableName.valueOf(currentTest.getMethodName()))
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.of("column")).build();
+            .setColumnFamily(ColumnFamilyDescriptorBuilder.of("column")).build();
     NavigableMap<byte[], Integer> scopes = new TreeMap<byte[], Integer>(Bytes.BYTES_COMPARATOR);
     for (byte[] fam : htd.getColumnFamilyNames()) {
       scopes.put(fam, 0);
@@ -529,7 +536,7 @@ public class TestWALFactory {
         WALKey key = entry.getKey();
         WALEdit val = entry.getEdit();
         assertTrue(Bytes.equals(info.getEncodedNameAsBytes(), key.getEncodedRegionName()));
-        assertTrue(htd.getTableName().equals(key.getTablename()));
+        assertTrue(htd.getTableName().equals(key.getTableName()));
         Cell cell = val.getCells().get(0);
         assertTrue(Bytes.equals(row, 0, row.length, cell.getRowArray(), cell.getRowOffset(),
           cell.getRowLength()));
@@ -548,7 +555,7 @@ public class TestWALFactory {
     int colCount = 10;
     TableDescriptor htd =
         TableDescriptorBuilder.newBuilder(TableName.valueOf(currentTest.getMethodName()))
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.of("column")).build();
+            .setColumnFamily(ColumnFamilyDescriptorBuilder.of("column")).build();
     NavigableMap<byte[], Integer> scopes = new TreeMap<byte[], Integer>(Bytes.BYTES_COMPARATOR);
     for (byte[] fam : htd.getColumnFamilyNames()) {
       scopes.put(fam, 0);
@@ -585,7 +592,7 @@ public class TestWALFactory {
       for (Cell val : entry.getEdit().getCells()) {
         assertTrue(Bytes.equals(hri.getEncodedNameAsBytes(),
           entry.getKey().getEncodedRegionName()));
-        assertTrue(htd.getTableName().equals(entry.getKey().getTablename()));
+        assertTrue(htd.getTableName().equals(entry.getKey().getTableName()));
         assertTrue(Bytes.equals(row, 0, row.length, val.getRowArray(), val.getRowOffset(),
           val.getRowLength()));
         assertEquals((byte) (idx + '0'), CellUtil.cloneValue(val)[0]);

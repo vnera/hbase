@@ -24,7 +24,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -51,11 +51,14 @@ import org.apache.hadoop.hbase.testclassification.MiscTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.RegionServerThread;
 import org.apache.hadoop.hbase.wal.WAL;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
+
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.CompactionDescriptor;
 
@@ -80,6 +83,11 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.CompactionDes
  */
 @Category({MiscTests.class, LargeTests.class})
 public class TestIOFencing {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestIOFencing.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestIOFencing.class);
   static {
     // Uncomment the following lines if more verbosity is needed for
@@ -93,7 +101,7 @@ public class TestIOFencing {
   }
 
   public abstract static class CompactionBlockerRegion extends HRegion {
-    volatile int compactCount = 0;
+    AtomicInteger compactCount = new AtomicInteger();
     volatile CountDownLatch compactionsBlocked = new CountDownLatch(0);
     volatile CountDownLatch compactionsWaiting = new CountDownLatch(0);
 
@@ -129,7 +137,7 @@ public class TestIOFencing {
       try {
         return super.compact(compaction, store, throughputController);
       } finally {
-        compactCount++;
+        compactCount.getAndIncrement();
       }
     }
 
@@ -139,7 +147,7 @@ public class TestIOFencing {
       try {
         return super.compact(compaction, store, throughputController, user);
       } finally {
-        compactCount++;
+        compactCount.getAndIncrement();
       }
     }
 
@@ -336,7 +344,7 @@ public class TestIOFencing {
       }
       LOG.info("Allowing compaction to proceed");
       compactingRegion.allowCompactions();
-      while (compactingRegion.compactCount == 0) {
+      while (compactingRegion.compactCount.get() == 0) {
         Thread.sleep(1000);
       }
       // The server we killed stays up until the compaction that was started before it was killed
@@ -349,7 +357,7 @@ public class TestIOFencing {
         FIRST_BATCH_COUNT + SECOND_BATCH_COUNT);
       admin.majorCompact(TABLE_NAME);
       startWaitTime = System.currentTimeMillis();
-      while (newRegion.compactCount == 0) {
+      while (newRegion.compactCount.get() == 0) {
         Thread.sleep(1000);
         assertTrue("New region never compacted",
           System.currentTimeMillis() - startWaitTime < 180000);

@@ -35,25 +35,27 @@ import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
-
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.MiscTests;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
+import org.apache.hadoop.hdfs.MiniDFSCluster.DataNodeProperties;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
 import org.apache.hadoop.ipc.RemoteException;
-import org.apache.hadoop.util.Daemon;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.io.netty.channel.Channel;
 import org.apache.hbase.thirdparty.io.netty.channel.EventLoop;
 import org.apache.hbase.thirdparty.io.netty.channel.EventLoopGroup;
@@ -62,6 +64,10 @@ import org.apache.hbase.thirdparty.io.netty.channel.socket.nio.NioSocketChannel;
 
 @Category({ MiscTests.class, MediumTests.class })
 public class TestFanOutOneBlockAsyncDFSOutput {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestFanOutOneBlockAsyncDFSOutput.class);
 
   private static final Logger LOG = LoggerFactory.getLogger(TestFanOutOneBlockAsyncDFSOutput.class);
 
@@ -93,23 +99,6 @@ public class TestFanOutOneBlockAsyncDFSOutput {
       EVENT_LOOP_GROUP.shutdownGracefully().sync();
     }
     TEST_UTIL.shutdownMiniDFSCluster();
-  }
-
-  private void ensureAllDatanodeAlive() throws InterruptedException {
-    // FanOutOneBlockAsyncDFSOutputHelper.createOutput is fail-fast, so we need to make sure that we
-    // can create a FanOutOneBlockAsyncDFSOutput after a datanode restarting, otherwise some tests
-    // will fail.
-    for (;;) {
-      try {
-        FanOutOneBlockAsyncDFSOutput out =
-            FanOutOneBlockAsyncDFSOutputHelper.createOutput(FS, new Path("/ensureDatanodeAlive"),
-              true, true, (short) 3, FS.getDefaultBlockSize(), EVENT_LOOP_GROUP, CHANNEL_CLASS);
-        out.close();
-        break;
-      } catch (IOException e) {
-        Thread.sleep(100);
-      }
-    }
   }
 
   static void writeAndVerify(FileSystem fs, Path f, AsyncFSOutput out)
@@ -163,25 +152,21 @@ public class TestFanOutOneBlockAsyncDFSOutput {
     out.flush(false).get();
     // restart one datanode which causes one connection broken
     TEST_UTIL.getDFSCluster().restartDataNode(0);
+    out.write(b, 0, b.length);
     try {
-      out.write(b, 0, b.length);
-      try {
-        out.flush(false).get();
-        fail("flush should fail");
-      } catch (ExecutionException e) {
-        // we restarted one datanode so the flush should fail
-        LOG.info("expected exception caught", e);
-      }
-      out.recoverAndClose(null);
-      assertEquals(b.length, FS.getFileStatus(f).getLen());
-      byte[] actual = new byte[b.length];
-      try (FSDataInputStream in = FS.open(f)) {
-        in.readFully(actual);
-      }
-      assertArrayEquals(b, actual);
-    } finally {
-      ensureAllDatanodeAlive();
+      out.flush(false).get();
+      fail("flush should fail");
+    } catch (ExecutionException e) {
+      // we restarted one datanode so the flush should fail
+      LOG.info("expected exception caught", e);
     }
+    out.recoverAndClose(null);
+    assertEquals(b.length, FS.getFileStatus(f).getLen());
+    byte[] actual = new byte[b.length];
+    try (FSDataInputStream in = FS.open(f)) {
+      in.readFully(actual);
+    }
+    assertArrayEquals(b, actual);
   }
 
   @Test
@@ -219,28 +204,19 @@ public class TestFanOutOneBlockAsyncDFSOutput {
     Field xceiverServerDaemonField = DataNode.class.getDeclaredField("dataXceiverServer");
     xceiverServerDaemonField.setAccessible(true);
     Class<?> xceiverServerClass =
-        Class.forName("org.apache.hadoop.hdfs.server.datanode.DataXceiverServer");
+      Class.forName("org.apache.hadoop.hdfs.server.datanode.DataXceiverServer");
     Method numPeersMethod = xceiverServerClass.getDeclaredMethod("getNumPeers");
     numPeersMethod.setAccessible(true);
     // make one datanode broken
-    TEST_UTIL.getDFSCluster().getDataNodes().get(0).shutdownDatanode(true);
-    try {
-      Path f = new Path("/test");
-      EventLoop eventLoop = EVENT_LOOP_GROUP.next();
-      try {
-        FanOutOneBlockAsyncDFSOutputHelper.createOutput(FS, f, true, false, (short) 3,
-          FS.getDefaultBlockSize(), eventLoop, CHANNEL_CLASS);
-        fail("should fail with connection error");
-      } catch (IOException e) {
-        LOG.info("expected exception caught", e);
-      }
-      for (DataNode dn : TEST_UTIL.getDFSCluster().getDataNodes()) {
-        Daemon daemon = (Daemon) xceiverServerDaemonField.get(dn);
-        assertEquals(0, numPeersMethod.invoke(daemon.getRunnable()));
-      }
+    DataNodeProperties dnProp = TEST_UTIL.getDFSCluster().stopDataNode(0);
+    Path f = new Path("/test");
+    EventLoop eventLoop = EVENT_LOOP_GROUP.next();
+    try (FanOutOneBlockAsyncDFSOutput output = FanOutOneBlockAsyncDFSOutputHelper.createOutput(FS,
+      f, true, false, (short) 3, FS.getDefaultBlockSize(), eventLoop, CHANNEL_CLASS)) {
+      // should exclude the dead dn when retry so here we only have 2 DNs in pipeline
+      assertEquals(2, output.getPipeline().length);
     } finally {
-      TEST_UTIL.getDFSCluster().restartDataNode(0);
-      ensureAllDatanodeAlive();
+      TEST_UTIL.getDFSCluster().restartDataNode(dnProp);
     }
   }
 

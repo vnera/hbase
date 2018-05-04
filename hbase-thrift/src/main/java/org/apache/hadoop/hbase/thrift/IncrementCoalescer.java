@@ -31,7 +31,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
-
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.thrift.ThriftServerRunner.HBaseHandler;
@@ -40,6 +39,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.metrics2.util.MBeans;
 import org.apache.thrift.TException;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +52,7 @@ import org.slf4j.LoggerFactory;
  * thrift server dies or is shut down before everything in the queue is drained.
  *
  */
+@InterfaceAudience.Private
 public class IncrementCoalescer implements IncrementCoalescerMBean {
 
   /**
@@ -142,6 +143,7 @@ public class IncrementCoalescer implements IncrementCoalescerMBean {
       namePrefix = "ICV-" + poolNumber.getAndIncrement() + "-thread-";
     }
 
+    @Override
     public Thread newThread(Runnable r) {
       Thread t = new Thread(group, r, namePrefix + threadNumber.getAndIncrement(), 0);
       if (!t.isDaemon()) t.setDaemon(true);
@@ -322,49 +324,72 @@ public class IncrementCoalescer implements IncrementCoalescerMBean {
   }
 
   // MBean get/set methods
+  @Override
   public int getQueueSize() {
     return pool.getQueue().size();
   }
+
+  @Override
   public int getMaxQueueSize() {
     return this.maxQueueSize;
   }
+
+  @Override
   public void setMaxQueueSize(int newSize) {
     this.maxQueueSize = newSize;
   }
 
+  @Override
   public long getPoolCompletedTaskCount() {
     return pool.getCompletedTaskCount();
   }
+
+  @Override
   public long getPoolTaskCount() {
     return pool.getTaskCount();
   }
+
+  @Override
   public int getPoolLargestPoolSize() {
     return pool.getLargestPoolSize();
   }
+
+  @Override
   public int getCorePoolSize() {
     return pool.getCorePoolSize();
   }
+
+  @Override
   public void setCorePoolSize(int newCoreSize) {
     pool.setCorePoolSize(newCoreSize);
   }
+
+  @Override
   public int getMaxPoolSize() {
     return pool.getMaximumPoolSize();
   }
+
+  @Override
   public void setMaxPoolSize(int newMaxSize) {
     pool.setMaximumPoolSize(newMaxSize);
   }
+
+  @Override
   public long getFailedIncrements() {
     return failedIncrements.sum();
   }
 
+  @Override
   public long getSuccessfulCoalescings() {
     return successfulCoalescings.sum();
   }
 
+  @Override
   public long getTotalIncrements() {
     return totalIncrements.sum();
   }
 
+  @Override
   public long getCountersMapSize() {
     return countersMap.size();
   }

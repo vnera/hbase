@@ -565,7 +565,7 @@ public final class Canary implements Tool {
   private static final int ERROR_EXIT_CODE = 4;
   private static final int FAILURE_EXIT_CODE = 5;
 
-  private static final long DEFAULT_INTERVAL = 6000;
+  private static final long DEFAULT_INTERVAL = 60000;
 
   private static final long DEFAULT_TIMEOUT = 600000; // 10 mins
   private static final int MAX_THREADS_NUM = 16; // #threads to contact regions
@@ -837,9 +837,8 @@ public final class Canary implements Tool {
   }
 
   private void printUsageAndExit() {
-    System.err.printf(
-      "Usage: hbase %s [opts] [table1 [table2]...] | [regionserver1 [regionserver2]..]%n",
-        getClass().getName());
+    System.err.println(
+      "Usage: hbase canary [opts] [table1 [table2]...] | [regionserver1 [regionserver2]..]");
     System.err.println(" where [opts] are:");
     System.err.println("   -help          Show this help and exit.");
     System.err.println("   -regionserver  replace the table argument to regionserver,");

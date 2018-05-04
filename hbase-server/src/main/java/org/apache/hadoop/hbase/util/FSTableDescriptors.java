@@ -37,6 +37,8 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.hbase.client.CoprocessorDescriptorBuilder;
+import org.apache.hadoop.hbase.coprocessor.MultiRowMutationEndpoint;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -149,57 +151,29 @@ public class FSTableDescriptors implements TableDescriptors {
     // the META table data goes to File mode BC only. Test how that affect the system. If too much,
     // we have to rethink about adding back the setCacheDataInL1 for META table CFs.
     return TableDescriptorBuilder.newBuilder(TableName.META_TABLE_NAME)
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(HConstants.CATALOG_FAMILY)
-                    .setMaxVersions(conf.getInt(HConstants.HBASE_META_VERSIONS,
-                            HConstants.DEFAULT_HBASE_META_VERSIONS))
-                    .setInMemory(true)
-                    .setBlocksize(conf.getInt(HConstants.HBASE_META_BLOCK_SIZE,
-                            HConstants.DEFAULT_HBASE_META_BLOCK_SIZE))
-                    .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
-                    // Disable blooms for meta.  Needs work.  Seems to mess w/ getClosestOrBefore.
-                    .setBloomFilterType(BloomType.NONE)
-                    .build())
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(HConstants.REPLICATION_BARRIER_FAMILY)
-                    .setMaxVersions(conf.getInt(HConstants.HBASE_META_VERSIONS,
-                            HConstants.DEFAULT_HBASE_META_VERSIONS))
-                    .setInMemory(true)
-                    .setBlocksize(conf.getInt(HConstants.HBASE_META_BLOCK_SIZE,
-                            HConstants.DEFAULT_HBASE_META_BLOCK_SIZE))
-                    .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
-                    // Disable blooms for meta.  Needs work.  Seems to mess w/ getClosestOrBefore.
-                    .setBloomFilterType(BloomType.NONE)
-                    .build())
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(HConstants.REPLICATION_POSITION_FAMILY)
-                    .setMaxVersions(conf.getInt(HConstants.HBASE_META_VERSIONS,
-                            HConstants.DEFAULT_HBASE_META_VERSIONS))
-                    .setInMemory(true)
-                    .setBlocksize(conf.getInt(HConstants.HBASE_META_BLOCK_SIZE,
-                            HConstants.DEFAULT_HBASE_META_BLOCK_SIZE))
-                    .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
-                    // Disable blooms for meta.  Needs work.  Seems to mess w/ getClosestOrBefore.
-                    .setBloomFilterType(BloomType.NONE)
-                    .build())
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(HConstants.REPLICATION_META_FAMILY)
-                    .setMaxVersions(conf.getInt(HConstants.HBASE_META_VERSIONS,
-                            HConstants.DEFAULT_HBASE_META_VERSIONS))
-                    .setInMemory(true)
-                    .setBlocksize(conf.getInt(HConstants.HBASE_META_BLOCK_SIZE,
-                            HConstants.DEFAULT_HBASE_META_BLOCK_SIZE))
-                    .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
-                    // Disable blooms for meta.  Needs work.  Seems to mess w/ getClosestOrBefore.
-                    .setBloomFilterType(BloomType.NONE)
-                    .build())
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(HConstants.TABLE_FAMILY)
-                    // Ten is arbitrary number.  Keep versions to help debugging.
-                    .setMaxVersions(10)
-                    .setInMemory(true)
-                    .setBlocksize(8 * 1024)
-                    .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
-                    // Disable blooms for meta.  Needs work.  Seems to mess w/ getClosestOrBefore.
-                    .setBloomFilterType(BloomType.NONE)
-                    .build())
-            .addCoprocessor("org.apache.hadoop.hbase.coprocessor.MultiRowMutationEndpoint",
-                    null, Coprocessor.PRIORITY_SYSTEM, null);
+      .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(HConstants.CATALOG_FAMILY)
+        .setMaxVersions(conf.getInt(HConstants.HBASE_META_VERSIONS,
+          HConstants.DEFAULT_HBASE_META_VERSIONS))
+        .setInMemory(true)
+        .setBlocksize(conf.getInt(HConstants.HBASE_META_BLOCK_SIZE,
+          HConstants.DEFAULT_HBASE_META_BLOCK_SIZE))
+        .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
+        // Disable blooms for meta.  Needs work.  Seems to mess w/ getClosestOrBefore.
+        .setBloomFilterType(BloomType.NONE)
+        .build())
+      .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(HConstants.TABLE_FAMILY)
+        .setMaxVersions(conf.getInt(HConstants.HBASE_META_VERSIONS,
+          HConstants.DEFAULT_HBASE_META_VERSIONS))
+        .setInMemory(true)
+        .setBlocksize(8 * 1024)
+        .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
+        // Disable blooms for meta.  Needs work.  Seems to mess w/ getClosestOrBefore.
+        .setBloomFilterType(BloomType.NONE)
+        .build())
+      .setCoprocessor(CoprocessorDescriptorBuilder.newBuilder(
+        MultiRowMutationEndpoint.class.getName())
+        .setPriority(Coprocessor.PRIORITY_SYSTEM)
+        .build());
   }
 
   @VisibleForTesting
@@ -278,7 +252,7 @@ public class FSTableDescriptors implements TableDescriptors {
    * Returns a map from table name to table descriptor for all tables.
    */
   @Override
-  public Map<String, TableDescriptor> getAllDescriptors()
+  public Map<String, TableDescriptor> getAll()
   throws IOException {
     Map<String, TableDescriptor> tds = new TreeMap<>();
 
@@ -289,7 +263,7 @@ public class FSTableDescriptors implements TableDescriptors {
       // add hbase:meta to the response
       tds.put(this.metaTableDescriptor.getTableName().getNameAsString(), metaTableDescriptor);
     } else {
-      LOG.debug("Fetching table descriptors from the filesystem.");
+      LOG.trace("Fetching table descriptors from the filesystem.");
       boolean allvisited = true;
       for (Path d : FSUtils.getTableDirs(fs, rootdir)) {
         TableDescriptor htd = null;
@@ -309,20 +283,6 @@ public class FSTableDescriptors implements TableDescriptors {
       }
     }
     return tds;
-  }
-
-  /**
-   * Returns a map from table name to table descriptor for all tables.
-   */
-  @Override
-  public Map<String, TableDescriptor> getAll() throws IOException {
-    Map<String, TableDescriptor> htds = new TreeMap<>();
-    Map<String, TableDescriptor> allDescriptors = getAllDescriptors();
-    for (Map.Entry<String, TableDescriptor> entry : allDescriptors
-        .entrySet()) {
-      htds.put(entry.getKey(), entry.getValue());
-    }
-    return htds;
   }
 
   /**
@@ -479,7 +439,7 @@ public class FSTableDescriptors implements TableDescriptors {
       // Clean away old versions
       for (FileStatus file : status) {
         Path path = file.getPath();
-        if (file != mostCurrent) {
+        if (!file.equals(mostCurrent)) {
           if (!fs.delete(file.getPath(), false)) {
             LOG.warn("Failed cleanup of " + path);
           } else {
@@ -659,9 +619,9 @@ public class FSTableDescriptors implements TableDescriptors {
       if (sequenceId <= maxSequenceId) {
         boolean success = FSUtils.delete(fs, path, false);
         if (success) {
-          LOG.debug("Deleted table descriptor at " + path);
+          LOG.debug("Deleted " + path);
         } else {
-          LOG.error("Failed to delete descriptor at " + path);
+          LOG.error("Failed to delete table descriptor at " + path);
         }
       }
     }
@@ -713,7 +673,7 @@ public class FSTableDescriptors implements TableDescriptors {
         if (!fs.rename(tempPath, tableInfoDirPath)) {
           throw new IOException("Failed rename of " + tempPath + " to " + tableInfoDirPath);
         }
-        LOG.debug("Wrote descriptor into: " + tableInfoDirPath);
+        LOG.debug("Wrote into " + tableInfoDirPath);
       } catch (IOException ioe) {
         // Presume clash of names or something; go around again.
         LOG.debug("Failed write and/or rename; retrying", ioe);
@@ -784,11 +744,11 @@ public class FSTableDescriptors implements TableDescriptors {
     }
     FileStatus status = getTableInfoPath(fs, tableDir);
     if (status != null) {
-      LOG.debug("Current tableInfoPath = " + status.getPath());
+      LOG.debug("Current path=" + status.getPath());
       if (!forceCreation) {
         if (fs.exists(status.getPath()) && status.getLen() > 0) {
           if (readTableDescriptor(fs, status).equals(htd)) {
-            LOG.debug("TableInfo already exists.. Skipping creation");
+            LOG.trace("TableInfo already exists.. Skipping creation");
             return false;
           }
         }

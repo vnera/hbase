@@ -33,6 +33,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -111,8 +112,6 @@ import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.regionserver.RegionScanner;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 import org.apache.hadoop.hbase.regionserver.RegionServerStoppedException;
-import org.apache.hadoop.hbase.regionserver.wal.MetricsWAL;
-import org.apache.hadoop.hbase.regionserver.wal.WALActionsListener;
 import org.apache.hadoop.hbase.security.HBaseKerberosUtils;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.security.visibility.VisibilityLabelsCache;
@@ -346,6 +345,9 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
         LOG.debug("Config property {} changed to -1", HConstants.REGIONSERVER_PORT);
       }
     }
+
+    // Save this for when setting default file:// breaks things
+    this.conf.set("original.defaultFS", this.conf.get("fs.defaultFS"));
 
     // Save this for when setting default file:// breaks things
     this.conf.set("original.defaultFS", this.conf.get("fs.defaultFS"));
@@ -1379,23 +1381,40 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
 
   /**
    * Create a table.
-   * @param htd
-   * @param families
-   * @param splitKeys
+   * @param htd table descriptor
+   * @param families array of column families
+   * @param splitKeys array of split keys
    * @param c Configuration to use
    * @return A Table instance for the created table.
-   * @throws IOException
+   * @throws IOException if getAdmin or createTable fails
    */
   public Table createTable(TableDescriptor htd, byte[][] families, byte[][] splitKeys,
       Configuration c) throws IOException {
+    // Disable blooms (they are on by default as of 0.95) but we disable them here because
+    // tests have hard coded counts of what to expect in block cache, etc., and blooms being
+    // on is interfering.
+    return createTable(htd, families, splitKeys, BloomType.NONE, HConstants.DEFAULT_BLOCKSIZE, c);
+  }
+
+  /**
+   * Create a table.
+   * @param htd table descriptor
+   * @param families array of column families
+   * @param splitKeys array of split keys
+   * @param type Bloom type
+   * @param blockSize block size
+   * @param c Configuration to use
+   * @return A Table instance for the created table.
+   * @throws IOException if getAdmin or createTable fails
+   */
+
+  public Table createTable(TableDescriptor htd, byte[][] families, byte[][] splitKeys,
+      BloomType type, int blockSize, Configuration c) throws IOException {
     TableDescriptorBuilder builder = TableDescriptorBuilder.newBuilder(htd);
     for (byte[] family : families) {
-      // Disable blooms (they are on by default as of 0.95) but we disable them here because
-      // tests have hard coded counts of what to expect in block cache, etc., and blooms being
-      // on is interfering.
-      builder.addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(family)
-                              .setBloomFilterType(BloomType.NONE)
-                              .build());
+      builder.setColumnFamily(
+          ColumnFamilyDescriptorBuilder.newBuilder(family).setBloomFilterType(type)
+              .setBlocksize(blockSize).build());
     }
     TableDescriptor td = builder.build();
     getAdmin().createTable(td, splitKeys);
@@ -1407,8 +1426,8 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
 
   /**
    * Create a table.
-   * @param htd
-   * @param splitRows
+   * @param htd table descriptor
+   * @param splitRows array of split keys
    * @return A Table instance for the created table.
    * @throws IOException
    */
@@ -1615,7 +1634,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
       if (status.getSecond() != 0) {
         LOG.debug(status.getSecond() - status.getFirst() + "/" + status.getSecond()
           + " regions updated.");
-        Thread.sleep(1 * 1000l);
+        Thread.sleep(1 * 1000L);
       } else {
         LOG.debug("All regions updated.");
         break;
@@ -2002,7 +2021,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
               expectedCount = 1;
             }
             if (count != expectedCount) {
-              String row = new String(new byte[] {b1,b2,b3});
+              String row = new String(new byte[] {b1,b2,b3}, StandardCharsets.UTF_8);
               throw new RuntimeException("Row:" + row + " has a seen count of " + count + " " +
                   "instead of " + expectedCount);
             }
@@ -2098,7 +2117,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
       get.setConsistency(Consistency.TIMELINE);
       Result result = table.get(get);
       assertTrue(failMsg, result.containsColumn(f, null));
-      assertEquals(failMsg, result.getColumnCells(f, null).size(), 1);
+      assertEquals(failMsg, 1, result.getColumnCells(f, null).size());
       Cell cell = result.getColumnLatestCell(f, null);
       assertTrue(failMsg,
         Bytes.equals(data, 0, data.length, cell.getValueArray(), cell.getValueOffset(),
@@ -2133,7 +2152,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
       if (!present) continue;
 
       assertTrue(failMsg, result.containsColumn(f, null));
-      assertEquals(failMsg, result.getColumnCells(f, null).size(), 1);
+      assertEquals(failMsg, 1, result.getColumnCells(f, null).size());
       Cell cell = result.getColumnLatestCell(f, null);
       assertTrue(failMsg,
         Bytes.equals(data, 0, data.length, cell.getValueArray(), cell.getValueOffset(),
@@ -2328,9 +2347,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
     // unless I pass along via the conf.
     Configuration confForWAL = new Configuration(conf);
     confForWAL.set(HConstants.HBASE_DIR, rootDir.toString());
-    return (new WALFactory(confForWAL,
-        Collections.<WALActionsListener> singletonList(new MetricsWAL()),
-        "hregion-" + RandomStringUtils.randomNumeric(8))).getWAL(hri);
+    return new WALFactory(confForWAL, "hregion-" + RandomStringUtils.randomNumeric(8)).getWAL(hri);
   }
 
   /**
@@ -2640,7 +2657,6 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
   /**
    * Expire a region server's session
    * @param index which RS
-   * @throws Exception
    */
   public void expireRegionServerSession(int index) throws Exception {
     HRegionServer rs = getMiniHBaseCluster().getRegionServer(index);
@@ -3739,7 +3755,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
     TableDescriptorBuilder builder = TableDescriptorBuilder.newBuilder(td);
     for (ColumnFamilyDescriptor cd : cds) {
       if (!td.hasColumnFamily(cd.getName())) {
-        builder.addColumnFamily(cd);
+        builder.setColumnFamily(cd);
       }
     }
     td = builder.build();
@@ -3845,7 +3861,7 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
       throws IOException {
     TableDescriptor td
         = TableDescriptorBuilder.newBuilder(TableName.valueOf(tableName))
-            .addColumnFamily(cd)
+            .setColumnFamily(cd)
             .build();
     HRegionInfo info =
         new HRegionInfo(TableName.valueOf(tableName), null, null, false);

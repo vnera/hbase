@@ -1,6 +1,4 @@
 /**
- * Copyright The Apache Software Foundation
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -25,9 +23,9 @@ import static org.junit.Assert.assertTrue;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseZKTestingUtility;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.ZKTests;
@@ -39,6 +37,7 @@ import org.apache.zookeeper.Op;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -49,6 +48,11 @@ import org.slf4j.LoggerFactory;
  */
 @Category({ ZKTests.class, MediumTests.class })
 public class TestZKMulti {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestZKMulti.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestZKMulti.class);
   private final static HBaseZKTestingUtility TEST_UTIL = new HBaseZKTestingUtility();
   private static ZKWatcher zkw = null;
@@ -77,7 +81,7 @@ public class TestZKMulti {
     TEST_UTIL.shutdownMiniZKCluster();
   }
 
-  @Test (timeout=60000)
+  @Test
   public void testSimpleMulti() throws Exception {
     // null multi
     ZKUtil.multiOrSequential(zkw, null, false);
@@ -106,7 +110,7 @@ public class TestZKMulti {
     assertTrue(ZKUtil.checkExists(zkw, path) == -1);
   }
 
-  @Test (timeout=60000)
+  @Test
   public void testComplexMulti() throws Exception {
     String path1 = ZNodePaths.joinZNode(zkw.znodePaths.baseZNode, "testComplexMulti1");
     String path2 = ZNodePaths.joinZNode(zkw.znodePaths.baseZNode, "testComplexMulti2");
@@ -148,7 +152,7 @@ public class TestZKMulti {
     assertTrue(Bytes.equals(ZKUtil.getData(zkw, path6), Bytes.toBytes(path6)));
   }
 
-  @Test (timeout=60000)
+  @Test
   public void testSingleFailure() throws Exception {
     // try to delete a node that doesn't exist
     boolean caughtNoNode = false;
@@ -186,7 +190,7 @@ public class TestZKMulti {
     assertTrue(caughtNodeExists);
   }
 
-  @Test (timeout=60000)
+  @Test
   public void testSingleFailureInMulti() throws Exception {
     // try a multi where all but one operation succeeds
     String pathA = ZNodePaths.joinZNode(zkw.znodePaths.baseZNode, "testSingleFailureInMultiA");
@@ -209,7 +213,7 @@ public class TestZKMulti {
     assertTrue(ZKUtil.checkExists(zkw, pathC) == -1);
   }
 
-  @Test (timeout=60000)
+  @Test
   public void testMultiFailure() throws Exception {
     String pathX = ZNodePaths.joinZNode(zkw.znodePaths.baseZNode, "testMultiFailureX");
     String pathY = ZNodePaths.joinZNode(zkw.znodePaths.baseZNode, "testMultiFailureY");
@@ -263,7 +267,7 @@ public class TestZKMulti {
     assertTrue(ZKUtil.checkExists(zkw, pathV) == -1);
   }
 
-  @Test (timeout=60000)
+  @Test
   public void testRunSequentialOnMultiFailure() throws Exception {
     String path1 = ZNodePaths.joinZNode(zkw.znodePaths.baseZNode, "runSequential1");
     String path2 = ZNodePaths.joinZNode(zkw.znodePaths.baseZNode, "runSequential2");
@@ -296,7 +300,7 @@ public class TestZKMulti {
    * Verifies that for the given root node, it should delete all the child nodes
    * recursively using multi-update api.
    */
-  @Test (timeout=60000)
+  @Test
   public void testdeleteChildrenRecursivelyMulti() throws Exception {
     String parentZNode = "/testRootMulti";
     createZNodeTree(parentZNode);
@@ -314,7 +318,7 @@ public class TestZKMulti {
    * Verifies that for the given root node, it should delete all the nodes recursively using
    * multi-update api.
    */
-  @Test(timeout = 60000)
+  @Test
   public void testDeleteNodeRecursivelyMulti() throws Exception {
     String parentZNode = "/testdeleteNodeRecursivelyMulti";
     createZNodeTree(parentZNode);
@@ -323,7 +327,7 @@ public class TestZKMulti {
     assertTrue("Parent znode should be deleted.", ZKUtil.checkExists(zkw, parentZNode) == -1);
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testDeleteNodeRecursivelyMultiOrSequential() throws Exception {
     String parentZNode1 = "/testdeleteNode1";
     String parentZNode2 = "/testdeleteNode2";
@@ -339,7 +343,7 @@ public class TestZKMulti {
     assertTrue("Parent znode 3 should be deleted.", ZKUtil.checkExists(zkw, parentZNode3) == -1);
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testDeleteChildrenRecursivelyMultiOrSequential() throws Exception {
     String parentZNode1 = "/testdeleteChildren1";
     String parentZNode2 = "/testdeleteChildren2";

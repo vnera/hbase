@@ -18,16 +18,22 @@
 package org.apache.hadoop.hbase.zookeeper;
 
 import java.util.concurrent.atomic.AtomicReference;
-
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.testclassification.ZKTests;
 import org.junit.Assert;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 @Category({ ZKTests.class, SmallTests.class })
 public class TestInstancePending {
-  @Test(timeout = 1000)
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestInstancePending.class);
+
+  @Test
   public void test() throws Exception {
     final InstancePending<String> pending = new InstancePending<>();
     final AtomicReference<String> getResultRef = new AtomicReference<>();

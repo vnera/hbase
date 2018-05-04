@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -25,9 +24,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
@@ -52,6 +51,7 @@ import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -62,6 +62,11 @@ import org.slf4j.LoggerFactory;
 
 @Category({MasterTests.class, MediumTests.class})
 public class TestAssignmentListener {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestAssignmentListener.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestAssignmentListener.class);
 
   private static final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
@@ -169,7 +174,7 @@ public class TestAssignmentListener {
     TEST_UTIL.shutdownMiniCluster();
   }
 
-  @Test(timeout=60000)
+  @Test
   public void testServerListener() throws IOException, InterruptedException {
     ServerManager serverManager = TEST_UTIL.getHBaseCluster().getMaster().getServerManager();
 
@@ -211,7 +216,7 @@ public class TestAssignmentListener {
     }
   }
 
-  @Test(timeout=60000)
+  @Test
   public void testAssignmentListener() throws IOException, InterruptedException {
     AssignmentManager am = TEST_UTIL.getHBaseCluster().getMaster().getAssignmentManager();
     Admin admin = TEST_UTIL.getAdmin();
@@ -365,10 +370,8 @@ public class TestAssignmentListener {
     drainingServerTracker.start();
 
     // Confirm our ServerManager lists are empty.
-    Assert.assertEquals(serverManager.getOnlineServers(),
-        new HashMap<ServerName, ServerLoad>());
-    Assert.assertEquals(serverManager.getDrainingServersList(),
-        new ArrayList<ServerName>());
+    Assert.assertEquals(new HashMap<ServerName, ServerLoad>(), serverManager.getOnlineServers());
+    Assert.assertEquals(new ArrayList<ServerName>(), serverManager.getDrainingServersList());
 
     // checkAndRecordNewServer() is how servers are added to the ServerManager.
     ArrayList<ServerName> onlineDrainingServers = new ArrayList<>();
@@ -381,8 +384,7 @@ public class TestAssignmentListener {
     }
 
     // Verify the ServerManager lists are correctly updated.
-    Assert.assertEquals(serverManager.getOnlineServers(), onlineServers);
-    Assert.assertEquals(serverManager.getDrainingServersList(),
-        onlineDrainingServers);
+    Assert.assertEquals(onlineServers, serverManager.getOnlineServers());
+    Assert.assertEquals(onlineDrainingServers, serverManager.getDrainingServersList());
   }
 }

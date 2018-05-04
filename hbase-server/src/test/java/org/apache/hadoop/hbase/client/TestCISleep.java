@@ -22,6 +22,7 @@ import static org.junit.Assert.fail;
 
 import java.net.SocketTimeoutException;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.ipc.HBaseRpcController;
@@ -29,6 +30,7 @@ import org.apache.hadoop.hbase.ipc.RpcControllerFactory;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -36,6 +38,10 @@ import org.slf4j.LoggerFactory;
 
 @Category({ ClientTests.class, MediumTests.class })
 public class TestCISleep extends AbstractTestCITimeout {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestCISleep.class);
 
   private static Logger LOG = LoggerFactory.getLogger(TestCISleep.class);
 
@@ -52,10 +58,11 @@ public class TestCISleep extends AbstractTestCITimeout {
   @Test
   public void testRpcRetryingCallerSleep() throws Exception {
     TableDescriptor htd = TableDescriptorBuilder.newBuilder(tableName)
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.of(FAM_NAM))
-        .addCoprocessorWithSpec("|" + SleepAndFailFirstTime.class.getName() + "||" +
-          SleepAndFailFirstTime.SLEEP_TIME_CONF_KEY + "=2000")
-        .build();
+      .setColumnFamily(ColumnFamilyDescriptorBuilder.of(FAM_NAM))
+      .setCoprocessor(CoprocessorDescriptorBuilder.newBuilder(SleepAndFailFirstTime.class.getName())
+        .setProperty(SleepAndFailFirstTime.SLEEP_TIME_CONF_KEY, String.valueOf(2000))
+        .build())
+      .build();
     TEST_UTIL.getAdmin().createTable(htd);
 
     Configuration c = new Configuration(TEST_UTIL.getConfiguration());

@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,6 +17,13 @@
  */
 package org.apache.hadoop.hbase.namespace;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
@@ -26,14 +32,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hbase.CategoryBasedTimeout;
 import org.apache.hadoop.hbase.Coprocessor;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -46,6 +51,7 @@ import org.apache.hadoop.hbase.Waiter;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.DoNotRetryRegionException;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.RegionLocator;
 import org.apache.hadoop.hbase.client.Table;
@@ -66,6 +72,7 @@ import org.apache.hadoop.hbase.master.TableNamespaceManager;
 import org.apache.hadoop.hbase.quotas.MasterQuotaManager;
 import org.apache.hadoop.hbase.quotas.QuotaExceededException;
 import org.apache.hadoop.hbase.quotas.QuotaUtil;
+import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.Store;
 import org.apache.hadoop.hbase.regionserver.StoreFile;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionLifeCycleTracker;
@@ -79,24 +86,19 @@ import org.apache.zookeeper.KeeperException;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import org.junit.Rule;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
-import org.junit.rules.TestRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 @Category(MediumTests.class)
 public class TestNamespaceAuditor {
-  @Rule public final TestRule timeout = CategoryBasedTimeout.builder().
-      withTimeout(this.getClass()).withLookingForStuckThread(true).build();
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestNamespaceAuditor.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestNamespaceAuditor.class);
   private static final HBaseTestingUtility UTIL = new HBaseTestingUtility();
   private static Admin ADMIN;
@@ -146,7 +148,7 @@ public class TestNamespaceAuditor {
             .addConfiguration(TableNamespaceManager.KEY_MAX_TABLES, "2").build();
     ADMIN.createNamespace(nspDesc);
     assertNotNull("Namespace descriptor found null.", ADMIN.getNamespaceDescriptor(nsp));
-    assertEquals(ADMIN.listNamespaceDescriptors().length, 3);
+    assertEquals(3, ADMIN.listNamespaceDescriptors().length);
     HColumnDescriptor fam1 = new HColumnDescriptor("fam1");
 
     HTableDescriptor tableDescOne =
@@ -347,24 +349,30 @@ public class TestNamespaceAuditor {
       UTIL.loadNumericRows(table, Bytes.toBytes("info"), 1000, 1999);
     }
     ADMIN.flush(tableTwo);
-    List<HRegionInfo> hris = ADMIN.getTableRegions(tableTwo);
+    List<RegionInfo> hris = ADMIN.getRegions(tableTwo);
     assertEquals(initialRegions, hris.size());
-    Collections.sort(hris);
+    Collections.sort(hris, RegionInfo.COMPARATOR);
     Future<?> f = ADMIN.mergeRegionsAsync(
       hris.get(0).getEncodedNameAsBytes(),
       hris.get(1).getEncodedNameAsBytes(),
       false);
     f.get(10, TimeUnit.SECONDS);
 
-    hris = ADMIN.getTableRegions(tableTwo);
+    hris = ADMIN.getRegions(tableTwo);
     assertEquals(initialRegions - 1, hris.size());
-    Collections.sort(hris);
-    ADMIN.split(tableTwo, Bytes.toBytes("3"));
-    // Not much we can do here until we have split return a Future.
-    Threads.sleep(5000);
-    hris = ADMIN.getTableRegions(tableTwo);
+    Collections.sort(hris, RegionInfo.COMPARATOR);
+    byte[] splitKey = Bytes.toBytes("3");
+    HRegion regionToSplit = UTIL.getMiniHBaseCluster().getRegions(tableTwo).stream()
+      .filter(r -> r.getRegionInfo().containsRow(splitKey)).findFirst().get();
+    regionToSplit.compact(true);
+    // the above compact may quit immediately if there is a compaction ongoing, so here we need to
+    // wait a while to let the ongoing compaction finish.
+    UTIL.waitFor(10000, regionToSplit::isSplittable);
+    ADMIN.splitRegionAsync(regionToSplit.getRegionInfo().getRegionName(), splitKey).get(10,
+      TimeUnit.SECONDS);
+    hris = ADMIN.getRegions(tableTwo);
     assertEquals(initialRegions, hris.size());
-    Collections.sort(hris);
+    Collections.sort(hris, RegionInfo.COMPARATOR);
 
     // Fail region merge through Coprocessor hook
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
@@ -383,14 +391,18 @@ public class TestNamespaceAuditor {
     } catch (ExecutionException ee) {
       // Expected.
     }
-    hris = ADMIN.getTableRegions(tableTwo);
+    hris = ADMIN.getRegions(tableTwo);
     assertEquals(initialRegions, hris.size());
-    Collections.sort(hris);
+    Collections.sort(hris, RegionInfo.COMPARATOR);
     // verify that we cannot split
-    HRegionInfo hriToSplit2 = hris.get(1);
-    ADMIN.split(tableTwo, Bytes.toBytes("6"));
+    try {
+      ADMIN.split(tableTwo, Bytes.toBytes("6"));
+      fail();
+    } catch (DoNotRetryRegionException e) {
+      // Expected
+    }
     Thread.sleep(2000);
-    assertEquals(initialRegions, ADMIN.getTableRegions(tableTwo).size());
+    assertEquals(initialRegions, ADMIN.getRegions(tableTwo).size());
   }
 
   /*
@@ -592,7 +604,7 @@ public class TestNamespaceAuditor {
             .build();
     ADMIN.createNamespace(nspDesc);
     assertNotNull("Namespace descriptor found null.", ADMIN.getNamespaceDescriptor(nsp));
-    assertEquals(ADMIN.listNamespaceDescriptors().length, 3);
+    assertEquals(3, ADMIN.listNamespaceDescriptors().length);
     HColumnDescriptor fam1 = new HColumnDescriptor("fam1");
     HTableDescriptor tableDescOne =
         new HTableDescriptor(TableName.valueOf(nsp + TableName.NAMESPACE_DELIM + "table1"));

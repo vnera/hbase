@@ -22,9 +22,9 @@ import static org.junit.Assert.assertEquals;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
@@ -50,6 +50,7 @@ import org.apache.hadoop.hbase.util.JVMClusterUtil;
 import org.apache.hadoop.hbase.util.TimeOffsetEnvironmentEdge;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -57,6 +58,10 @@ import org.junit.rules.ExpectedException;
 
 @Category({ RegionServerTests.class, MediumTests.class })
 public class TestFIFOCompactionPolicy {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestFIFOCompactionPolicy.class);
 
   private static final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
 
@@ -88,7 +93,7 @@ public class TestFIFOCompactionPolicy {
           FIFOCompactionPolicy.class.getName())
         .setValue(HConstants.HBASE_REGION_SPLIT_POLICY_KEY,
           DisabledRegionSplitPolicy.class.getName())
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(family).setTimeToLive(1).build())
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(family).setTimeToLive(1).build())
         .build();
     admin.createTable(desc);
     Table table = TEST_UTIL.getConnection().getTable(tableName);
@@ -150,7 +155,7 @@ public class TestFIFOCompactionPolicy {
           FIFOCompactionPolicy.class.getName())
         .setValue(HConstants.HBASE_REGION_SPLIT_POLICY_KEY,
           DisabledRegionSplitPolicy.class.getName())
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.of(family)).build();
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.of(family)).build();
     TEST_UTIL.getAdmin().createTable(desc);
   }
 
@@ -164,7 +169,7 @@ public class TestFIFOCompactionPolicy {
           FIFOCompactionPolicy.class.getName())
         .setValue(HConstants.HBASE_REGION_SPLIT_POLICY_KEY,
           DisabledRegionSplitPolicy.class.getName())
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(family).setTimeToLive(1)
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(family).setTimeToLive(1)
             .setMinVersions(1).build())
         .build();
     TEST_UTIL.getAdmin().createTable(desc);
@@ -182,7 +187,7 @@ public class TestFIFOCompactionPolicy {
         .setValue(HConstants.HBASE_REGION_SPLIT_POLICY_KEY,
           DisabledRegionSplitPolicy.class.getName())
         .setValue(HStore.BLOCKING_STOREFILES_KEY, "10")
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(family).setTimeToLive(1).build())
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(family).setTimeToLive(1).build())
         .build();
     TEST_UTIL.getAdmin().createTable(desc);
   }

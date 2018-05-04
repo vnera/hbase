@@ -26,9 +26,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.hadoop.hbase.ClusterMetrics.Option;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -38,7 +40,11 @@ import org.junit.runners.Parameterized;
 @Category({ ClientTests.class, MediumTests.class })
 public class TestAsyncDecommissionAdminApi extends TestAsyncAdminBase {
 
-  @Test(timeout = 30000)
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestAsyncDecommissionAdminApi.class);
+
+  @Test
   public void testAsyncDecommissionRegionServers() throws Exception {
     List<ServerName> decommissionedRegionServers = admin.listDecommissionedRegionServers().get();
     assertTrue(decommissionedRegionServers.isEmpty());
@@ -49,7 +55,7 @@ public class TestAsyncDecommissionAdminApi extends TestAsyncAdminBase {
         new ArrayList<>(admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS)).get()
           .getLiveServerMetrics().keySet());
 
-    assertEquals(clusterRegionServers.size(), 2);
+    assertEquals(2, clusterRegionServers.size());
 
     HashMap<ServerName, List<RegionInfo>> serversToDecommssion = new HashMap<>();
     // Get a server that has regions. We will decommission one of the servers,

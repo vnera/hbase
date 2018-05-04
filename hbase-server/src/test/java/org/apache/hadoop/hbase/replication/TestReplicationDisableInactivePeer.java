@@ -18,22 +18,29 @@
  */
 package org.apache.hadoop.hbase.replication;
 
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.fail;
+
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.fail;
-
 @Category({ReplicationTests.class, LargeTests.class})
 public class TestReplicationDisableInactivePeer extends TestReplicationBase {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestReplicationDisableInactivePeer.class);
+
   private static final Logger LOG =
       LoggerFactory.getLogger(TestReplicationDisableInactivePeer.class);
 
@@ -45,7 +52,7 @@ public class TestReplicationDisableInactivePeer extends TestReplicationBase {
    *
    * @throws Exception
    */
-  @Test(timeout = 600000)
+  @Test
   public void testDisableInactivePeer() throws Exception {
 
     // enabling and shutdown the peer
@@ -84,7 +91,7 @@ public class TestReplicationDisableInactivePeer extends TestReplicationBase {
         LOG.info("Row not available");
         Thread.sleep(SLEEP_TIME * NB_RETRIES);
       } else {
-        assertArrayEquals(res.value(), row);
+        assertArrayEquals(row, res.value());
         return;
       }
     }

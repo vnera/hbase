@@ -85,6 +85,7 @@ class FSWALEntry extends Entry {
     }
   }
 
+  @Override
   public String toString() {
     return "sequence=" + this.txid + ", " + super.toString();
   };
@@ -116,6 +117,7 @@ class FSWALEntry extends Entry {
         PrivateCellUtil.setSequenceId(c, regionSequenceId);
       }
     }
+
     getKey().setWriteEntry(we);
     return regionSequenceId;
   }

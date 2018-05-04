@@ -33,8 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -65,6 +65,7 @@ import org.apache.hadoop.hbase.util.Pair;
 import org.apache.zookeeper.KeeperException;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -73,6 +74,11 @@ import org.slf4j.LoggerFactory;
 
 @Category({MasterTests.class, MediumTests.class})
 public class TestRegionPlacement {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestRegionPlacement.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestRegionPlacement.class);
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private final static int SLAVES = 10;
@@ -389,8 +395,7 @@ public class TestRegionPlacement {
     lastRegionOpenedCount = currentRegionOpened;
 
     assertEquals("There are only " + regionMovement + " instead of "
-          + expected + " region movement for " + attempt + " attempts",
-          regionMovement, expected);
+          + expected + " region movement for " + attempt + " attempts", expected, regionMovement);
   }
 
   /**
@@ -469,6 +474,7 @@ public class TestRegionPlacement {
     final AtomicInteger totalRegionNum = new AtomicInteger(0);
     LOG.info("The start of region placement verification");
     MetaTableAccessor.Visitor visitor = new MetaTableAccessor.Visitor() {
+      @Override
       public boolean visit(Result result) throws IOException {
         try {
           @SuppressWarnings("deprecation")

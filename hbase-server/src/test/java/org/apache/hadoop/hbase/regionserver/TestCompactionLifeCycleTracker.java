@@ -27,11 +27,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.Cell.Type;
 import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
@@ -57,6 +57,7 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -66,6 +67,10 @@ import org.junit.experimental.categories.Category;
  */
 @Category({ CoprocessorTests.class, MediumTests.class })
 public class TestCompactionLifeCycleTracker {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestCompactionLifeCycleTracker.class);
 
   private static final HBaseTestingUtility UTIL = new HBaseTestingUtility();
 
@@ -143,9 +148,9 @@ public class TestCompactionLifeCycleTracker {
   public void setUp() throws IOException {
     UTIL.getAdmin()
         .createTable(TableDescriptorBuilder.newBuilder(NAME)
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.of(CF1))
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.of(CF2))
-            .addCoprocessor(CompactionObserver.class.getName()).build());
+            .setColumnFamily(ColumnFamilyDescriptorBuilder.of(CF1))
+            .setColumnFamily(ColumnFamilyDescriptorBuilder.of(CF2))
+            .setCoprocessor(CompactionObserver.class.getName()).build());
     try (Table table = UTIL.getConnection().getTable(NAME)) {
       for (int i = 0; i < 100; i++) {
         byte[] row = Bytes.toBytes(i);

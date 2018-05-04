@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -37,7 +37,6 @@ import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
-import org.apache.hadoop.hbase.exceptions.HBaseException;
 import org.apache.hadoop.hbase.favored.FavoredNodesManager;
 import org.apache.hadoop.hbase.master.MasterCoprocessorHost;
 import org.apache.hadoop.hbase.master.MasterFileSystem;
@@ -133,7 +132,7 @@ public class DeleteTableProcedure
         default:
           throw new UnsupportedOperationException("unhandled state=" + state);
       }
-    } catch (HBaseException|IOException e) {
+    } catch (IOException e) {
       if (isRollbackSupported(state)) {
         setFailure("master-delete-table", e);
       } else {
@@ -145,8 +144,8 @@ public class DeleteTableProcedure
 
   @Override
   protected boolean abort(MasterProcedureEnv env) {
-    // TODO: Current behavior is: with no rollback and no abort support, procedure may stuck
-    // looping in retrying failing step forever. Default behavior of abort is changed to support
+    // TODO: Current behavior is: with no rollback and no abort support, procedure may get stuck
+    // looping in retrying failing a step forever. Default behavior of abort is changed to support
     // aborting all procedures. Override the default wisely. Following code retains the current
     // behavior. Revisit it later.
     return isRollbackSupported(getCurrentState()) ? super.abort(env) : false;

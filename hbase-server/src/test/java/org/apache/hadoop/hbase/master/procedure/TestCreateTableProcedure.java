@@ -15,13 +15,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.hadoop.hbase.master.procedure;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import org.apache.hadoop.hbase.DoNotRetryIOException;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.TableExistsException;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
@@ -35,6 +35,7 @@ import org.apache.hadoop.hbase.testclassification.MasterTests;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.ModifyRegionUtils;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -44,6 +45,11 @@ import org.slf4j.LoggerFactory;
 
 @Category({MasterTests.class, MediumTests.class})
 public class TestCreateTableProcedure extends TestTableDDLProcedureBase {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestCreateTableProcedure.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestCreateTableProcedure.class);
 
   private static final String F1 = "f1";
@@ -51,14 +57,14 @@ public class TestCreateTableProcedure extends TestTableDDLProcedureBase {
 
   @Rule public TestName name = new TestName();
 
-  @Test(timeout=60000)
+  @Test
   public void testSimpleCreate() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     final byte[][] splitKeys = null;
     testSimpleCreate(tableName, splitKeys);
   }
 
-  @Test(timeout=60000)
+  @Test
   public void testSimpleCreateWithSplits() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     final byte[][] splitKeys = new byte[][] {
@@ -73,7 +79,7 @@ public class TestCreateTableProcedure extends TestTableDDLProcedureBase {
     MasterProcedureTestingUtility.validateTableCreation(getMaster(), tableName, regions, F1, F2);
   }
 
-  @Test(timeout=60000)
+  @Test
   public void testCreateWithoutColumnFamily() throws Exception {
     final ProcedureExecutor<MasterProcedureEnv> procExec = getMasterProcedureExecutor();
     final TableName tableName = TableName.valueOf(name.getMethodName());
@@ -95,7 +101,7 @@ public class TestCreateTableProcedure extends TestTableDDLProcedureBase {
         cause instanceof DoNotRetryIOException);
   }
 
-  @Test(timeout=60000, expected=TableExistsException.class)
+  @Test(expected=TableExistsException.class)
   public void testCreateExisting() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     final ProcedureExecutor<MasterProcedureEnv> procExec = getMasterProcedureExecutor();
@@ -118,7 +124,7 @@ public class TestCreateTableProcedure extends TestTableDDLProcedureBase {
     latch2.await();
   }
 
-  @Test(timeout=60000)
+  @Test
   public void testRecoveryAndDoubleExecution() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
 
@@ -138,13 +144,13 @@ public class TestCreateTableProcedure extends TestTableDDLProcedureBase {
     MasterProcedureTestingUtility.validateTableCreation(getMaster(), tableName, regions, F1, F2);
   }
 
-  @Test(timeout=90000)
+  @Test
   public void testRollbackAndDoubleExecution() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     testRollbackAndDoubleExecution(TableDescriptorBuilder.newBuilder(MasterProcedureTestingUtility.createHTD(tableName, F1, F2)));
   }
 
-  @Test(timeout=90000)
+  @Test
   public void testRollbackAndDoubleExecutionOnMobTable() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     TableDescriptor htd = MasterProcedureTestingUtility.createHTD(tableName, F1, F2);

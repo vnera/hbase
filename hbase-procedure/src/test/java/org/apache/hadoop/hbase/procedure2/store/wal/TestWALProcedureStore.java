@@ -15,8 +15,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.hadoop.hbase.procedure2.store.wal;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -27,11 +31,11 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
-
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseCommonTestingUtility;
 import org.apache.hadoop.hbase.procedure2.Procedure;
 import org.apache.hadoop.hbase.procedure2.ProcedureStateSerializer;
@@ -42,25 +46,29 @@ import org.apache.hadoop.hbase.procedure2.SequentialProcedure;
 import org.apache.hadoop.hbase.procedure2.store.ProcedureStore;
 import org.apache.hadoop.hbase.procedure2.store.ProcedureStore.ProcedureIterator;
 import org.apache.hadoop.hbase.procedure2.store.ProcedureStoreTracker;
-import org.apache.hbase.thirdparty.com.google.protobuf.Int64Value;
-import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.testclassification.MasterTests;
+import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.io.IOUtils;
-
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import org.apache.hbase.thirdparty.com.google.protobuf.Int64Value;
 
 @Category({MasterTests.class, SmallTests.class})
 public class TestWALProcedureStore {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestWALProcedureStore.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestWALProcedureStore.class);
 
   private static final int PROCEDURE_STORE_SLOTS = 1;
@@ -575,7 +583,7 @@ public class TestWALProcedureStore {
     }
   }
 
-  @Test(timeout=60000)
+  @Test
   public void testWalReplayOrder_AB_A() throws Exception {
     /*
      * | A B | -> | A |
@@ -618,7 +626,7 @@ public class TestWALProcedureStore {
     });
   }
 
-  @Test(timeout=60000)
+  @Test
   public void testWalReplayOrder_ABC_BAD() throws Exception {
     /*
      * | A B C | -> | B A D |
@@ -752,6 +760,40 @@ public class TestWALProcedureStore {
     assertEquals(1, loader.getRunnableCount());
     assertEquals(0, loader.getCompletedCount());
     assertEquals(0, loader.getCorruptedCount());
+  }
+
+  @Test
+  public void testLogFileAleadExists() throws IOException {
+    final boolean[] tested = {false};
+    WALProcedureStore mStore = Mockito.spy(procStore);
+
+    Answer<Boolean> ans = new Answer<Boolean>() {
+      @Override
+      public Boolean answer(InvocationOnMock invocationOnMock) throws Throwable {
+        long logId = ((Long) invocationOnMock.getArgument(0)).longValue();
+        switch ((int) logId) {
+          case 2:
+            // Create a file so that real rollWriter() runs into file exists condition
+            Path logFilePath = mStore.getLogFilePath(logId);
+            mStore.getFileSystem().create(logFilePath);
+            break;
+          case 3:
+            // Success only when we retry with logId 3
+            tested[0] = true;
+          default:
+            break;
+        }
+        return (Boolean) invocationOnMock.callRealMethod();
+      }
+    };
+
+    // First time Store has one log file, next id will be 2
+    Mockito.doAnswer(ans).when(mStore).rollWriter(2);
+    // next time its 3
+    Mockito.doAnswer(ans).when(mStore).rollWriter(3);
+
+    mStore.recoverLease();
+    assertTrue(tested[0]);
   }
 
   @Test

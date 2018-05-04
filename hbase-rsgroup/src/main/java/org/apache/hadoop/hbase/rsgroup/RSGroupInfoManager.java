@@ -25,9 +25,9 @@ import java.util.Set;
 
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.net.Address;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.yetus.audience.InterfaceAudience;
-import org.apache.hadoop.hbase.net.Address;
 
 /**
  * Interface used to manage RSGroupInfo storage. An implementation
@@ -47,6 +47,8 @@ public interface RSGroupInfoManager {
   byte[] META_FAMILY_BYTES = Bytes.toBytes("m");
   byte[] META_QUALIFIER_BYTES = Bytes.toBytes("i");
   byte[] ROW_KEY = {0};
+
+  void start();
 
   /**
    * Add given RSGroupInfo to existing list of group infos.

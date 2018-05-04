@@ -79,6 +79,11 @@ public class MemStoreCompactor {
         compactingMemStore.getFamilyName());
   }
 
+  @Override
+  public String toString() {
+    return this.strategy + ", compactionCellMax=" + this.compactionKVMax;
+  }
+
   /**----------------------------------------------------------------------
    * The request to dispatch the compaction asynchronous task.
    * The method returns true if compaction was successfully dispatched, or false if there
@@ -92,7 +97,8 @@ public class MemStoreCompactor {
     // get a snapshot of the list of the segments from the pipeline,
     // this local copy of the list is marked with specific version
     versionedList = compactingMemStore.getImmutableSegments();
-    LOG.debug("Starting In-Memory Compaction of {}",
+    LOG.trace("Speculative compaction starting on {}/{}",
+        compactingMemStore.getStore().getHRegion().getRegionInfo().getEncodedName(),
         compactingMemStore.getStore().getColumnFamilyName());
     HStore store = compactingMemStore.getStore();
     RegionCoprocessorHost cpHost = store.getCoprocessorHost();
@@ -167,8 +173,8 @@ public class MemStoreCompactor {
 
       // Substitute the pipeline with one segment
       if (!isInterrupted.get()) {
-        if (resultSwapped = compactingMemStore.swapCompactedSegments(
-            versionedList, result, merge)) {
+        resultSwapped = compactingMemStore.swapCompactedSegments(versionedList, result, merge);
+        if (resultSwapped) {
           // update compaction strategy
           strategy.updateStats(result);
           // update the wal so it can be truncated and not get too long
@@ -176,8 +182,8 @@ public class MemStoreCompactor {
         }
       }
     } catch (IOException e) {
-      LOG.debug("Interrupting the MemStore in-memory compaction for store "
-          + compactingMemStore.getFamilyName());
+      LOG.trace("Interrupting in-memory compaction for store={}",
+          compactingMemStore.getFamilyName());
       Thread.currentThread().interrupt();
     } finally {
       // For the MERGE case, if the result was created, but swap didn't happen,

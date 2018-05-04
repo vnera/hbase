@@ -1,5 +1,4 @@
-/*
- *
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,7 +17,12 @@
  */
 package org.apache.hadoop.hbase.replication;
 
-import org.apache.hadoop.hbase.testclassification.LargeTests;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.fail;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -33,22 +37,23 @@ import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.JVMClusterUtil;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.fail;
-
-import java.util.ArrayList;
-import java.util.List;
-
 @Category(LargeTests.class)
 public class TestReplicationDroppedTables extends TestReplicationBase {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestReplicationDroppedTables.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestReplicationDroppedTables.class);
 
   /**
@@ -91,7 +96,7 @@ public class TestReplicationDroppedTables extends TestReplicationBase {
     }
   }
 
-  @Test(timeout = 600000)
+  @Test
   public void testEditsStuckBehindDroppedTable() throws Exception {
     // Sanity check
     // Make sure by default edits for dropped tables stall the replication queue, even when the
@@ -99,14 +104,14 @@ public class TestReplicationDroppedTables extends TestReplicationBase {
     testEditsBehindDroppedTable(false, "test_dropped");
   }
 
-  @Test(timeout = 600000)
+  @Test
   public void testEditsDroppedWithDroppedTable() throws Exception {
     // Make sure by default edits for dropped tables are themselves dropped when the
     // table(s) in question have been deleted on both ends.
     testEditsBehindDroppedTable(true, "test_dropped");
   }
 
-  @Test(timeout = 600000)
+  @Test
   public void testEditsDroppedWithDroppedTableNS() throws Exception {
     // also try with a namespace
     Connection connection1 = ConnectionFactory.createConnection(conf1);
@@ -187,7 +192,7 @@ public class TestReplicationDroppedTables extends TestReplicationBase {
     conf1.setBoolean(HConstants.REPLICATION_DROP_ON_DELETED_TABLE_KEY, false);
   }
 
-  @Test(timeout = 600000)
+  @Test
   public void testEditsBehindDroppedTableTiming() throws Exception {
     conf1.setBoolean(HConstants.REPLICATION_DROP_ON_DELETED_TABLE_KEY, true);
     conf1.setInt(HConstants.REPLICATION_SOURCE_MAXTHREADS_KEY, 1);

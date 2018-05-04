@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -33,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ClusterMetrics.Option;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -61,6 +61,7 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -70,7 +71,6 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 
-
 /**
  * Class to test HBaseAdmin.
  * Spins up the minicluster once at test start and then takes it down afterward.
@@ -78,6 +78,11 @@ import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
  */
 @Category({LargeTests.class, ClientTests.class})
 public class TestAdmin2 {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestAdmin2.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestAdmin2.class);
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private Admin admin;
@@ -113,7 +118,7 @@ public class TestAdmin2 {
     }
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testCreateBadTables() throws IOException {
     String msg = null;
     try {
@@ -170,7 +175,7 @@ public class TestAdmin2 {
    * Test for hadoop-1581 'HBASE: Unopenable tablename bug'.
    * @throws Exception
    */
-  @Test (timeout=300000)
+  @Test
   public void testTableNameClash() throws Exception {
     final String name = this.name.getMethodName();
     HTableDescriptor htd1 = new HTableDescriptor(TableName.valueOf(name + "SOMEUPPERCASE"));
@@ -190,7 +195,7 @@ public class TestAdmin2 {
    * issue anymore
    * @throws Exception
    */
-  @Test (timeout=300000)
+  @Test
   public void testCreateTableRPCTimeOut() throws Exception {
     final String name = this.name.getMethodName();
     int oldTimeout = TEST_UTIL.getConfiguration().
@@ -214,7 +219,7 @@ public class TestAdmin2 {
    * Test read only tables
    * @throws Exception
    */
-  @Test (timeout=300000)
+  @Test
   public void testReadOnlyTable() throws Exception {
     final TableName name = TableName.valueOf(this.name.getMethodName());
     Table table = TEST_UTIL.createTable(name, HConstants.CATALOG_FAMILY);
@@ -231,7 +236,7 @@ public class TestAdmin2 {
    * start with same. HBASE-771
    * @throws IOException
    */
-  @Test (timeout=300000)
+  @Test
   public void testTableNames() throws IOException {
     byte[][] illegalNames = new byte[][] {
         Bytes.toBytes("-bad"),
@@ -260,7 +265,7 @@ public class TestAdmin2 {
    * For HADOOP-2579
    * @throws IOException
    */
-  @Test (expected=TableExistsException.class, timeout=300000)
+  @Test (expected=TableExistsException.class)
   public void testTableExistsExceptionWithATable() throws IOException {
     final TableName name = TableName.valueOf(this.name.getMethodName());
     TEST_UTIL.createTable(name, HConstants.CATALOG_FAMILY).close();
@@ -271,7 +276,7 @@ public class TestAdmin2 {
    * Can't disable a table if the table isn't in enabled state
    * @throws IOException
    */
-  @Test (expected=TableNotEnabledException.class, timeout=300000)
+  @Test (expected=TableNotEnabledException.class)
   public void testTableNotEnabledExceptionWithATable() throws IOException {
     final TableName name = TableName.valueOf(this.name.getMethodName());
     TEST_UTIL.createTable(name, HConstants.CATALOG_FAMILY).close();
@@ -283,7 +288,7 @@ public class TestAdmin2 {
    * Can't enable a table if the table isn't in disabled state
    * @throws IOException
    */
-  @Test (expected=TableNotDisabledException.class, timeout=300000)
+  @Test (expected=TableNotDisabledException.class)
   public void testTableNotDisabledExceptionWithATable() throws IOException {
     final TableName name = TableName.valueOf(this.name.getMethodName());
     Table t = TEST_UTIL.createTable(name, HConstants.CATALOG_FAMILY);
@@ -298,15 +303,15 @@ public class TestAdmin2 {
    * For HADOOP-2579
    * @throws IOException
    */
-  @Test (expected=TableNotFoundException.class, timeout=300000)
+  @Test (expected=TableNotFoundException.class)
   public void testTableNotFoundExceptionWithoutAnyTables() throws IOException {
     TableName tableName = TableName
         .valueOf("testTableNotFoundExceptionWithoutAnyTables");
     Table ht = TEST_UTIL.getConnection().getTable(tableName);
-    ht.get(new Get("e".getBytes()));
+    ht.get(new Get(Bytes.toBytes("e")));
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testShouldUnassignTheRegion() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     createTableWithDefaultConf(tableName);
@@ -333,7 +338,7 @@ public class TestAdmin2 {
       isInList);
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testCloseRegionIfInvalidRegionNameIsPassed() throws Exception {
     final String name = this.name.getMethodName();
     byte[] tableName = Bytes.toBytes(name);
@@ -359,7 +364,7 @@ public class TestAdmin2 {
         onlineRegions.contains(info));
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testCloseRegionThatFetchesTheHRIFromMeta() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     createTableWithDefaultConf(tableName);
@@ -416,7 +421,7 @@ public class TestAdmin2 {
    * For HBASE-2556
    * @throws IOException
    */
-  @Test (timeout=300000)
+  @Test
   public void testGetTableRegions() throws IOException {
     final TableName tableName = TableName.valueOf(name.getMethodName());
 
@@ -438,7 +443,7 @@ public class TestAdmin2 {
         expectedRegions, RegionInfos.size());
  }
 
-  @Test (timeout=300000)
+  @Test
   public void testMoveToPreviouslyAssignedRS() throws IOException, InterruptedException {
     MiniHBaseCluster cluster = TEST_UTIL.getHBaseCluster();
     HMaster master = cluster.getMaster();
@@ -453,7 +458,7 @@ public class TestAdmin2 {
       am.getRegionStates().getRegionServerOfRegion(hri));
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testWALRollWriting() throws Exception {
     setUpforLogRolling();
     String className = this.getClass().getName();
@@ -552,7 +557,7 @@ public class TestAdmin2 {
   /**
    * Check that we have an exception if the cluster is not there.
    */
-  @Test (timeout=300000)
+  @Test
   public void testCheckHBaseAvailableWithoutCluster() {
     Configuration conf = new Configuration(TEST_UTIL.getConfiguration());
 
@@ -573,7 +578,7 @@ public class TestAdmin2 {
       " HBase was not available");
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testDisableCatalogTable() throws Exception {
     try {
       this.admin.disableTable(TableName.META_TABLE_NAME);
@@ -582,13 +587,14 @@ public class TestAdmin2 {
     }
     // Before the fix for HBASE-6146, the below table creation was failing as the hbase:meta table
     // actually getting disabled by the disableTable() call.
-    HTableDescriptor htd = new HTableDescriptor(TableName.valueOf(name.getMethodName().getBytes()));
-    HColumnDescriptor hcd = new HColumnDescriptor("cf1".getBytes());
+    HTableDescriptor htd =
+        new HTableDescriptor(TableName.valueOf(Bytes.toBytes(name.getMethodName())));
+    HColumnDescriptor hcd = new HColumnDescriptor(Bytes.toBytes("cf1"));
     htd.addFamily(hcd);
     TEST_UTIL.getHBaseAdmin().createTable(htd);
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testIsEnabledOrDisabledOnUnknownTable() throws Exception {
     try {
       admin.isTableEnabled(TableName.valueOf(name.getMethodName()));
@@ -603,7 +609,7 @@ public class TestAdmin2 {
     }
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testGetRegion() throws Exception {
     // We use actual HBaseAdmin instance instead of going via Admin interface in
     // here because makes use of an internal HBA method (TODO: Fix.).
@@ -624,7 +630,7 @@ public class TestAdmin2 {
     }
   }
 
-  @Test(timeout = 30000)
+  @Test
   public void testBalancer() throws Exception {
     boolean initialState = admin.isBalancerEnabled();
 
@@ -646,7 +652,7 @@ public class TestAdmin2 {
     assertEquals(initialState, admin.isBalancerEnabled());
   }
 
-  @Test(timeout = 30000)
+  @Test
   public void testRegionNormalizer() throws Exception {
     boolean initialState = admin.isNormalizerEnabled();
 
@@ -668,7 +674,7 @@ public class TestAdmin2 {
     assertEquals(initialState, admin.isNormalizerEnabled());
   }
 
-  @Test(timeout = 30000)
+  @Test
   public void testAbortProcedureFail() throws Exception {
     Random randomGenerator = new Random();
     long procId = randomGenerator.nextLong();
@@ -677,31 +683,31 @@ public class TestAdmin2 {
     assertFalse(abortResult);
   }
 
-  @Test(timeout = 300000)
+  @Test
   public void testGetProcedures() throws Exception {
     String procList = admin.getProcedures();
     assertTrue(procList.startsWith("["));
   }
 
-  @Test(timeout = 300000)
+  @Test
   public void testGetLocks() throws Exception {
     String lockList = admin.getLocks();
     assertTrue(lockList.startsWith("["));
   }
 
-  @Test(timeout = 30000)
+  @Test
   public void testDecommissionRegionServers() throws Exception {
     List<ServerName> decommissionedRegionServers = admin.listDecommissionedRegionServers();
     assertTrue(decommissionedRegionServers.isEmpty());
 
     final TableName tableName = TableName.valueOf(name.getMethodName());
-    TEST_UTIL.createMultiRegionTable(tableName, "f".getBytes(), 6);
+    TEST_UTIL.createMultiRegionTable(tableName, Bytes.toBytes("f"), 6);
 
     ArrayList<ServerName> clusterRegionServers =
         new ArrayList<>(admin.getClusterMetrics(EnumSet.of(Option.LIVE_SERVERS))
           .getLiveServerMetrics().keySet());
 
-    assertEquals(clusterRegionServers.size(), 3);
+    assertEquals(3, clusterRegionServers.size());
 
     HashMap<ServerName, List<RegionInfo>> serversToDecommssion = new HashMap<>();
     // Get a server that has regions. We will decommission two of the servers,

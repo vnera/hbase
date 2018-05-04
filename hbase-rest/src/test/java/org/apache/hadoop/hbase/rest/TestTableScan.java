@@ -22,16 +22,21 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.jaxrs.json.JacksonJaxbJsonProvider;
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
 import javax.ws.rs.core.MediaType;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
@@ -42,8 +47,8 @@ import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.parsers.SAXParserFactory;
 import javax.xml.stream.XMLStreamException;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -63,6 +68,7 @@ import org.apache.hadoop.hbase.testclassification.RestTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -70,14 +76,13 @@ import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
 import org.xml.sax.XMLReader;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.jaxrs.json.JacksonJaxbJsonProvider;
-
 @Category({RestTests.class, MediumTests.class})
 public class TestTableScan {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestTableScan.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestTableScan.class);
 
   private static final TableName TABLE = TableName.valueOf("TestScanResource");
@@ -283,12 +288,14 @@ public class TestTableScan {
 
     // install the callback on all ClientSideCellSetModel instances
     unmarshaller.setListener(new Unmarshaller.Listener() {
+        @Override
         public void beforeUnmarshal(Object target, Object parent) {
             if (target instanceof ClientSideCellSetModel) {
                 ((ClientSideCellSetModel) target).setCellSetModelListener(listener);
             }
         }
 
+        @Override
         public void afterUnmarshal(Object target, Object parent) {
             if (target instanceof ClientSideCellSetModel) {
                 ((ClientSideCellSetModel) target).setCellSetModelListener(null);
@@ -460,7 +467,8 @@ public class TestTableScan {
     CellSetModel model = (CellSetModel) ush.unmarshal(response.getStream());
     int count = TestScannerResource.countCellSet(model);
     assertEquals(1, count);
-    assertEquals("aab", new String(model.getRows().get(0).getCells().get(0).getValue()));
+    assertEquals("aab",
+        new String(model.getRows().get(0).getCells().get(0).getValue(), StandardCharsets.UTF_8));
   }
 
   @Test
@@ -478,7 +486,8 @@ public class TestTableScan {
     CellSetModel model = (CellSetModel) ush.unmarshal(response.getStream());
     int count = TestScannerResource.countCellSet(model);
     assertEquals(1, count);
-    assertEquals("abc", new String(model.getRows().get(0).getCells().get(0).getValue()));
+    assertEquals("abc",
+        new String(model.getRows().get(0).getCells().get(0).getValue(), StandardCharsets.UTF_8));
   }
 
   @Test
@@ -496,7 +505,8 @@ public class TestTableScan {
     CellSetModel model = (CellSetModel) ush.unmarshal(response.getStream());
     int count = TestScannerResource.countCellSet(model);
     assertEquals(1, count);
-    assertEquals("abc", new String(model.getRows().get(0).getCells().get(0).getValue()));
+    assertEquals("abc",
+        new String(model.getRows().get(0).getCells().get(0).getValue(), StandardCharsets.UTF_8));
   }
 
   @Test
@@ -515,7 +525,8 @@ public class TestTableScan {
     CellSetModel model = (CellSetModel) ush.unmarshal(response.getStream());
     int count = TestScannerResource.countCellSet(model);
     assertEquals(1, count);
-    assertEquals("abc", new String(model.getRows().get(0).getCells().get(0).getValue()));
+    assertEquals("abc",
+        new String(model.getRows().get(0).getCells().get(0).getValue(), StandardCharsets.UTF_8));
   }
 
   @Test
@@ -633,6 +644,7 @@ public class TestTableScan {
         row = (l == null) ? null : new ArrayList<RowModel>() {
         private static final long serialVersionUID = 1L;
 
+            @Override
             public boolean add(RowModel o) {
                 l.handleRowModel(ClientSideCellSetModel.this, o);
                 listenerInvoked = true;

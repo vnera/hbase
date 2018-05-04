@@ -72,6 +72,7 @@ import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.HasThread;
 import org.apache.hadoop.hbase.util.IdReadWriteLock;
 import org.apache.hadoop.hbase.util.IdReadWriteLock.ReferenceType;
+import org.apache.hadoop.hbase.util.UnsafeAvailChecker;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
@@ -517,7 +518,7 @@ public class BucketCache implements BlockCache, HeapSize {
             cacheStats.ioHit(timeTaken);
           }
           if (cachedBlock.getMemoryType() == MemoryType.SHARED) {
-            bucketEntry.refCount.incrementAndGet();
+            bucketEntry.incrementRefCountAndGet();
           }
           bucketEntry.access(accessCount.incrementAndGet());
           if (this.ioErrorStartTime > 0) {
@@ -610,8 +611,8 @@ public class BucketCache implements BlockCache, HeapSize {
     ReentrantReadWriteLock lock = offsetLock.getLock(bucketEntry.offset());
     try {
       lock.writeLock().lock();
-      int refCount = bucketEntry.refCount.get();
-      if(refCount == 0) {
+      int refCount = bucketEntry.getRefCount();
+      if (refCount == 0) {
         if (backingMap.remove(cacheKey, bucketEntry)) {
           blockEvicted(cacheKey, bucketEntry, removedBlock == null);
         } else {
@@ -630,7 +631,7 @@ public class BucketCache implements BlockCache, HeapSize {
                 + " readers. Can not be freed now. Hence will mark this"
                 + " for evicting at a later point");
           }
-          bucketEntry.markedForEvict = true;
+          bucketEntry.markForEvict();
         }
       }
     } finally {
@@ -728,7 +729,7 @@ public class BucketCache implements BlockCache, HeapSize {
       // this set is small around O(Handler Count) unless something else is wrong
       Set<Integer> inUseBuckets = new HashSet<Integer>();
       for (BucketEntry entry : backingMap.values()) {
-        if (entry.refCount.get() != 0) {
+        if (entry.getRefCount() != 0) {
           inUseBuckets.add(bucketAllocator.getBucketIndex(entry.offset()));
         }
       }
@@ -820,7 +821,8 @@ public class BucketCache implements BlockCache, HeapSize {
         }
       }
 
-      PriorityQueue<BucketEntryGroup> bucketQueue = new PriorityQueue<>(3);
+      PriorityQueue<BucketEntryGroup> bucketQueue = new PriorityQueue<>(3,
+          Comparator.comparingLong(BucketEntryGroup::overflow));
 
       bucketQueue.add(bucketSingle);
       bucketQueue.add(bucketMulti);
@@ -904,6 +906,7 @@ public class BucketCache implements BlockCache, HeapSize {
       this.writerEnabled = false;
     }
 
+    @Override
     public void run() {
       List<RAMQueueEntry> entries = new ArrayList<>();
       try {
@@ -1273,9 +1276,6 @@ public class BucketCache implements BlockCache, HeapSize {
     byte deserialiserIndex;
     private volatile long accessCounter;
     private BlockPriority priority;
-    // Set this when we were not able to forcefully evict the block
-    private volatile boolean markedForEvict;
-    private AtomicInteger refCount = new AtomicInteger(0);
 
     /**
      * Time this block was cached.  Presumes we are created just before we are added to the cache.
@@ -1340,6 +1340,63 @@ public class BucketCache implements BlockCache, HeapSize {
     public long getCachedTime() {
       return cachedTime;
     }
+
+    protected int getRefCount() {
+      return 0;
+    }
+
+    protected int incrementRefCountAndGet() {
+      return 0;
+    }
+
+    protected int decrementRefCountAndGet() {
+      return 0;
+    }
+
+    protected boolean isMarkedForEvict() {
+      return false;
+    }
+
+    protected void markForEvict() {
+      // noop;
+    }
+  }
+
+  static class SharedMemoryBucketEntry extends BucketEntry {
+    private static final long serialVersionUID = -2187147283772338481L;
+
+    // Set this when we were not able to forcefully evict the block
+    private volatile boolean markedForEvict;
+    private AtomicInteger refCount = new AtomicInteger(0);
+
+    SharedMemoryBucketEntry(long offset, int length, long accessCounter, boolean inMemory) {
+      super(offset, length, accessCounter, inMemory);
+    }
+
+    @Override
+    protected int getRefCount() {
+      return this.refCount.get();
+    }
+
+    @Override
+    protected int incrementRefCountAndGet() {
+      return this.refCount.incrementAndGet();
+    }
+
+    @Override
+    protected int decrementRefCountAndGet() {
+      return this.refCount.decrementAndGet();
+    }
+
+    @Override
+    protected boolean isMarkedForEvict() {
+      return this.markedForEvict;
+    }
+
+    @Override
+    protected void markForEvict() {
+      this.markedForEvict = true;
+    }
   }
 
   /**
@@ -1348,7 +1405,7 @@ public class BucketCache implements BlockCache, HeapSize {
    * the eviction algorithm takes the appropriate number of elements out of each
    * according to configuration parameters and their relative sizes.
    */
-  private class BucketEntryGroup implements Comparable<BucketEntryGroup> {
+  private class BucketEntryGroup {
 
     private CachedEntryQueue queue;
     private long totalSize = 0;
@@ -1388,17 +1445,6 @@ public class BucketCache implements BlockCache, HeapSize {
     public long totalSize() {
       return totalSize;
     }
-
-    @Override
-    public int compareTo(BucketEntryGroup that) {
-      return Long.compare(this.overflow(), that.overflow());
-    }
-
-    @Override
-    public boolean equals(Object that) {
-      return this == that;
-    }
-
   }
 
   /**
@@ -1440,7 +1486,11 @@ public class BucketCache implements BlockCache, HeapSize {
       // This cacheable thing can't be serialized
       if (len == 0) return null;
       long offset = bucketAllocator.allocateBlock(len);
-      BucketEntry bucketEntry = new BucketEntry(offset, len, accessCounter, inMemory);
+      BucketEntry bucketEntry = ioEngine.usesSharedMemory()
+          ? UnsafeAvailChecker.isAvailable()
+              ? new UnsafeSharedMemoryBucketEntry(offset, len, accessCounter, inMemory)
+              : new SharedMemoryBucketEntry(offset, len, accessCounter, inMemory)
+          : new BucketEntry(offset, len, accessCounter, inMemory);
       bucketEntry.setDeserialiserReference(data.getDeserializer(), deserialiserMap);
       try {
         if (data instanceof HFileBlock) {
@@ -1582,8 +1632,8 @@ public class BucketCache implements BlockCache, HeapSize {
     if (block.getMemoryType() == MemoryType.SHARED) {
       BucketEntry bucketEntry = backingMap.get(cacheKey);
       if (bucketEntry != null) {
-        int refCount = bucketEntry.refCount.decrementAndGet();
-        if (bucketEntry.markedForEvict && refCount == 0) {
+        int refCount = bucketEntry.decrementRefCountAndGet();
+        if (refCount == 0 && bucketEntry.isMarkedForEvict()) {
           forceEvict(cacheKey);
         }
       }
@@ -1594,7 +1644,7 @@ public class BucketCache implements BlockCache, HeapSize {
   public int getRefCount(BlockCacheKey cacheKey) {
     BucketEntry bucketEntry = backingMap.get(cacheKey);
     if (bucketEntry != null) {
-      return bucketEntry.refCount.get();
+      return bucketEntry.getRefCount();
     }
     return 0;
   }

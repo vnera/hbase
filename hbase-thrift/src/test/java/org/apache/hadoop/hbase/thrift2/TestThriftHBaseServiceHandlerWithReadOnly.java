@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -19,7 +18,6 @@
 package org.apache.hadoop.hbase.thrift2;
 
 import static java.nio.ByteBuffer.wrap;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -29,9 +27,9 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -57,11 +55,17 @@ import org.apache.thrift.TException;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 @Category({ClientTests.class, MediumTests.class})
 public class TestThriftHBaseServiceHandlerWithReadOnly {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestThriftHBaseServiceHandlerWithReadOnly.class);
+
   private static final HBaseTestingUtility UTIL = new HBaseTestingUtility();
 
   // Static names for tables, columns, rows, and values
@@ -114,7 +118,7 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   public void testExistsWithReadOnly() throws TException {
 
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testExists".getBytes();
+    byte[] rowName = Bytes.toBytes("testExists");
     ByteBuffer table = wrap(tableAname);
     TGet get = new TGet(wrap(rowName));
 
@@ -131,8 +135,8 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   @Test
   public void testExistsAllWithReadOnly() throws TException {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName1 = "testExistsAll1".getBytes();
-    byte[] rowName2 = "testExistsAll2".getBytes();
+    byte[] rowName1 = Bytes.toBytes("testExistsAll1");
+    byte[] rowName2 = Bytes.toBytes("testExistsAll2");
     ByteBuffer table = wrap(tableAname);
 
     List<TGet> gets = new ArrayList<>();
@@ -152,7 +156,7 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   @Test
   public void testGetWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testGet".getBytes();
+    byte[] rowName = Bytes.toBytes("testGet");
     ByteBuffer table = wrap(tableAname);
 
     TGet get = new TGet(wrap(rowName));
@@ -171,8 +175,8 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   public void testGetMultipleWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
     ByteBuffer table = wrap(tableAname);
-    byte[] rowName1 = "testGetMultiple1".getBytes();
-    byte[] rowName2 = "testGetMultiple2".getBytes();
+    byte[] rowName1 = Bytes.toBytes("testGetMultiple1");
+    byte[] rowName2 = Bytes.toBytes("testGetMultiple2");
 
     List<TGet> gets = new ArrayList<>(2);
     gets.add(new TGet(wrap(rowName1)));
@@ -192,7 +196,7 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   public void testPutWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
     ByteBuffer table = wrap(tableAname);
-    byte[] rowName = "testPut".getBytes();
+    byte[] rowName = Bytes.toBytes("testPut");
 
     List<TColumnValue> columnValues = new ArrayList<>(2);
     columnValues.add(new TColumnValue(wrap(familyAname), wrap(qualifierAname), wrap(valueAname)));
@@ -214,7 +218,7 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   @Test
   public void testCheckAndPutWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testCheckAndPut".getBytes();
+    byte[] rowName = Bytes.toBytes("testCheckAndPut");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValuesA = new ArrayList<>(1);
@@ -248,8 +252,8 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   public void testPutMultipleWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
     ByteBuffer table = wrap(tableAname);
-    byte[] rowName1 = "testPutMultiple1".getBytes();
-    byte[] rowName2 = "testPutMultiple2".getBytes();
+    byte[] rowName1 = Bytes.toBytes("testPutMultiple1");
+    byte[] rowName2 = Bytes.toBytes("testPutMultiple2");
 
     List<TColumnValue> columnValues = new ArrayList<>(2);
     columnValues.add(new TColumnValue(wrap(familyAname), wrap(qualifierAname), wrap(valueAname)));
@@ -273,7 +277,7 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   @Test
   public void testDeleteWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testDelete".getBytes();
+    byte[] rowName = Bytes.toBytes("testDelete");
     ByteBuffer table = wrap(tableAname);
 
     TDelete delete = new TDelete(wrap(rowName));
@@ -294,8 +298,8 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   public void testDeleteMultipleWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
     ByteBuffer table = wrap(tableAname);
-    byte[] rowName1 = "testDeleteMultiple1".getBytes();
-    byte[] rowName2 = "testDeleteMultiple2".getBytes();
+    byte[] rowName1 = Bytes.toBytes("testDeleteMultiple1");
+    byte[] rowName2 = Bytes.toBytes("testDeleteMultiple2");
 
     List<TDelete> deletes = new ArrayList<>(2);
     deletes.add(new TDelete(wrap(rowName1)));
@@ -317,7 +321,7 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   public void testCheckAndMutateWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
     ByteBuffer table = wrap(tableAname);
-    ByteBuffer row = wrap("row".getBytes());
+    ByteBuffer row = wrap(Bytes.toBytes("row"));
     ByteBuffer family = wrap(familyAname);
     ByteBuffer qualifier = wrap(qualifierAname);
     ByteBuffer value = wrap(valueAname);
@@ -347,7 +351,7 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   @Test
   public void testCheckAndDeleteWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testCheckAndDelete".getBytes();
+    byte[] rowName = Bytes.toBytes("testCheckAndDelete");
     ByteBuffer table = wrap(tableAname);
 
     TDelete delete = new TDelete(wrap(rowName));
@@ -368,7 +372,7 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   @Test
   public void testIncrementWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testIncrement".getBytes();
+    byte[] rowName = Bytes.toBytes("testIncrement");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnIncrement> incrementColumns = new ArrayList<>(1);
@@ -390,7 +394,7 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   @Test
   public void testAppendWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testAppend".getBytes();
+    byte[] rowName = Bytes.toBytes("testAppend");
     ByteBuffer table = wrap(tableAname);
     byte[] v1 = Bytes.toBytes("42");
 
@@ -413,7 +417,7 @@ public class TestThriftHBaseServiceHandlerWithReadOnly {
   @Test
   public void testMutateRowWithReadOnly() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testMutateRow".getBytes();
+    byte[] rowName = Bytes.toBytes("testMutateRow");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValuesA = new ArrayList<>(1);

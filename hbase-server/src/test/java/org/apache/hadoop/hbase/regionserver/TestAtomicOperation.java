@@ -32,13 +32,13 @@ import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.CompareOperator;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -70,6 +70,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.wal.WAL;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -83,6 +84,11 @@ import org.slf4j.LoggerFactory;
  */
 @Category({VerySlowRegionServerTests.class, MediumTests.class}) // Starts 100 threads
 public class TestAtomicOperation {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestAtomicOperation.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestAtomicOperation.class);
   @Rule public TestName name = new TestName();
 
@@ -364,9 +370,9 @@ public class TestAtomicOperation {
     assertEquals(0, failures.get());
     Get g = new Get(row);
     Result result = region.get(g);
-    assertEquals(result.getValue(fam1, qual1).length, 10000);
-    assertEquals(result.getValue(fam1, qual2).length, 10000);
-    assertEquals(result.getValue(fam2, qual3).length, 10000);
+    assertEquals(10000, result.getValue(fam1, qual1).length);
+    assertEquals(10000, result.getValue(fam1, qual2).length);
+    assertEquals(10000, result.getValue(fam2, qual3).length);
   }
   /**
    * Test multi-threaded row mutations.
@@ -657,7 +663,7 @@ public class TestAtomicOperation {
       }
       testStep = TestStep.CHECKANDPUT_STARTED;
       region.checkAndMutate(Bytes.toBytes("r1"), Bytes.toBytes(family), Bytes.toBytes("q1"),
-        CompareOperator.EQUAL, new BinaryComparator(Bytes.toBytes("10")), put, true);
+        CompareOperator.EQUAL, new BinaryComparator(Bytes.toBytes("10")), put);
       testStep = TestStep.CHECKANDPUT_COMPLETED;
     }
   }

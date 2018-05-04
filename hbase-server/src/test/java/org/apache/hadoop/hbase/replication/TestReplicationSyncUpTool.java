@@ -17,6 +17,11 @@
  */
 package org.apache.hadoop.hbase.replication;
 
+import static org.junit.Assert.assertEquals;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -33,19 +38,20 @@ import org.apache.hadoop.hbase.replication.regionserver.ReplicationSyncUp;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.util.ToolRunner;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.junit.Assert.assertEquals;
-
 @Category({ReplicationTests.class, LargeTests.class})
 public class TestReplicationSyncUpTool extends TestReplicationBase {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestReplicationSyncUpTool.class);
 
   private static final Logger LOG = LoggerFactory.getLogger(TestReplicationSyncUpTool.class);
 
@@ -100,7 +106,7 @@ public class TestReplicationSyncUpTool extends TestReplicationBase {
    * check's gone Also check the puts and deletes are not replicated back to
    * the originating cluster.
    */
-  @Test(timeout = 300000)
+  @Test
   public void testSyncUpTool() throws Exception {
 
     /**
@@ -277,14 +283,14 @@ public class TestReplicationSyncUpTool extends TestReplicationBase {
     // delete half of the rows
     for (int i = 0; i < NB_ROWS_IN_BATCH / 2; i++) {
       String rowKey = "row" + i;
-      Delete del = new Delete(rowKey.getBytes());
+      Delete del = new Delete(Bytes.toBytes(rowKey));
       list.add(del);
     }
     ht1Source.delete(list);
 
     for (int i = 0; i < NB_ROWS_IN_BATCH; i++) {
       String rowKey = "row" + i;
-      Delete del = new Delete(rowKey.getBytes());
+      Delete del = new Delete(Bytes.toBytes(rowKey));
       list.add(del);
     }
     ht2Source.delete(list);
@@ -417,9 +423,6 @@ public class TestReplicationSyncUpTool extends TestReplicationBase {
   }
 
   protected void syncUp(HBaseTestingUtility ut) throws Exception {
-    ReplicationSyncUp.setConfigure(ut.getConfiguration());
-    String[] arguments = new String[] { null };
-    new ReplicationSyncUp().run(arguments);
+    ToolRunner.run(ut.getConfiguration(), new ReplicationSyncUp(), new String[0]);
   }
-
 }

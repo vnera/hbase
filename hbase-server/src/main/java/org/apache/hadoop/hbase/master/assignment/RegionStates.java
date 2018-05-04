@@ -33,6 +33,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.ServerName;
@@ -59,6 +60,8 @@ public class RegionStates {
   private static final Logger LOG = LoggerFactory.getLogger(RegionStates.class);
 
   protected static final State[] STATES_EXPECTED_ON_OPEN = new State[] {
+    State.OPEN, // State may already be OPEN if we died after receiving the OPEN from regionserver
+                // but before complete finish of AssignProcedure. HBASE-20100.
     State.OFFLINE, State.CLOSED,      // disable/offline
     State.SPLITTING, State.SPLIT,     // ServerCrashProcedure
     State.OPENING, State.FAILED_OPEN, // already in-progress (retrying)
@@ -864,7 +867,7 @@ public class RegionStates {
     private final RegionStateNode regionNode;
 
     private volatile Exception exception = null;
-    private volatile int retries = 0;
+    private AtomicInteger retries = new AtomicInteger();
 
     public RegionFailedOpen(final RegionStateNode regionNode) {
       this.regionNode = regionNode;
@@ -879,11 +882,11 @@ public class RegionStates {
     }
 
     public int incrementAndGetRetries() {
-      return ++this.retries;
+      return this.retries.incrementAndGet();
     }
 
     public int getRetries() {
-      return retries;
+      return retries.get();
     }
 
     public void setException(final Exception exception) {

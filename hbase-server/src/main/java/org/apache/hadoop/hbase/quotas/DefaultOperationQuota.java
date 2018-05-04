@@ -59,7 +59,7 @@ public class DefaultOperationQuota implements OperationQuota {
 
   @Override
   public void checkQuota(int numWrites, int numReads, int numScans)
-      throws ThrottlingException {
+      throws RpcThrottlingException {
     writeConsumed = estimateConsume(OperationType.MUTATE, numWrites, 100);
     readConsumed  = estimateConsume(OperationType.GET, numReads, 100);
     readConsumed += estimateConsume(OperationType.SCAN, numScans, 1000);
@@ -69,13 +69,13 @@ public class DefaultOperationQuota implements OperationQuota {
     for (final QuotaLimiter limiter: limiters) {
       if (limiter.isBypass()) continue;
 
-      limiter.checkQuota(writeConsumed, readConsumed);
+      limiter.checkQuota(numWrites, writeConsumed, numReads + numScans, readConsumed);
       readAvailable = Math.min(readAvailable, limiter.getReadAvailable());
       writeAvailable = Math.min(writeAvailable, limiter.getWriteAvailable());
     }
 
     for (final QuotaLimiter limiter: limiters) {
-      limiter.grabQuota(writeConsumed, readConsumed);
+      limiter.grabQuota(numWrites, writeConsumed, numReads + numScans, readConsumed);
     }
   }
 

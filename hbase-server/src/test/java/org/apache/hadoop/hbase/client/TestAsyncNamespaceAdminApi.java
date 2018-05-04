@@ -25,7 +25,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.util.concurrent.Callable;
-
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -40,6 +40,7 @@ import org.apache.hadoop.hbase.master.HMaster;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -51,6 +52,10 @@ import org.junit.runners.Parameterized;
 @RunWith(Parameterized.class)
 @Category({ LargeTests.class, ClientTests.class })
 public class TestAsyncNamespaceAdminApi extends TestAsyncAdminBase {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestAsyncNamespaceAdminApi.class);
 
   private String prefix = "TestNamespace";
   private static HMaster master;
@@ -70,7 +75,7 @@ public class TestAsyncNamespaceAdminApi extends TestAsyncAdminBase {
     LOG.info("Done initializing cluster");
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testCreateAndDelete() throws Exception {
     String testName = "testCreateAndDelete";
     String nsName = prefix + "_" + testName;
@@ -92,7 +97,7 @@ public class TestAsyncNamespaceAdminApi extends TestAsyncAdminBase {
     assertNull(zkNamespaceManager.get(nsName));
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testDeleteReservedNS() throws Exception {
     boolean exceptionCaught = false;
     try {
@@ -114,7 +119,7 @@ public class TestAsyncNamespaceAdminApi extends TestAsyncAdminBase {
     }
   }
 
-  @Test(timeout = 60000)
+  @Test
   public void testNamespaceOperations() throws Exception {
     admin.createNamespace(NamespaceDescriptor.create(prefix + "ns1").build()).join();
     admin.createNamespace(NamespaceDescriptor.create(prefix + "ns2").build()).join();

@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -27,17 +27,29 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Exchanger;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseZKTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.Waiter.ExplainingPredicate;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.ZKTests;
+import org.apache.zookeeper.AsyncCallback;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.Code;
@@ -45,11 +57,16 @@ import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 @Category({ ZKTests.class, MediumTests.class })
 public class TestReadOnlyZKClient {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestReadOnlyZKClient.class);
 
   private static HBaseZKTestingUtility UTIL = new HBaseZKTestingUtility();
 
@@ -67,8 +84,7 @@ public class TestReadOnlyZKClient {
   public static void setUp() throws Exception {
     PORT = UTIL.startMiniZKCluster().getClientPort();
 
-    ZooKeeper zk = ZooKeeperHelper.
-        getConnectedZooKeeper("localhost:" + PORT, 10000);
+    ZooKeeper zk = ZooKeeperHelper.getConnectedZooKeeper("localhost:" + PORT, 10000);
     DATA = new byte[10];
     ThreadLocalRandom.current().nextBytes(DATA);
     zk.create(PATH, DATA, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
@@ -83,7 +99,7 @@ public class TestReadOnlyZKClient {
     conf.setInt(ReadOnlyZKClient.KEEPALIVE_MILLIS, 3000);
     RO_ZK = new ReadOnlyZKClient(conf);
     // only connect when necessary
-    assertNull(RO_ZK.getZooKeeper());
+    assertNull(RO_ZK.zookeeper);
   }
 
   @AfterClass
@@ -93,17 +109,13 @@ public class TestReadOnlyZKClient {
     UTIL.cleanupTestDir();
   }
 
-  @Test
-  public void testGetAndExists() throws Exception {
-    assertArrayEquals(DATA, RO_ZK.get(PATH).get());
-    assertEquals(CHILDREN, RO_ZK.exists(PATH).get().getNumChildren());
-    assertNotNull(RO_ZK.getZooKeeper());
+  private void waitForIdleConnectionClosed() throws Exception {
     // The zookeeper client should be closed finally after the keep alive time elapsed
     UTIL.waitFor(10000, new ExplainingPredicate<Exception>() {
 
       @Override
       public boolean evaluate() throws Exception {
-        return RO_ZK.getZooKeeper() == null;
+        return RO_ZK.zookeeper == null;
       }
 
       @Override
@@ -111,6 +123,14 @@ public class TestReadOnlyZKClient {
         return "Connection to zookeeper is still alive";
       }
     });
+  }
+
+  @Test
+  public void testGetAndExists() throws Exception {
+    assertArrayEquals(DATA, RO_ZK.get(PATH).get());
+    assertEquals(CHILDREN, RO_ZK.exists(PATH).get().getNumChildren());
+    assertNotNull(RO_ZK.zookeeper);
+    waitForIdleConnectionClosed();
   }
 
   @Test
@@ -132,15 +152,40 @@ public class TestReadOnlyZKClient {
   @Test
   public void testSessionExpire() throws Exception {
     assertArrayEquals(DATA, RO_ZK.get(PATH).get());
-    ZooKeeper zk = RO_ZK.getZooKeeper();
+    ZooKeeper zk = RO_ZK.zookeeper;
     long sessionId = zk.getSessionId();
     UTIL.getZkCluster().getZooKeeperServers().get(0).closeSession(sessionId);
     // should not reach keep alive so still the same instance
-    assertSame(zk, RO_ZK.getZooKeeper());
-    byte [] got = RO_ZK.get(PATH).get();
+    assertSame(zk, RO_ZK.zookeeper);
+    byte[] got = RO_ZK.get(PATH).get();
     assertArrayEquals(DATA, got);
-    assertNotNull(RO_ZK.getZooKeeper());
-    assertNotSame(zk, RO_ZK.getZooKeeper());
-    assertNotEquals(sessionId, RO_ZK.getZooKeeper().getSessionId());
+    assertNotNull(RO_ZK.zookeeper);
+    assertNotSame(zk, RO_ZK.zookeeper);
+    assertNotEquals(sessionId, RO_ZK.zookeeper.getSessionId());
+  }
+
+  @Test
+  public void testNotCloseZkWhenPending() throws Exception {
+    ZooKeeper mockedZK = mock(ZooKeeper.class);
+    Exchanger<AsyncCallback.DataCallback> exchanger = new Exchanger<>();
+    doAnswer(i -> {
+      exchanger.exchange(i.getArgument(2));
+      return null;
+    }).when(mockedZK).getData(anyString(), anyBoolean(),
+      any(AsyncCallback.DataCallback.class), any());
+    doAnswer(i -> null).when(mockedZK).close();
+    when(mockedZK.getState()).thenReturn(ZooKeeper.States.CONNECTED);
+    RO_ZK.zookeeper = mockedZK;
+    CompletableFuture<byte[]> future = RO_ZK.get(PATH);
+    AsyncCallback.DataCallback callback = exchanger.exchange(null);
+    // 2 * keep alive time to ensure that we will not close the zk when there are pending requests
+    Thread.sleep(6000);
+    assertNotNull(RO_ZK.zookeeper);
+    verify(mockedZK, never()).close();
+    callback.processResult(Code.OK.intValue(), PATH, null, DATA, null);
+    assertArrayEquals(DATA, future.get());
+    // now we will close the idle connection.
+    waitForIdleConnectionClosed();
+    verify(mockedZK, times(1)).close();
   }
 }

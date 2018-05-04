@@ -24,7 +24,7 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-
+import java.util.stream.Collectors;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -80,12 +80,25 @@ public interface TableDescriptor {
   int getColumnFamilyCount();
 
   /**
+   * Return the list of attached co-processor represented
+   *
+   * @return The list of CoprocessorDescriptor
+   */
+  Collection<CoprocessorDescriptor> getCoprocessorDescriptors();
+
+  /**
    * Return the list of attached co-processor represented by their name
    * className
-   *
    * @return The list of co-processors classNames
+   * @deprecated As of release 2.0.0, this will be removed in HBase 3.0.0.
+   *                       Use {@link #getCoprocessorDescriptors()} instead
    */
-  Collection<String> getCoprocessors();
+  @Deprecated
+  default Collection<String> getCoprocessors() {
+    return getCoprocessorDescriptors().stream()
+      .map(CoprocessorDescriptor::getClassName)
+      .collect(Collectors.toList());
+  }
 
   /**
    * Returns the durability setting for the table.
@@ -232,12 +245,6 @@ public interface TableDescriptor {
   boolean hasRegionMemStoreReplication();
 
   /**
-   * @return true if there are at least one cf whose replication scope is
-   * serial.
-   */
-  boolean hasSerialReplicationScope();
-
-  /**
    * Check if the compaction enable flag of the table is true. If flag is false
    * then no minor/major compactions will be done in real.
    *
@@ -285,8 +292,7 @@ public interface TableDescriptor {
     boolean hasDisabled = false;
 
     for (ColumnFamilyDescriptor cf : getColumnFamilies()) {
-      if (cf.getScope() != HConstants.REPLICATION_SCOPE_GLOBAL
-          && cf.getScope() != HConstants.REPLICATION_SCOPE_SERIAL) {
+      if (cf.getScope() != HConstants.REPLICATION_SCOPE_GLOBAL) {
         hasDisabled = true;
       } else {
         hasEnabled = true;

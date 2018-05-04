@@ -42,7 +42,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.LongAdder;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -75,6 +74,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.MasterThread;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.RegionServerThread;
+import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.wal.AbstractFSWALProvider;
 import org.apache.hadoop.hbase.wal.WAL;
 import org.apache.hadoop.hbase.wal.WALEdit;
@@ -92,6 +92,7 @@ import org.junit.Test;
 import org.junit.rules.TestName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 
 /**
@@ -171,7 +172,7 @@ public abstract class AbstractTestDLS {
     ZKUtil.deleteNodeRecursively(TEST_UTIL.getZooKeeperWatcher(), "/hbase");
   }
 
-  @Test(timeout = 300000)
+  @Test
   public void testRecoveredEdits() throws Exception {
     conf.setLong("hbase.regionserver.hlog.blocksize", 30 * 1024); // create more than one wal
     startCluster(NUM_RS);
@@ -250,7 +251,7 @@ public abstract class AbstractTestDLS {
     }
   }
 
-  @Test(timeout = 300000)
+  @Test
   public void testMasterStartsUpWithLogSplittingWork() throws Exception {
     conf.setInt(ServerManager.WAIT_ON_REGIONSERVERS_MINTOSTART, NUM_RS - 1);
     startCluster(NUM_RS);
@@ -310,7 +311,7 @@ public abstract class AbstractTestDLS {
    * @throws Exception
    */
   // Was marked flaky before Distributed Log Replay cleanup.
-  @Test(timeout = 300000)
+  @Test
   public void testWorkerAbort() throws Exception {
     LOG.info("testWorkerAbort");
     startCluster(3);
@@ -367,7 +368,7 @@ public abstract class AbstractTestDLS {
     }
   }
 
-  @Test(timeout = 300000)
+  @Test
   public void testThreeRSAbort() throws Exception {
     LOG.info("testThreeRSAbort");
     int numRegionsToCreate = 40;
@@ -398,11 +399,18 @@ public abstract class AbstractTestDLS {
         }
       });
       TEST_UTIL.waitUntilAllRegionsAssigned(tableName);
-      assertEquals(numRegionsToCreate * numRowsPerRegion, TEST_UTIL.countRows(table));
+      int rows;
+      try {
+        rows = TEST_UTIL.countRows(table);
+      } catch (Exception e) {
+        Threads.printThreadInfo(System.out, "Thread dump before fail");
+        throw e;
+      }
+      assertEquals(numRegionsToCreate * numRowsPerRegion, rows);
     }
   }
 
-  @Test(timeout = 30000)
+  @Test
   public void testDelayedDeleteOnFailure() throws Exception {
     LOG.info("testDelayedDeleteOnFailure");
     startCluster(1);
@@ -470,42 +478,6 @@ public abstract class AbstractTestDLS {
     }
   }
 
-  @Test(timeout = 300000)
-  public void testReadWriteSeqIdFiles() throws Exception {
-    LOG.info("testReadWriteSeqIdFiles");
-    startCluster(2);
-    final ZKWatcher zkw = new ZKWatcher(conf, "table-creation", null);
-    Table ht = installTable(zkw, 10);
-    try {
-      FileSystem fs = master.getMasterFileSystem().getFileSystem();
-      Path tableDir =
-          FSUtils.getTableDir(FSUtils.getRootDir(conf), TableName.valueOf(name.getMethodName()));
-      List<Path> regionDirs = FSUtils.getRegionDirs(fs, tableDir);
-      long newSeqId = WALSplitter.writeRegionSequenceIdFile(fs, regionDirs.get(0), 1L, 1000L);
-      WALSplitter.writeRegionSequenceIdFile(fs, regionDirs.get(0), 1L, 1000L);
-      assertEquals(newSeqId + 2000,
-        WALSplitter.writeRegionSequenceIdFile(fs, regionDirs.get(0), 3L, 1000L));
-
-      Path editsdir = WALSplitter.getRegionDirRecoveredEditsDir(regionDirs.get(0));
-      FileStatus[] files = FSUtils.listStatus(fs, editsdir, new PathFilter() {
-        @Override
-        public boolean accept(Path p) {
-          return WALSplitter.isSequenceIdFile(p);
-        }
-      });
-      // only one seqid file should exist
-      assertEquals(1, files.length);
-
-      // verify all seqId files aren't treated as recovered.edits files
-      NavigableSet<Path> recoveredEdits =
-          WALSplitter.getSplitEditFilesSorted(fs, regionDirs.get(0));
-      assertEquals(0, recoveredEdits.size());
-    } finally {
-      if (ht != null) ht.close();
-      if (zkw != null) zkw.close();
-    }
-  }
-
   private Table installTable(ZKWatcher zkw, int nrs) throws Exception {
     return installTable(zkw, nrs, 0);
   }
@@ -524,6 +496,7 @@ public abstract class AbstractTestDLS {
     blockUntilNoRIT(zkw, master);
     // disable-enable cycle to get rid of table's dead regions left behind
     // by createMultiRegions
+    assertTrue(TEST_UTIL.getAdmin().isTableEnabled(tableName));
     LOG.debug("Disabling table\n");
     TEST_UTIL.getAdmin().disableTable(tableName);
     LOG.debug("Waiting for no more RIT\n");

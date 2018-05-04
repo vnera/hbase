@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -21,16 +20,17 @@ package org.apache.hadoop.hbase.util;
 import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
-import java.util.UUID;
-import java.util.Set;
 import java.util.HashSet;
-
+import java.util.Set;
+import java.util.UUID;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.MiscTests;
 import org.junit.*;
+import org.junit.ClassRule;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +40,11 @@ import org.slf4j.LoggerFactory;
  */
 @Category({MiscTests.class, MediumTests.class})
 public class TestFSVisitor {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestFSVisitor.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestFSVisitor.class);
 
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
@@ -77,6 +82,7 @@ public class TestFSVisitor {
     final Set<String> families = new HashSet<>();
     final Set<String> hfiles = new HashSet<>();
     FSVisitor.visitTableStoreFiles(fs, tableDir, new FSVisitor.StoreFileVisitor() {
+      @Override
       public void storeFile(final String region, final String family, final String hfileName)
           throws IOException {
         regions.add(region);
@@ -84,9 +90,9 @@ public class TestFSVisitor {
         hfiles.add(hfileName);
       }
     });
-    assertEquals(tableRegions, regions);
-    assertEquals(tableFamilies, families);
-    assertEquals(tableHFiles, hfiles);
+    assertEquals(regions, tableRegions);
+    assertEquals(families, tableFamilies);
+    assertEquals(hfiles, tableHFiles);
   }
 
   /*

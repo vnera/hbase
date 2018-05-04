@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,6 +17,9 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -29,20 +31,20 @@ import java.util.Map;
 import java.util.OptionalLong;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestCase;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValueUtil;
+import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
@@ -65,23 +67,27 @@ import org.apache.hadoop.hbase.util.ChecksumType;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.com.google.common.base.Joiner;
 import org.apache.hbase.thirdparty.com.google.common.collect.Iterables;
 import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
-
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Test HStoreFile
  */
 @Category({RegionServerTests.class, SmallTests.class})
 public class TestHStoreFile extends HBaseTestCase {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestHStoreFile.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestHStoreFile.class);
   private static final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private CacheConfig cacheConf =  new CacheConfig(TEST_UTIL.getConfiguration());
@@ -90,11 +96,13 @@ public class TestHStoreFile extends HBaseTestCase {
   private static final int CKBYTES = 512;
   private static String TEST_FAMILY = "cf";
 
+  @Override
   @Before
   public void setUp() throws Exception {
     super.setUp();
   }
 
+  @Override
   @After
   public void tearDown() throws Exception {
     super.tearDown();
@@ -505,8 +513,8 @@ public class TestHStoreFile extends HBaseTestCase {
     long now = System.currentTimeMillis();
     for (int i = 0; i < 2000; i += 2) {
       String row = String.format(localFormatter, i);
-      KeyValue kv = new KeyValue(row.getBytes(), "family".getBytes(),
-        "col".getBytes(), now, "value".getBytes());
+      KeyValue kv = new KeyValue(Bytes.toBytes(row), Bytes.toBytes("family"),
+        Bytes.toBytes("col"), now, Bytes.toBytes("value"));
       writer.append(kv);
     }
     writer.close();
@@ -523,12 +531,13 @@ public class TestHStoreFile extends HBaseTestCase {
     for (int i = 0; i < 2000; i++) {
       String row = String.format(localFormatter, i);
       TreeSet<byte[]> columns = new TreeSet<>(Bytes.BYTES_COMPARATOR);
-      columns.add("family:col".getBytes());
+      columns.add(Bytes.toBytes("family:col"));
 
-      Scan scan = new Scan(row.getBytes(),row.getBytes());
-      scan.addColumn("family".getBytes(), "family:col".getBytes());
+      Scan scan = new Scan(Bytes.toBytes(row),Bytes.toBytes(row));
+      scan.addColumn(Bytes.toBytes("family"), Bytes.toBytes("family:col"));
       HStore store = mock(HStore.class);
-      when(store.getColumnFamilyDescriptor()).thenReturn(ColumnFamilyDescriptorBuilder.of("family"));
+      when(store.getColumnFamilyDescriptor())
+          .thenReturn(ColumnFamilyDescriptorBuilder.of("family"));
       boolean exists = scanner.shouldUseScanner(scan, store, Long.MIN_VALUE);
       if (i % 2 == 0) {
         if (!exists) falseNeg++;
@@ -592,8 +601,8 @@ public class TestHStoreFile extends HBaseTestCase {
     long now = System.currentTimeMillis();
     for (int i = 0; i < 2000; i += 2) {
       String row = String.format(localFormatter, i);
-      KeyValue kv = new KeyValue(row.getBytes(), "family".getBytes(),
-          "col".getBytes(), now, KeyValue.Type.DeleteFamily, "value".getBytes());
+      KeyValue kv = new KeyValue(Bytes.toBytes(row), Bytes.toBytes("family"),
+          Bytes.toBytes("col"), now, KeyValue.Type.DeleteFamily, Bytes.toBytes("value"));
       writer.append(kv);
     }
     writer.close();
@@ -696,9 +705,8 @@ public class TestHStoreFile extends HBaseTestCase {
           String row = String.format(localFormatter, i);
           String col = String.format(localFormatter, j);
           for (int k= 0; k < versions; ++k) { // versions
-            KeyValue kv = new KeyValue(row.getBytes(),
-              "family".getBytes(), ("col" + col).getBytes(),
-                now-k, Bytes.toBytes((long)-1));
+            KeyValue kv = new KeyValue(Bytes.toBytes(row), Bytes.toBytes("family"),
+                Bytes.toBytes("col" + col), now-k, Bytes.toBytes(-1L));
             writer.append(kv);
           }
         }
@@ -713,7 +721,8 @@ public class TestHStoreFile extends HBaseTestCase {
       assertEquals(expKeys[x], reader.generalBloomFilter.getKeyCount());
 
       HStore store = mock(HStore.class);
-      when(store.getColumnFamilyDescriptor()).thenReturn(ColumnFamilyDescriptorBuilder.of("family"));
+      when(store.getColumnFamilyDescriptor())
+          .thenReturn(ColumnFamilyDescriptorBuilder.of("family"));
       // check false positives rate
       int falsePos = 0;
       int falseNeg = 0;
@@ -722,10 +731,10 @@ public class TestHStoreFile extends HBaseTestCase {
           String row = String.format(localFormatter, i);
           String col = String.format(localFormatter, j);
           TreeSet<byte[]> columns = new TreeSet<>(Bytes.BYTES_COMPARATOR);
-          columns.add(("col" + col).getBytes());
+          columns.add(Bytes.toBytes("col" + col));
 
-          Scan scan = new Scan(row.getBytes(),row.getBytes());
-          scan.addColumn("family".getBytes(), ("col"+col).getBytes());
+          Scan scan = new Scan(Bytes.toBytes(row),Bytes.toBytes(row));
+          scan.addColumn(Bytes.toBytes("family"), Bytes.toBytes(("col"+col)));
 
           boolean exists =
               scanner.shouldUseScanner(scan, store, Long.MIN_VALUE);

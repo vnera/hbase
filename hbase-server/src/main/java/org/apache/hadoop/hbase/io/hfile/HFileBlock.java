@@ -255,42 +255,43 @@ public class HFileBlock implements Cacheable {
    */
   static final CacheableDeserializer<Cacheable> BLOCK_DESERIALIZER =
       new CacheableDeserializer<Cacheable>() {
-        public HFileBlock deserialize(ByteBuff buf, boolean reuse, MemoryType memType)
+    @Override
+    public HFileBlock deserialize(ByteBuff buf, boolean reuse, MemoryType memType)
         throws IOException {
-          // The buf has the file block followed by block metadata.
-          // Set limit to just before the BLOCK_METADATA_SPACE then rewind.
-          buf.limit(buf.limit() - BLOCK_METADATA_SPACE).rewind();
-          // Get a new buffer to pass the HFileBlock for it to 'own'.
-          ByteBuff newByteBuff;
-          if (reuse) {
-            newByteBuff = buf.slice();
-          } else {
-            int len = buf.limit();
-            newByteBuff = new SingleByteBuff(ByteBuffer.allocate(len));
-            newByteBuff.put(0, buf, buf.position(), len);
-          }
-          // Read out the BLOCK_METADATA_SPACE content and shove into our HFileBlock.
-          buf.position(buf.limit());
-          buf.limit(buf.limit() + HFileBlock.BLOCK_METADATA_SPACE);
-          boolean usesChecksum = buf.get() == (byte)1;
-          long offset = buf.getLong();
-          int nextBlockOnDiskSize = buf.getInt();
-          HFileBlock hFileBlock =
-              new HFileBlock(newByteBuff, usesChecksum, memType, offset, nextBlockOnDiskSize, null);
-          return hFileBlock;
-        }
+      // The buf has the file block followed by block metadata.
+      // Set limit to just before the BLOCK_METADATA_SPACE then rewind.
+      buf.limit(buf.limit() - BLOCK_METADATA_SPACE).rewind();
+      // Get a new buffer to pass the HFileBlock for it to 'own'.
+      ByteBuff newByteBuff;
+      if (reuse) {
+        newByteBuff = buf.slice();
+      } else {
+        int len = buf.limit();
+        newByteBuff = new SingleByteBuff(ByteBuffer.allocate(len));
+        newByteBuff.put(0, buf, buf.position(), len);
+      }
+      // Read out the BLOCK_METADATA_SPACE content and shove into our HFileBlock.
+      buf.position(buf.limit());
+      buf.limit(buf.limit() + HFileBlock.BLOCK_METADATA_SPACE);
+      boolean usesChecksum = buf.get() == (byte) 1;
+      long offset = buf.getLong();
+      int nextBlockOnDiskSize = buf.getInt();
+      HFileBlock hFileBlock =
+          new HFileBlock(newByteBuff, usesChecksum, memType, offset, nextBlockOnDiskSize, null);
+      return hFileBlock;
+    }
 
-        @Override
-        public int getDeserialiserIdentifier() {
-          return DESERIALIZER_IDENTIFIER;
-        }
+    @Override
+    public int getDeserialiserIdentifier() {
+      return DESERIALIZER_IDENTIFIER;
+    }
 
-        @Override
-        public HFileBlock deserialize(ByteBuff b) throws IOException {
-          // Used only in tests
-          return deserialize(b, false, MemoryType.EXCLUSIVE);
-        }
-      };
+    @Override
+    public HFileBlock deserialize(ByteBuff b) throws IOException {
+      // Used only in tests
+      return deserialize(b, false, MemoryType.EXCLUSIVE);
+    }
+  };
 
   private static final int DESERIALIZER_IDENTIFIER;
   static {
@@ -1480,6 +1481,7 @@ public class HFileBlock implements Cacheable {
       this(new FSDataInputStreamWrapper(istream), fileSize, null, null, fileContext);
     }
 
+    @Override
     public BlockIterator blockRange(final long startOffset, final long endOffset) {
       final FSReader owner = this; // handle for inner class
       return new BlockIterator() {
@@ -1730,11 +1732,9 @@ public class HFileBlock implements Cacheable {
       // and will save us having to seek the stream backwards to reread the header we
       // read the last time through here.
       ByteBuffer headerBuf = getCachedHeader(offset);
-      if (LOG.isTraceEnabled()) {
-        LOG.trace("Reading " + this.fileContext.getHFileName() + " at offset=" + offset +
-          ", pread=" + pread + ", verifyChecksum=" + verifyChecksum + ", cachedHeader=" +
-          headerBuf + ", onDiskSizeWithHeader=" + onDiskSizeWithHeader);
-      }
+      LOG.trace("Reading {} at offset={}, pread={}, verifyChecksum={}, cachedHeader={}, " +
+          "onDiskSizeWithHeader={}", this.fileContext.getHFileName(), offset, pread,
+          verifyChecksum, headerBuf, onDiskSizeWithHeader);
       // This is NOT same as verifyChecksum. This latter is whether to do hbase
       // checksums. Can change with circumstances. The below flag is whether the
       // file has support for checksums (version 2+).
@@ -1798,9 +1798,7 @@ public class HFileBlock implements Cacheable {
       if (!fileContext.isCompressedOrEncrypted()) {
         hFileBlock.sanityCheckUncompressed();
       }
-      if (LOG.isTraceEnabled()) {
-        LOG.trace("Read " + hFileBlock + " in " + duration + " ns");
-      }
+      LOG.trace("Read {} in {} ns", hFileBlock, duration);
       // Cache next block header if we read it for the next time through here.
       if (nextBlockOnDiskSize != -1) {
         cacheNextBlockHeader(offset + hFileBlock.getOnDiskSizeWithHeader(),

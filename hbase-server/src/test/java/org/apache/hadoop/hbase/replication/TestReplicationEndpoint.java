@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.hadoop.hbase.replication;
 
 import static org.mockito.Mockito.mock;
@@ -29,8 +28,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-
 import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.Waiter;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
@@ -56,6 +55,7 @@ import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -66,6 +66,11 @@ import org.slf4j.LoggerFactory;
  */
 @Category({ReplicationTests.class, MediumTests.class})
 public class TestReplicationEndpoint extends TestReplicationBase {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestReplicationEndpoint.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestReplicationEndpoint.class);
 
   static int numRegionServers;
@@ -121,7 +126,7 @@ public class TestReplicationEndpoint extends TestReplicationBase {
     });
   }
 
-  @Test (timeout=120000)
+  @Test
   public void testCustomReplicationEndpoint() throws Exception {
     // test installing a custom replication endpoint other than the default one.
     admin.addPeer("testCustomReplicationEndpoint",
@@ -160,7 +165,7 @@ public class TestReplicationEndpoint extends TestReplicationBase {
     admin.removePeer("testCustomReplicationEndpoint");
   }
 
-  @Test (timeout=120000)
+  @Test
   public void testReplicationEndpointReturnsFalseOnReplicate() throws Exception {
     Assert.assertEquals(0, ReplicationEndpointForTest.replicateCount.get());
     Assert.assertTrue(!ReplicationEndpointReturningFalse.replicated.get());
@@ -196,7 +201,7 @@ public class TestReplicationEndpoint extends TestReplicationBase {
     admin.removePeer("testReplicationEndpointReturnsFalseOnReplicate");
   }
 
-  @Test (timeout=120000)
+  @Test
   public void testInterClusterReplication() throws Exception {
     final String id = "testInterClusterReplication";
 
@@ -242,7 +247,7 @@ public class TestReplicationEndpoint extends TestReplicationBase {
     utility1.deleteTableData(tableName);
   }
 
-  @Test (timeout=120000)
+  @Test
   public void testWALEntryFilterFromReplicationEndpoint() throws Exception {
     ReplicationPeerConfig rpc =  new ReplicationPeerConfig().setClusterKey(ZKConfig.getZooKeeperClusterKey(conf1))
         .setReplicationEndpointImpl(ReplicationEndpointWithWALEntryFilter.class.getName());
@@ -271,7 +276,7 @@ public class TestReplicationEndpoint extends TestReplicationBase {
     admin.removePeer("testWALEntryFilterFromReplicationEndpoint");
   }
 
-  @Test (timeout=120000, expected=IOException.class)
+  @Test (expected=IOException.class)
   public void testWALEntryFilterAddValidation() throws Exception {
     ReplicationPeerConfig rpc =  new ReplicationPeerConfig().setClusterKey(ZKConfig.getZooKeeperClusterKey(conf1))
         .setReplicationEndpointImpl(ReplicationEndpointWithWALEntryFilter.class.getName());
@@ -281,7 +286,7 @@ public class TestReplicationEndpoint extends TestReplicationBase {
     admin.addPeer("testWALEntryFilterAddValidation", rpc);
   }
 
-  @Test (timeout=120000, expected=IOException.class)
+  @Test (expected=IOException.class)
   public void testWALEntryFilterUpdateValidation() throws Exception {
     ReplicationPeerConfig rpc =  new ReplicationPeerConfig().setClusterKey(ZKConfig.getZooKeeperClusterKey(conf1))
         .setReplicationEndpointImpl(ReplicationEndpointWithWALEntryFilter.class.getName());

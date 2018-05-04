@@ -111,11 +111,13 @@ public class MockHStoreFile extends HStoreFile {
     this.entryCount = entryCount;
   }
 
+  @Override
   public OptionalLong getMinimumTimestamp() {
     return timeRangeTracker == null ? OptionalLong.empty()
         : OptionalLong.of(timeRangeTracker.getMin());
   }
 
+  @Override
   public OptionalLong getMaximumTimestamp() {
     return timeRangeTracker == null ? OptionalLong.empty()
         : OptionalLong.of(timeRangeTracker.getMax());
@@ -133,6 +135,11 @@ public class MockHStoreFile extends HStoreFile {
 
   @Override
   public long getModificationTimeStamp() {
+    return getModificationTimestamp();
+  }
+
+  @Override
+  public long getModificationTimestamp() {
     return modificationTime;
   }
 

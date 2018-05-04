@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -16,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.hadoop.hbase.client;
 
 import static org.junit.Assert.assertNotEquals;
@@ -29,16 +27,22 @@ import org.apache.hadoop.hbase.Cell.Type;
 import org.apache.hadoop.hbase.CellBuilderFactory;
 import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellUtil;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.io.TimeRange;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.Assert;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 @Category({ SmallTests.class, ClientTests.class })
 public class TestMutation {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestMutation.class);
 
   @Test
   public void testAppendCopyConstructor() throws IOException {
@@ -153,7 +157,7 @@ public class TestMutation {
       byte[] cloneValue = clone.getAttributesMap().get(name);
       assertTrue(Bytes.equals(originValue, cloneValue));
     }
-    Assert.assertEquals(origin.getTimeStamp(), clone.getTimeStamp());
+    Assert.assertEquals(origin.getTimestamp(), clone.getTimestamp());
     Assert.assertEquals(origin.getPriority(), clone.getPriority());
     if (origin instanceof Append) {
       assertEquals(((Append)origin).getTimeRange(), ((Append)clone).getTimeRange());
@@ -201,7 +205,7 @@ public class TestMutation {
             .setRow(row)
             .setFamily(family)
             .setQualifier(qualifier0)
-            .setTimestamp(put.getTimeStamp())
+            .setTimestamp(put.getTimestamp())
             .setType(Type.Put)
             .setValue(value0)
             .build())
@@ -223,7 +227,7 @@ public class TestMutation {
     assertTrue(cell0.getValueArray()     == value0);
 
     // Verify timestamp
-    assertTrue(cell0.getTimestamp()      == put.getTimeStamp());
+    assertTrue(cell0.getTimestamp()      == put.getTimestamp());
 
     // Verify the cell of family:qualifier1
     Cell cell1 = put.get(family, qualifier1).get(0);

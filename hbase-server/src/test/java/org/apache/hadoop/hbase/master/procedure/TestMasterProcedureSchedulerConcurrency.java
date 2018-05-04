@@ -15,44 +15,44 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.hadoop.hbase.master.procedure;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.master.procedure.TestMasterProcedureScheduler.TestTableProcedure;
 import org.apache.hadoop.hbase.procedure2.Procedure;
-import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.MasterTests;
-
+import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
 @Category({MasterTests.class, MediumTests.class})
 public class TestMasterProcedureSchedulerConcurrency {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestMasterProcedureSchedulerConcurrency.class);
+
   private static final Logger LOG =
       LoggerFactory.getLogger(TestMasterProcedureSchedulerConcurrency.class);
 
   private MasterProcedureScheduler queue;
-  private Configuration conf;
 
   @Before
   public void setUp() throws IOException {
-    conf = HBaseConfiguration.create();
-    queue = new MasterProcedureScheduler(conf);
+    queue = new MasterProcedureScheduler();
     queue.start();
   }
 
@@ -67,7 +67,7 @@ public class TestMasterProcedureSchedulerConcurrency {
    * Verify that "write" operations for a single table are serialized,
    * but different tables can be executed in parallel.
    */
-  @Test(timeout=60000)
+  @Test
   public void testConcurrentWriteOps() throws Exception {
     final TestTableProcSet procSet = new TestTableProcSet(queue);
 
@@ -153,7 +153,7 @@ public class TestMasterProcedureSchedulerConcurrency {
     }
   }
 
-  @Test(timeout=60000)
+  @Test
   public void testMasterProcedureSchedulerPerformanceEvaluation() throws Exception {
     // Make sure the tool does not get stuck
     MasterProcedureSchedulerPerformanceEvaluation.main(new String[] {

@@ -39,7 +39,6 @@ import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.io.hfile.HFile.FileInfo;
 import org.apache.hadoop.hbase.regionserver.CellSink;
-import org.apache.hadoop.hbase.regionserver.CustomizedScanInfoBuilder;
 import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.HStoreFile;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
@@ -143,11 +142,11 @@ public abstract class Compactor<T extends CellSink> {
   private FileDetails getFileDetails(
       Collection<HStoreFile> filesToCompact, boolean allFiles) throws IOException {
     FileDetails fd = new FileDetails();
-    long oldestHFileTimeStampToKeepMVCC = System.currentTimeMillis() -
+    long oldestHFileTimestampToKeepMVCC = System.currentTimeMillis() -
       (1000L * 60 * 60 * 24 * this.keepSeqIdPeriod);
 
     for (HStoreFile file : filesToCompact) {
-      if(allFiles && (file.getModificationTimeStamp() < oldestHFileTimeStampToKeepMVCC)) {
+      if(allFiles && (file.getModificationTimestamp() < oldestHFileTimestampToKeepMVCC)) {
         // when isAllFiles is true, all files are compacted so we can calculate the smallest
         // MVCC value to keep
         if(fd.minSeqIdToKeep < file.getMaxMemStoreTS()) {
@@ -200,15 +199,14 @@ public abstract class Compactor<T extends CellSink> {
       }
       tmp = fileInfo.get(TIMERANGE_KEY);
       fd.latestPutTs = tmp == null ? HConstants.LATEST_TIMESTAMP: TimeRangeTracker.parseFrom(tmp).getMax();
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Compacting " + file +
-          ", keycount=" + keyCount +
-          ", bloomtype=" + r.getBloomFilterType().toString() +
-          ", size=" + TraditionalBinaryPrefix.long2String(r.length(), "", 1) +
-          ", encoding=" + r.getHFileReader().getDataBlockEncoding() +
-          ", seqNum=" + seqNum +
-          (allFiles ? ", earliestPutTs=" + earliestPutTs: ""));
-      }
+      LOG.debug("Compacting {}, keycount={}, bloomtype={}, size={}, encoding={}, seqNum={}{}",
+          (file.getPath() == null? null: file.getPath().getName()),
+          keyCount,
+          r.getBloomFilterType().toString(),
+          TraditionalBinaryPrefix.long2String(r.length(), "", 1),
+          r.getHFileReader().getDataBlockEncoding(),
+          seqNum,
+          (allFiles? ", earliestPutTs=" + earliestPutTs: ""));
     }
     return fd;
   }
@@ -261,10 +259,8 @@ public abstract class Compactor<T extends CellSink> {
       throws IOException {
     // When all MVCC readpoints are 0, don't write them.
     // See HBASE-8166, HBASE-12600, and HBASE-13389.
-    return store.createWriterInTmp(fd.maxKeyCount, this.compactionCompression,
-    /* isCompaction = */true,
-    /* includeMVCCReadpoint = */fd.maxMVCCReadpoint > 0,
-    /* includesTags = */fd.maxTagsLength > 0, shouldDropBehind);
+    return store.createWriterInTmp(fd.maxKeyCount, this.compactionCompression, true,
+    fd.maxMVCCReadpoint > 0, fd.maxTagsLength > 0, shouldDropBehind);
   }
 
   private ScanInfo preCompactScannerOpen(CompactionRequestImpl request, ScanType scanType,

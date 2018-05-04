@@ -32,6 +32,7 @@ import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MetaTableAccessor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
+import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.ZKNamespaceManager;
 import org.apache.hadoop.hbase.client.Delete;
@@ -45,6 +46,7 @@ import org.apache.hadoop.hbase.client.TableState;
 import org.apache.hadoop.hbase.constraint.ConstraintException;
 import org.apache.hadoop.hbase.exceptions.TimeoutIOException;
 import org.apache.hadoop.hbase.master.procedure.MasterProcedureEnv;
+import org.apache.hadoop.hbase.master.procedure.ProcedurePrepareLatch;
 import org.apache.hadoop.hbase.procedure2.ProcedureExecutor;
 import org.apache.hbase.thirdparty.com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
@@ -68,8 +70,9 @@ import org.slf4j.LoggerFactory;
 @edu.umd.cs.findbugs.annotations.SuppressWarnings(value="IS2_INCONSISTENT_SYNC",
   justification="TODO: synchronize access on nsTable but it is done in tiers above and this " +
     "class is going away/shrinking")
-public class TableNamespaceManager {
+public class TableNamespaceManager implements Stoppable {
   private static final Logger LOG = LoggerFactory.getLogger(TableNamespaceManager.class);
+  private volatile boolean stopped = false;
 
   private Configuration conf;
   private MasterServices masterServices;
@@ -157,7 +160,7 @@ public class TableNamespaceManager {
           .setRow(row)
           .setFamily(TableDescriptorBuilder.NAMESPACE_FAMILY_INFO_BYTES)
           .setQualifier(TableDescriptorBuilder.NAMESPACE_COL_DESC_BYTES)
-          .setTimestamp(p.getTimeStamp())
+          .setTimestamp(p.getTimestamp())
           .setType(Cell.Type.Put)
           .setValue(ProtobufUtil.toProtoNamespaceDescriptor(ns).toByteArray())
           .build());
@@ -226,7 +229,7 @@ public class TableNamespaceManager {
   private void blockingCreateNamespace(final NamespaceDescriptor namespaceDescriptor)
       throws IOException {
     ClusterSchema clusterSchema = this.masterServices.getClusterSchema();
-    long procId = clusterSchema.createNamespace(namespaceDescriptor, null);
+    long procId = clusterSchema.createNamespace(namespaceDescriptor, null, ProcedurePrepareLatch.getNoopLatch());
     block(this.masterServices, procId);
   }
 
@@ -312,12 +315,12 @@ public class TableNamespaceManager {
     return false;
   }
 
-  private TableState.State getTableState() throws IOException {
+  private TableState getTableState() throws IOException {
     return masterServices.getTableStateManager().getTableState(TableName.NAMESPACE_TABLE_NAME);
   }
 
   private boolean isTableEnabled() throws IOException {
-    return getTableState().equals(TableState.State.ENABLED);
+    return getTableState().isEnabled();
   }
 
   private boolean isTableAssigned() {
@@ -367,5 +370,28 @@ public class TableNamespaceManager {
       maxRegions = Long.MAX_VALUE;
     }
     return maxRegions;
+  }
+
+  @Override
+  public boolean isStopped() {
+    return this.stopped;
+  }
+
+  @Override
+  public void stop(String why) {
+    if (this.stopped) {
+      return;
+    }
+    try {
+      this.zkNamespaceManager.stop();
+    } catch (IOException ioe) {
+      LOG.warn("Failed NamespaceManager close", ioe);
+    }
+    try {
+      this.nsTable.close();
+    } catch (IOException ioe) {
+      LOG.warn("Failed Namespace Table close", ioe);
+    }
+    this.stopped = true;
   }
 }

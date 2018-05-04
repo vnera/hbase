@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -33,6 +32,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -47,6 +47,7 @@ import org.apache.hadoop.hbase.TableNotEnabledException;
 import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.exceptions.MergeRegionException;
 import org.apache.hadoop.hbase.master.LoadBalancer;
+import org.apache.hadoop.hbase.regionserver.DisabledRegionSplitPolicy;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.HStoreFile;
@@ -55,10 +56,12 @@ import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.util.Threads;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -75,6 +78,11 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.MergeTable
  */
 @Category({LargeTests.class, ClientTests.class})
 public class TestAdmin1 {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestAdmin1.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestAdmin1.class);
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private Admin admin;
@@ -108,7 +116,7 @@ public class TestAdmin1 {
     }
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testSplitFlushCompactUnknownTable() throws InterruptedException {
     final TableName unknowntable = TableName.valueOf(name.getMethodName());
     Exception exception = null;
@@ -136,7 +144,7 @@ public class TestAdmin1 {
     assertTrue(exception instanceof TableNotFoundException);
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testDeleteEditUnknownColumnFamilyAndOrTable() throws IOException {
     // Test we get exception if we try to
     final TableName nonexistentTable = TableName.valueOf("nonexistent");
@@ -230,7 +238,7 @@ public class TestAdmin1 {
     }
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testDisableAndEnableTable() throws IOException {
     final byte [] row = Bytes.toBytes("row");
     final byte [] qualifier = Bytes.toBytes("qualifier");
@@ -295,7 +303,7 @@ public class TestAdmin1 {
     return state.getState();
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testDisableAndEnableTables() throws IOException {
     final byte [] row = Bytes.toBytes("row");
     final byte [] qualifier = Bytes.toBytes("qualifier");
@@ -353,7 +361,7 @@ public class TestAdmin1 {
     assertEquals(TableState.State.ENABLED, getStateFromMeta(table2));
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testCreateTable() throws IOException {
     HTableDescriptor [] tables = admin.listTables();
     int numTables = tables.length;
@@ -367,12 +375,12 @@ public class TestAdmin1 {
     assertEquals(TableState.State.ENABLED, getStateFromMeta(tableName));
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testTruncateTable() throws IOException {
     testTruncateTable(TableName.valueOf(name.getMethodName()), false);
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testTruncateTablePreservingSplits() throws IOException {
     testTruncateTable(TableName.valueOf(name.getMethodName()), true);
   }
@@ -409,7 +417,7 @@ public class TestAdmin1 {
     }
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testGetTableDescriptor() throws IOException {
     HColumnDescriptor fam1 = new HColumnDescriptor("fam1");
     HColumnDescriptor fam2 = new HColumnDescriptor("fam2");
@@ -421,12 +429,12 @@ public class TestAdmin1 {
     this.admin.createTable(htd);
     Table table = TEST_UTIL.getConnection().getTable(htd.getTableName());
     TableDescriptor confirmedHtd = table.getDescriptor();
-    assertEquals(TableDescriptor.COMPARATOR.compare(htd, confirmedHtd), 0);
+    assertEquals(0, TableDescriptor.COMPARATOR.compare(htd, confirmedHtd));
     MetaTableAccessor.fullScanMetaAndPrint(TEST_UTIL.getConnection());
     table.close();
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testCompactionTimestamps() throws Exception {
     HColumnDescriptor fam1 = new HColumnDescriptor("fam1");
     final TableName tableName = TableName.valueOf(name.getMethodName());
@@ -480,7 +488,7 @@ public class TestAdmin1 {
     table.close();
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testHColumnValidName() {
        boolean exceptionThrown;
        try {
@@ -496,7 +504,7 @@ public class TestAdmin1 {
    * @throws IOException
    * @throws InterruptedException
    */
-  @Test (timeout=300000)
+  @Test
   public void testOnlineChangeTableSchema() throws IOException, InterruptedException {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     HTableDescriptor [] tables = admin.listTables();
@@ -612,7 +620,7 @@ public class TestAdmin1 {
     }
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testCreateTableNumberOfRegions() throws IOException, InterruptedException {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     HTableDescriptor desc = new HTableDescriptor(tableName);
@@ -662,7 +670,7 @@ public class TestAdmin1 {
     }
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testCreateTableWithRegions() throws IOException, InterruptedException {
     final TableName tableName = TableName.valueOf(name.getMethodName());
 
@@ -838,7 +846,7 @@ public class TestAdmin1 {
     }
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testTableAvailableWithRandomSplitKeys() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     HTableDescriptor desc = new HTableDescriptor(tableName);
@@ -853,7 +861,7 @@ public class TestAdmin1 {
     assertFalse("Table should be created with 1 row in META", tableAvailable);
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testCreateTableWithOnlyEmptyStartRow() throws IOException {
     final byte[] tableName = Bytes.toBytes(name.getMethodName());
     byte[][] splitKeys = new byte[1][];
@@ -867,7 +875,7 @@ public class TestAdmin1 {
     }
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testCreateTableWithEmptyRowInTheSplitKeys() throws IOException{
     final byte[] tableName = Bytes.toBytes(name.getMethodName());
     byte[][] splitKeys = new byte[3][];
@@ -884,7 +892,7 @@ public class TestAdmin1 {
     }
   }
 
-  @Test (timeout=120000)
+  @Test
   public void testTableExist() throws IOException {
     final TableName table = TableName.valueOf(name.getMethodName());
     boolean exist;
@@ -900,7 +908,7 @@ public class TestAdmin1 {
    * @throws Exception
    * @throws IOException
    */
-  @Test (timeout=400000)
+  @Test
   public void testForceSplit() throws Exception {
     byte[][] familyNames = new byte[][] { Bytes.toBytes("cf") };
     int[] rowCounts = new int[] { 6000 };
@@ -919,7 +927,7 @@ public class TestAdmin1 {
    *
    * @throws IOException
    */
-  @Test (timeout=300000)
+  @Test
   public void testEnableTableRetainAssignment() throws IOException {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     byte[][] splitKeys = { new byte[] { 1, 1, 1 }, new byte[] { 2, 2, 2 },
@@ -955,7 +963,7 @@ public class TestAdmin1 {
    * @throws Exception
    * @throws IOException
    */
-  @Test (timeout=800000)
+  @Test
   public void testForceSplitMultiFamily() throws Exception {
     int numVersions = HColumnDescriptor.DEFAULT_VERSIONS;
 
@@ -1228,12 +1236,12 @@ public class TestAdmin1 {
     assertTrue(gotException);
   }
 
-  @Test (expected=IllegalArgumentException.class, timeout=300000)
+  @Test (expected=IllegalArgumentException.class)
   public void testInvalidHColumnDescriptor() throws IOException {
      new HColumnDescriptor("/cfamily/name");
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testEnableDisableAddColumnDeleteColumn() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     TEST_UTIL.createTable(tableName, HConstants.CATALOG_FAMILY).close();
@@ -1258,7 +1266,7 @@ public class TestAdmin1 {
     this.admin.deleteTable(tableName);
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testDeleteLastColumnFamily() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     TEST_UTIL.createTable(tableName, HConstants.CATALOG_FAMILY).close();
@@ -1291,7 +1299,7 @@ public class TestAdmin1 {
    * Test DFS replication for column families, where one CF has default replication(3) and the other
    * is set to 1.
    */
-  @Test(timeout = 300000)
+  @Test
   public void testHFileReplication() throws Exception {
     final TableName tableName = TableName.valueOf(this.name.getMethodName());
     String fn1 = "rep1";
@@ -1342,7 +1350,7 @@ public class TestAdmin1 {
     }
   }
 
-  @Test (timeout=300000)
+  @Test
   public void testMergeRegions() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     HColumnDescriptor cd = new HColumnDescriptor("d");
@@ -1384,5 +1392,33 @@ public class TestAdmin1 {
       this.admin.disableTable(tableName);
       this.admin.deleteTable(tableName);
     }
+  }
+
+  @Test
+  public void testSplitShouldNotHappenIfSplitIsDisabledForTable()
+      throws Exception {
+    final TableName tableName = TableName.valueOf(name.getMethodName());
+    HTableDescriptor htd = new HTableDescriptor(tableName);
+    htd.addFamily(new HColumnDescriptor("f"));
+    htd.setRegionSplitPolicyClassName(DisabledRegionSplitPolicy.class.getName());
+    Table table = TEST_UTIL.createTable(htd, null);
+    for(int i = 0; i < 10; i++) {
+      Put p = new Put(Bytes.toBytes("row"+i));
+      byte[] q1 = Bytes.toBytes("q1");
+      byte[] v1 = Bytes.toBytes("v1");
+      p.addColumn(Bytes.toBytes("f"), q1, v1);
+      table.put(p);
+    }
+    this.admin.flush(tableName);
+    try {
+      this.admin.split(tableName, Bytes.toBytes("row5"));
+      Threads.sleep(10000);
+    } catch (Exception e) {
+      // Nothing to do.
+    }
+    // Split should not happen.
+    List<RegionInfo> allRegions = MetaTableAccessor.getTableRegions(
+        this.admin.getConnection(), tableName, true);
+    assertEquals(1, allRegions.size());
   }
 }

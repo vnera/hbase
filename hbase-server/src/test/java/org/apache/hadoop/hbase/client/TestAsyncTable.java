@@ -36,10 +36,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
-
 import org.apache.commons.io.IOUtils;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.io.TimeRange;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -47,6 +48,7 @@ import org.apache.hadoop.hbase.util.Pair;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -59,6 +61,10 @@ import org.junit.runners.Parameterized.Parameters;
 @RunWith(Parameterized.class)
 @Category({ MediumTests.class, ClientTests.class })
 public class TestAsyncTable {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestAsyncTable.class);
 
   private static final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
 
@@ -332,5 +338,66 @@ public class TestAsyncTable {
         assertArrayEquals(VALUE, result.getValue(FAMILY, concat(QUALIFIER, i)));
       }
     });
+  }
+
+  @Test
+  public void testCheckAndMutateWithTimeRange() throws Exception {
+    AsyncTable<?> table = getTable.get();
+    final long ts = System.currentTimeMillis() / 2;
+    Put put = new Put(row);
+    put.addColumn(FAMILY, QUALIFIER, ts, VALUE);
+
+    boolean ok = table.checkAndMutate(row, FAMILY).qualifier(QUALIFIER)
+      .ifNotExists()
+      .thenPut(put)
+      .get();
+    assertTrue(ok);
+
+    ok = table.checkAndMutate(row, FAMILY).qualifier(QUALIFIER)
+      .timeRange(TimeRange.at(ts + 10000))
+      .ifEquals(VALUE)
+      .thenPut(put)
+      .get();
+    assertFalse(ok);
+
+    ok = table.checkAndMutate(row, FAMILY).qualifier(QUALIFIER)
+      .timeRange(TimeRange.at(ts))
+      .ifEquals(VALUE)
+      .thenPut(put)
+      .get();
+    assertTrue(ok);
+
+    RowMutations rm = new RowMutations(row)
+      .add((Mutation) put);
+    ok = table.checkAndMutate(row, FAMILY).qualifier(QUALIFIER)
+      .timeRange(TimeRange.at(ts + 10000))
+      .ifEquals(VALUE)
+      .thenMutate(rm)
+      .get();
+    assertFalse(ok);
+
+    ok = table.checkAndMutate(row, FAMILY).qualifier(QUALIFIER)
+      .timeRange(TimeRange.at(ts))
+      .ifEquals(VALUE)
+      .thenMutate(rm)
+      .get();
+    assertTrue(ok);
+
+    Delete delete = new Delete(row)
+      .addColumn(FAMILY, QUALIFIER);
+
+    ok = table.checkAndMutate(row, FAMILY).qualifier(QUALIFIER)
+      .timeRange(TimeRange.at(ts + 10000))
+      .ifEquals(VALUE)
+      .thenDelete(delete)
+      .get();
+    assertFalse(ok);
+
+    ok = table.checkAndMutate(row, FAMILY).qualifier(QUALIFIER)
+      .timeRange(TimeRange.at(ts))
+      .ifEquals(VALUE)
+      .thenDelete(delete)
+      .get();
+    assertTrue(ok);
   }
 }

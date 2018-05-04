@@ -34,9 +34,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.ServerName;
@@ -56,6 +56,7 @@ import org.apache.hadoop.hbase.rsgroup.RSGroupInfoManager;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.mockito.Mockito;
@@ -63,6 +64,7 @@ import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.com.google.common.collect.ArrayListMultimap;
 import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 
@@ -70,12 +72,15 @@ import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 @Category(SmallTests.class)
 public class TestRSGroupBasedLoadBalancer {
 
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestRSGroupBasedLoadBalancer.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestRSGroupBasedLoadBalancer.class);
   private static RSGroupBasedLoadBalancer loadBalancer;
   private static SecureRandom rand;
 
-  static String[]  groups = new String[] { RSGroupInfo.DEFAULT_GROUP, "dg2", "dg3",
-      "dg4" };
+  static String[]  groups = new String[] { RSGroupInfo.DEFAULT_GROUP, "dg2", "dg3", "dg4" };
   static TableName table0 = TableName.valueOf("dt0");
   static TableName[] tables =
       new TableName[] { TableName.valueOf("dt1"),
@@ -111,8 +116,6 @@ public class TestRSGroupBasedLoadBalancer {
    *
    * Invariant is that all servers of the group should be hosting either floor(average) or
    * ceiling(average)
-   *
-   * @throws Exception
    */
   @Test
   public void testBalanceCluster() throws Exception {
@@ -164,12 +167,6 @@ public class TestRSGroupBasedLoadBalancer {
 
   /**
    * All regions have an assignment.
-   *
-   * @param regions
-   * @param servers
-   * @param assignments
-   * @throws java.io.IOException
-   * @throws java.io.FileNotFoundException
    */
   private void assertImmediateAssignment(List<RegionInfo> regions,
                                          List<ServerName> servers,
@@ -194,8 +191,6 @@ public class TestRSGroupBasedLoadBalancer {
    * Round-robin. Should yield a balanced cluster so same invariant as the
    * load balancer holds, all servers holding either floor(avg) or
    * ceiling(avg).
-   *
-   * @throws Exception
    */
   @Test
   public void testBulkAssignment() throws Exception {
@@ -241,10 +236,7 @@ public class TestRSGroupBasedLoadBalancer {
     assertFalse(misplacedRegions.contains(ri));
   }
   /**
-   * Test the cluster startup bulk assignment which attempts to retain
-   * assignment info.
-   *
-   * @throws Exception
+   * Test the cluster startup bulk assignment which attempts to retain assignment info.
    */
   @Test
   public void testRetainAssignment() throws Exception {
@@ -264,8 +256,7 @@ public class TestRSGroupBasedLoadBalancer {
   }
 
   /**
-   * Test BOGUS_SERVER_NAME among groups do not overwrite each other
-   * @throws Exception
+   * Test BOGUS_SERVER_NAME among groups do not overwrite each other.
    */
   @Test
   public void testRoundRobinAssignment() throws Exception {
@@ -303,11 +294,6 @@ public class TestRSGroupBasedLoadBalancer {
    * <li>If a region had an existing assignment to a server with the same
    * address a a currently online server, it will be assigned to it
    * </ul>
-   *
-   * @param existing
-   * @param assignment
-   * @throws java.io.IOException
-   * @throws java.io.FileNotFoundException
    */
   private void assertRetainedAssignment(
       Map<RegionInfo, ServerName> existing, List<ServerName> servers,
@@ -320,8 +306,9 @@ public class TestRSGroupBasedLoadBalancer {
       assertTrue(
           "Region assigned to server that was not listed as online",
           onlineServerSet.contains(a.getKey()));
-      for (RegionInfo r : a.getValue())
+      for (RegionInfo r : a.getValue()) {
         assignedRegions.add(r);
+      }
     }
     assertEquals(existing.size(), assignedRegions.size());
 

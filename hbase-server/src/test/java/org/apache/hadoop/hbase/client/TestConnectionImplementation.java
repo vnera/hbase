@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -29,6 +29,7 @@ import java.lang.reflect.Modifier;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadLocalRandom;
@@ -37,9 +38,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.CategoryBasedTimeout;
 import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionLocation;
@@ -67,12 +71,12 @@ import org.apache.hadoop.hbase.util.Threads;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
-import org.junit.rules.TestRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,9 +87,11 @@ import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
  */
 @Category({LargeTests.class})
 public class TestConnectionImplementation {
-  @Rule
-  public final TestRule timeout = CategoryBasedTimeout.builder().withTimeout(this.getClass())
-      .withLookingForStuckThread(true).build();
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestConnectionImplementation.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestConnectionImplementation.class);
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private static final TableName TABLE_NAME =
@@ -120,6 +126,7 @@ public class TestConnectionImplementation {
     TEST_UTIL.shutdownMiniCluster();
   }
 
+  @Test
   public void testClusterConnection() throws IOException {
     ThreadPoolExecutor otherPool = new ThreadPoolExecutor(1, 1,
         5, TimeUnit.SECONDS,
@@ -636,7 +643,7 @@ public class TestConnectionImplementation {
       LOG.info("Put done, exception caught: " + e.getClass());
       Assert.assertEquals(1, e.getNumExceptions());
       Assert.assertEquals(1, e.getCauses().size());
-      Assert.assertArrayEquals(e.getRow(0).getRow(), ROW);
+      Assert.assertArrayEquals(ROW, e.getRow(0).getRow());
 
       // Check that we unserialized the exception as expected
       Throwable cause = ClientExceptionsUtil.findException(e.getCause(0));
@@ -1040,5 +1047,37 @@ public class TestConnectionImplementation {
     TEST_UTIL.deleteTable(tableName);
     table.close();
     connection.close();
+  }
+
+  @Test
+  public void testLocateRegionsWithRegionReplicas() throws IOException {
+    int regionReplication = 3;
+    byte[] family = Bytes.toBytes("cf");
+    TableName tableName = TableName.valueOf(name.getMethodName());
+
+    // Create a table with region replicas
+    TableDescriptorBuilder builder = TableDescriptorBuilder
+      .newBuilder(tableName)
+      .setRegionReplication(regionReplication)
+      .setColumnFamily(ColumnFamilyDescriptorBuilder.of(family));
+    TEST_UTIL.getAdmin().createTable(builder.build());
+
+    try (ConnectionImplementation con = (ConnectionImplementation) ConnectionFactory.
+      createConnection(TEST_UTIL.getConfiguration())) {
+      // Get locations of the regions of the table
+      List<HRegionLocation> locations = con.locateRegions(tableName, false, false);
+
+      // The size of the returned locations should be 3
+      assertEquals(regionReplication, locations.size());
+
+      // The replicaIds of the returned locations should be 0, 1 and 2
+      Set<Integer> expectedReplicaIds = IntStream.range(0, regionReplication).
+        boxed().collect(Collectors.toSet());
+      for (HRegionLocation location : locations) {
+        assertTrue(expectedReplicaIds.remove(location.getRegion().getReplicaId()));
+      }
+    } finally {
+      TEST_UTIL.deleteTable(tableName);
+    }
   }
 }

@@ -104,6 +104,7 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
     }
   }
 
+  @Override
   public Cell peek() {
     if (this.current == null) {
       return null;
@@ -111,6 +112,7 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
     return this.current.peek();
   }
 
+  @Override
   public Cell next()  throws IOException {
     if(this.current == null) {
       return null;
@@ -182,6 +184,8 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
     public KVScannerComparator(CellComparator kvComparator) {
       this.kvComparator = kvComparator;
     }
+
+    @Override
     public int compare(KeyValueScanner left, KeyValueScanner right) {
       int comparison = compare(left.peek(), right.peek());
       if (comparison != 0) {
@@ -210,6 +214,7 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
     }
   }
 
+  @Override
   public void close() {
     for (KeyValueScanner scanner : this.scannersForDelayedClose) {
       scanner.close();
@@ -219,8 +224,8 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
       this.current.close();
     }
     if (this.heap != null) {
-      KeyValueScanner scanner;
-      while ((scanner = this.heap.poll()) != null) {
+      // Order of closing the scanners shouldn't matter here, so simply iterate and close them.
+      for (KeyValueScanner scanner : heap) {
         scanner.close();
       }
     }

@@ -24,6 +24,7 @@ import java.util.EnumSet;
 import java.util.List;
 import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.ClusterStatus;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.ServerLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.Admin;
@@ -32,6 +33,7 @@ import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.ReplicationTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.JVMClusterUtil;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -39,6 +41,11 @@ import org.slf4j.LoggerFactory;
 
 @Category({ReplicationTests.class, MediumTests.class})
 public class TestReplicationStatus extends TestReplicationBase {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestReplicationStatus.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestReplicationStatus.class);
   private static final String PEER_ID = "2";
 
@@ -50,7 +57,7 @@ public class TestReplicationStatus extends TestReplicationBase {
    * test : status.getLoad(server).getReplicationLoadSink()
    * * @throws Exception
    */
-  @Test(timeout = 300000)
+  @Test
   public void testReplicationStatus() throws Exception {
     LOG.info("testReplicationStatus");
 
@@ -85,7 +92,7 @@ public class TestReplicationStatus extends TestReplicationBase {
         assertTrue("failed to get ReplicationLoadSink.AgeOfLastShippedOp ",
           (rLoadSink.getAgeOfLastAppliedOp() >= 0));
         assertTrue("failed to get ReplicationLoadSink.TimeStampsOfLastAppliedOp ",
-          (rLoadSink.getTimeStampsOfLastAppliedOp() >= 0));
+          (rLoadSink.getTimestampsOfLastAppliedOp() >= 0));
       }
 
       // Stop rs1, then the queue of rs1 will be transfered to rs0

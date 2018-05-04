@@ -19,7 +19,6 @@
 package org.apache.hadoop.hbase.spark;
 
 import com.google.common.collect.Sets;
-import org.apache.commons.cli.CommandLine;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -79,6 +78,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+
+import org.apache.hbase.thirdparty.org.apache.commons.cli.CommandLine;
 
 /**
  * Test Bulk Load and Spark on a distributed cluster.

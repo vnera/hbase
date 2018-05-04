@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -826,6 +825,13 @@ public interface Admin extends Abortable, Closeable {
   void flushRegion(byte[] regionName) throws IOException;
 
   /**
+   * Flush all regions on the region server. Synchronous operation.
+   * @param serverName the region server name to flush
+   * @throws IOException if a remote or network exception occurs
+   */
+  void flushRegionServer(ServerName serverName) throws IOException;
+
+  /**
    * Compact a table. Asynchronous operation in that this method requests that a
    * Compaction run and then it returns. It does not wait on the completion of Compaction
    * (it can take a while).
@@ -1408,15 +1414,25 @@ public interface Admin extends Abortable, Closeable {
       throws IOException;
 
   /**
+   * <p>
    * Shuts down the HBase cluster.
-   *
+   * </p>
+   * <p>
+   * Notice that, a success shutdown call may ends with an error since the remote server has already
+   * been shutdown.
+   * </p>
    * @throws IOException if a remote or network exception occurs
    */
   void shutdown() throws IOException;
 
   /**
+   * <p>
    * Shuts down the current HBase master only. Does not shutdown the cluster.
-   *
+   * </p>
+   * <p>
+   * Notice that, a success stopMaster call may ends with an error since the remote server has
+   * already been shutdown.
+   * </p>
    * @throws IOException if a remote or network exception occurs
    * @see #shutdown()
    */

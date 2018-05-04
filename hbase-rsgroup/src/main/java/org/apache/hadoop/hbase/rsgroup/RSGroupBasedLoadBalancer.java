@@ -20,7 +20,6 @@ package org.apache.hadoop.hbase.rsgroup;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ClusterMetrics;
 import org.apache.hadoop.hbase.HBaseIOException;
@@ -42,16 +42,17 @@ import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.master.RegionPlan;
 import org.apache.hadoop.hbase.master.balancer.StochasticLoadBalancer;
 import org.apache.hadoop.hbase.net.Address;
+import org.apache.hadoop.util.ReflectionUtils;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 import org.apache.hbase.thirdparty.com.google.common.collect.ArrayListMultimap;
 import org.apache.hbase.thirdparty.com.google.common.collect.LinkedListMultimap;
 import org.apache.hbase.thirdparty.com.google.common.collect.ListMultimap;
 import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 import org.apache.hbase.thirdparty.com.google.common.collect.Maps;
-import org.apache.hadoop.util.ReflectionUtils;
-import org.apache.yetus.audience.InterfaceAudience;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * GroupBasedLoadBalancer, used when Region Server Grouping is configured (HBase-6721)
@@ -209,7 +210,7 @@ public class RSGroupBasedLoadBalancer implements RSGroupableBalancer {
       }
 
       for (RegionInfo region : misplacedRegions) {
-        String groupName = rsGroupInfoManager.getRSGroupOfTable(region.getTable());;
+        String groupName = rsGroupInfoManager.getRSGroupOfTable(region.getTable());
         RSGroupInfo info = rsGroupInfoManager.getRSGroup(groupName);
         List<ServerName> candidateList = filterOfflineServers(info, servers);
         ServerName server = this.internalBalancer.randomAssignment(region,
@@ -287,16 +288,20 @@ public class RSGroupBasedLoadBalancer implements RSGroupableBalancer {
    *          List of servers which are online.
    * @return the list
    */
-  private List<ServerName> filterServers(Collection<Address> servers,
-      Collection<ServerName> onlineServers) {
-    ArrayList<ServerName> finalList = new ArrayList<ServerName>();
-    for (Address server : servers) {
-      for(ServerName curr: onlineServers) {
-        if(curr.getAddress().equals(server)) {
-          finalList.add(curr);
-        }
+  private List<ServerName> filterServers(Set<Address> servers,
+                                         List<ServerName> onlineServers) {
+    /**
+     * servers is actually a TreeSet (see {@link org.apache.hadoop.hbase.rsgroup.RSGroupInfo}),
+     * having its contains()'s time complexity as O(logn), which is good enough.
+     * TODO: consider using HashSet to pursue O(1) for contains() throughout the calling chain
+     * if needed. */
+    ArrayList<ServerName> finalList = new ArrayList<>();
+    for (ServerName onlineServer : onlineServers) {
+      if (servers.contains(onlineServer.getAddress())) {
+        finalList.add(onlineServer);
       }
     }
+
     return finalList;
   }
 
@@ -330,8 +335,7 @@ public class RSGroupBasedLoadBalancer implements RSGroupableBalancer {
   }
 
   private ServerName findServerForRegion(
-      Map<ServerName, List<RegionInfo>> existingAssignments, RegionInfo region)
-  {
+      Map<ServerName, List<RegionInfo>> existingAssignments, RegionInfo region) {
     for (Map.Entry<ServerName, List<RegionInfo>> entry : existingAssignments.entrySet()) {
       if (entry.getValue().contains(region)) {
         return entry.getKey();
@@ -382,6 +386,12 @@ public class RSGroupBasedLoadBalancer implements RSGroupableBalancer {
           throw new HBaseIOException(msg);
         }
         rsGroupInfoManager = cps.get(0).getGroupInfoManager();
+        if(rsGroupInfoManager == null){
+          String msg = "RSGroupInfoManager hasn't been initialized";
+          LOG.error(msg);
+          throw new HBaseIOException(msg);
+        }
+        rsGroupInfoManager.start();
       }
     } catch (IOException e) {
       throw new HBaseIOException("Failed to initialize GroupInfoManagerImpl", e);
@@ -398,7 +408,10 @@ public class RSGroupBasedLoadBalancer implements RSGroupableBalancer {
   }
 
   public boolean isOnline() {
-    if (this.rsGroupInfoManager == null) return false;
+    if (this.rsGroupInfoManager == null) {
+      return false;
+    }
+
     return this.rsGroupInfoManager.isOnline();
   }
 

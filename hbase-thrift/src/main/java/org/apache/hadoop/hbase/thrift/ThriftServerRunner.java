@@ -44,9 +44,6 @@ import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.sasl.AuthorizeCallback;
 import javax.security.sasl.SaslServer;
 
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell.Type;
@@ -143,6 +140,9 @@ import org.slf4j.LoggerFactory;
 import org.apache.hbase.thirdparty.com.google.common.base.Joiner;
 import org.apache.hbase.thirdparty.com.google.common.base.Throwables;
 import org.apache.hbase.thirdparty.com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.hbase.thirdparty.org.apache.commons.cli.CommandLine;
+import org.apache.hbase.thirdparty.org.apache.commons.cli.Option;
+import org.apache.hbase.thirdparty.org.apache.commons.cli.OptionGroup;
 
 /**
  * ThriftServerRunner - this class starts up a Thrift server which implements
@@ -360,10 +360,20 @@ public class ThriftServerRunner implements Runnable {
                               QualityOfProtection.INTEGRITY.name(),
                               QualityOfProtection.PRIVACY.name()));
       }
+      checkHttpSecurity(qop, conf);
       if (!securityEnabled) {
         throw new IOException("Thrift server must"
           + " run in secure mode to support authentication");
       }
+    }
+  }
+
+  private void checkHttpSecurity(QualityOfProtection qop, Configuration conf) {
+    if (qop == QualityOfProtection.PRIVACY &&
+        conf.getBoolean(USE_HTTP_CONF_KEY, false) &&
+        !conf.getBoolean(THRIFT_SSL_ENABLED, false)) {
+      throw new IllegalArgumentException("Thrift HTTP Server's QoP is privacy, but " +
+          THRIFT_SSL_ENABLED + " is false");
     }
   }
 
@@ -1352,7 +1362,7 @@ public class ThriftServerRunner implements Runnable {
                   .setRow(put.getRow())
                   .setFamily(famAndQf[0])
                   .setQualifier(famAndQf[1])
-                  .setTimestamp(put.getTimeStamp())
+                  .setTimestamp(put.getTimestamp())
                   .setType(Type.Put)
                   .setValue(m.value != null ? getBytes(m.value)
                       : HConstants.EMPTY_BYTE_ARRAY)
@@ -1420,7 +1430,7 @@ public class ThriftServerRunner implements Runnable {
                     .setRow(put.getRow())
                     .setFamily(famAndQf[0])
                     .setQualifier(famAndQf[1])
-                    .setTimestamp(put.getTimeStamp())
+                    .setTimestamp(put.getTimestamp())
                     .setType(Type.Put)
                     .setValue(m.value != null ? getBytes(m.value)
                         : HConstants.EMPTY_BYTE_ARRAY)
@@ -1903,7 +1913,7 @@ public class ThriftServerRunner implements Runnable {
             .setRow(put.getRow())
             .setFamily(famAndQf[0])
             .setQualifier(famAndQf[1])
-            .setTimestamp(put.getTimeStamp())
+            .setTimestamp(put.getTimestamp())
             .setType(Type.Put)
             .setValue(mput.value != null ? getBytes(mput.value)
                 : HConstants.EMPTY_BYTE_ARRAY)
@@ -1980,7 +1990,7 @@ public class ThriftServerRunner implements Runnable {
     }
 
     @Override
-    public Throwable getCause() {
+    public synchronized Throwable getCause() {
       return cause;
     }
 

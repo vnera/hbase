@@ -54,8 +54,10 @@ import org.apache.hadoop.hbase.master.RegionState;
 import org.apache.hadoop.hbase.master.TableStateManager;
 import org.apache.hadoop.hbase.master.assignment.AssignmentManager;
 import org.apache.hadoop.hbase.monitoring.TaskMonitor;
+import org.apache.hadoop.hbase.procedure2.Procedure;
 import org.apache.hadoop.hbase.procedure2.ProcedureExecutor;
 import org.apache.hadoop.hbase.procedure2.ProcedureTestingUtility;
+import org.apache.hadoop.hbase.procedure2.StateMachineProcedure;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.MD5Hash;
@@ -143,7 +145,7 @@ public class MasterProcedureTestingUtility {
   public static TableDescriptor createHTD(final TableName tableName, final String... family) {
     TableDescriptorBuilder builder = TableDescriptorBuilder.newBuilder(tableName);
     for (int i = 0; i < family.length; ++i) {
-      builder.addColumnFamily(ColumnFamilyDescriptorBuilder.of(family[i]));
+      builder.setColumnFamily(ColumnFamilyDescriptorBuilder.of(family[i]));
     }
     return builder.build();
   }
@@ -261,13 +263,13 @@ public class MasterProcedureTestingUtility {
   public static void validateTableIsEnabled(final HMaster master, final TableName tableName)
       throws IOException {
     TableStateManager tsm = master.getTableStateManager();
-    assertTrue(tsm.getTableState(tableName).equals(TableState.State.ENABLED));
+    assertTrue(tsm.getTableState(tableName).getState().equals(TableState.State.ENABLED));
   }
 
   public static void validateTableIsDisabled(final HMaster master, final TableName tableName)
       throws IOException {
     TableStateManager tsm = master.getTableStateManager();
-    assertTrue(tsm.getTableState(tableName).equals(TableState.State.DISABLED));
+    assertTrue(tsm.getTableState(tableName).getState().equals(TableState.State.DISABLED));
   }
 
   public static void validateColumnFamilyAddition(final HMaster master, final TableName tableName,
@@ -377,11 +379,28 @@ public class MasterProcedureTestingUtility {
     //   execute step N - kill before store update
     //   restart executor/store
     //   execute step N - save on store
-    for (int i = 0; i < numSteps; ++i) {
-      LOG.info("Restart " + i + " exec state=" + procExec.getProcedure(procId));
+    // NOTE: currently we make assumption that states/ steps are sequential. There are already
+    // instances of a procedures which skip (don't use) intermediate states/ steps. In future,
+    // intermediate states/ steps can be added with ordinal greater than lastStep. If and when
+    // that happens the states can not be treated as sequential steps and the condition in
+    // following while loop needs to be changed. We can use euqals/ not equals operator to check
+    // if the procedure has reached the user specified state. But there is a possibility that
+    // while loop may not get the control back exaclty when the procedure is in lastStep. Proper
+    // fix would be get all visited states by the procedure and then check if user speccified
+    // state is in that list. Current assumption of sequential proregression of steps/ states is
+    // made at multiple places so we can keep while condition below for simplicity.
+    Procedure proc = procExec.getProcedure(procId);
+    int stepNum = proc instanceof StateMachineProcedure ?
+        ((StateMachineProcedure) proc).getCurrentStateId() : 0;
+    while (stepNum < numSteps) {
+      LOG.info("Restart " + stepNum + " exec state=" + proc);
       ProcedureTestingUtility.assertProcNotYetCompleted(procExec, procId);
       restartMasterProcedureExecutor(procExec);
       ProcedureTestingUtility.waitProcedure(procExec, procId);
+      // Old proc object is stale, need to get the new one after ProcedureExecutor restart
+      proc = procExec.getProcedure(procId);
+      stepNum = proc instanceof StateMachineProcedure ?
+          ((StateMachineProcedure) proc).getCurrentStateId() : stepNum + 1;
     }
 
     assertEquals(expectExecRunning, procExec.isRunning());
@@ -401,7 +420,7 @@ public class MasterProcedureTestingUtility {
    * idempotent. Use this version of the test when the order in which flow steps are executed is
    * not start to finish; where the procedure may vary the flow steps dependent on circumstance
    * found.
-   * @see #testRecoveryAndDoubleExecution(ProcedureExecutor, long, int)
+   * @see #testRecoveryAndDoubleExecution(ProcedureExecutor, long, int, boolean)
    */
   public static void testRecoveryAndDoubleExecution(
       final ProcedureExecutor<MasterProcedureEnv> procExec, final long procId) throws Exception {
@@ -427,6 +446,12 @@ public class MasterProcedureTestingUtility {
   public static void testRollbackAndDoubleExecution(
       final ProcedureExecutor<MasterProcedureEnv> procExec, final long procId,
       final int lastStep) throws Exception {
+    testRollbackAndDoubleExecution(procExec, procId, lastStep, false);
+  }
+
+  public static void testRollbackAndDoubleExecution(
+      final ProcedureExecutor<MasterProcedureEnv> procExec, final long procId,
+      final int lastStep, boolean waitForAsyncProcs) throws Exception {
     // Execute up to last step
     testRecoveryAndDoubleExecution(procExec, procId, lastStep, false);
 
@@ -446,6 +471,19 @@ public class MasterProcedureTestingUtility {
       }
     } finally {
       assertTrue(procExec.unregisterListener(abortListener));
+    }
+
+    if (waitForAsyncProcs) {
+      // Sometimes there are other procedures still executing (including asynchronously spawned by
+      // procId) and due to KillAndToggleBeforeStoreUpdate flag ProcedureExecutor is stopped before
+      // store update. Let all pending procedures finish normally.
+      if (!procExec.isRunning()) {
+        LOG.warn("ProcedureExecutor not running, may have been stopped by pending procedure due to"
+            + " KillAndToggleBeforeStoreUpdate flag.");
+        ProcedureTestingUtility.setKillAndToggleBeforeStoreUpdate(procExec, false);
+        restartMasterProcedureExecutor(procExec);
+        ProcedureTestingUtility.waitNoProcedureRunning(procExec);
+      }
     }
 
     assertEquals(true, procExec.isRunning());

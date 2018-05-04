@@ -1,5 +1,4 @@
-/*
-
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -26,12 +25,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.ChoreService;
 import org.apache.hadoop.hbase.ClusterId;
 import org.apache.hadoop.hbase.CoordinatedStateManager;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.Server;
@@ -48,6 +47,7 @@ import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -62,6 +62,10 @@ import org.slf4j.LoggerFactory;
  */
 @Category({ReplicationTests.class, MediumTests.class})
 public class TestReplicationTrackerZKImpl {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestReplicationTrackerZKImpl.class);
 
   private static final Logger LOG = LoggerFactory.getLogger(TestReplicationTrackerZKImpl.class);
 
@@ -139,7 +143,7 @@ public class TestReplicationTrackerZKImpl {
     assertEquals(0, rt.getListOfRegionServers().size());
   }
 
-  @Test(timeout = 30000)
+  @Test
   public void testRegionServerRemovedEvent() throws Exception {
     ZKUtil.createAndWatch(zkw,
       ZNodePaths.joinZNode(zkw.znodePaths.rsZNode, "hostname2.example.org:1234"),
@@ -155,7 +159,7 @@ public class TestReplicationTrackerZKImpl {
     assertEquals("hostname2.example.org:1234", rsRemovedData);
   }
 
-  @Test(timeout = 30000)
+  @Test
   public void testPeerRemovedEvent() throws Exception {
     rp.registerPeer("5", new ReplicationPeerConfig().setClusterKey(utility.getClusterKey()));
     rt.registerListener(new DummyReplicationListener());
@@ -167,7 +171,7 @@ public class TestReplicationTrackerZKImpl {
     assertEquals("5", peerRemovedData);
   }
 
-  @Test(timeout = 30000)
+  @Test
   public void testPeerListChangedEvent() throws Exception {
     // add a peer
     rp.registerPeer("5", new ReplicationPeerConfig().setClusterKey(utility.getClusterKey()));
@@ -190,7 +194,7 @@ public class TestReplicationTrackerZKImpl {
     rp.unregisterPeer("5");
   }
 
-  @Test(timeout = 30000)
+  @Test
   public void testPeerNameControl() throws Exception {
     int exists = 0;
     int hyphen = 0;

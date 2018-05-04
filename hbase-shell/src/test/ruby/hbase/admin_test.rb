@@ -101,6 +101,10 @@ module Hbase
 
     define_test "flush should work" do
       command(:flush, 'hbase:meta')
+      servers = admin.list_liveservers
+      servers.each do |s|
+        command(:flush, s.toString)
+      end
     end
 
     #-------------------------------------------------------------------------------
@@ -315,6 +319,18 @@ module Hbase
       admin.truncate_preserve(@create_test_name, $TEST_CLUSTER.getConfiguration)
       assert_equal(splits, table(@create_test_name)._get_splits_internal())
     end
+
+    #-------------------------------------------------------------------------------
+
+    define_test "list_regions should fail for disabled table" do
+      drop_test_table(@create_test_name)
+      admin.create(@create_test_name, 'a')
+      command(:disable, @create_test_name)
+      assert(:is_disabled, @create_test_name)
+      assert_raise(RuntimeError) do
+        command(:list_regions, @create_test_name)
+      end
+    end
   end
 
   # Simple administration methods tests
@@ -345,7 +361,7 @@ module Hbase
     end
   end
 
- # Simple administration methods tests
+  # Simple administration methods tests
   class AdminAlterTableTest < Test::Unit::TestCase
     include TestHelpers
 
@@ -566,7 +582,8 @@ module Hbase
     end
   end
 
-# Simple administration methods tests
+  # Simple administration methods tests
+  # rubocop:disable ClassLength
   class AdminSnapshotTest < Test::Unit::TestCase
     include TestHelpers
 
@@ -635,20 +652,33 @@ module Hbase
       end
     end
 
-    define_test "Restore snapshot should work" do
-      drop_test_snapshot()
-      restore_table = "test_restore_snapshot_table"
+    define_test 'Restore snapshot should work' do
+      drop_test_snapshot
+      restore_table = 'test_restore_snapshot_table'
       command(:create, restore_table, 'f1', 'f2')
-      assert_match(eval("/" + "f1" + "/"), admin.describe(restore_table))
-      assert_match(eval("/" + "f2" + "/"), admin.describe(restore_table))
+      assert_match(/f1/, admin.describe(restore_table))
+      assert_match(/f2/, admin.describe(restore_table))
       command(:snapshot, restore_table, @create_test_snapshot)
       command(:alter, restore_table, METHOD => 'delete', NAME => 'f1')
-      assert_no_match(eval("/" + "f1" + "/"), admin.describe(restore_table))
-      assert_match(eval("/" + "f2" + "/"), admin.describe(restore_table))
+      assert_no_match(/f1/, admin.describe(restore_table))
+      assert_match(/f2/, admin.describe(restore_table))
       drop_test_table(restore_table)
       command(:restore_snapshot, @create_test_snapshot)
-      assert_match(eval("/" + "f1" + "/"), admin.describe(restore_table))
-      assert_match(eval("/" + "f2" + "/"), admin.describe(restore_table))
+      assert_match(/f1/, admin.describe(restore_table))
+      assert_match(/f2/, admin.describe(restore_table))
+      drop_test_table(restore_table)
+    end
+
+    define_test 'Restore snapshot should fail' do
+      drop_test_snapshot
+      restore_table = 'test_restore_snapshot_table'
+      command(:create, restore_table, 'f1', 'f2')
+      assert_match(/f1/, admin.describe(restore_table))
+      assert_match(/f2/, admin.describe(restore_table))
+      command(:snapshot, restore_table, @create_test_snapshot)
+      assert_raise(RuntimeError) do
+        command(:restore_snapshot, @create_test_snapshot)
+      end
       drop_test_table(restore_table)
     end
 
@@ -768,4 +798,5 @@ module Hbase
       drop_test_table(new_table)
     end
   end
+  # rubocop:enable ClassLength
 end

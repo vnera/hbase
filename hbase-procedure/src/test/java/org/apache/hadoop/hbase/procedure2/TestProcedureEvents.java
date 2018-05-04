@@ -15,33 +15,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.hadoop.hbase.procedure2;
+
+import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseCommonTestingUtility;
 import org.apache.hadoop.hbase.procedure2.ProcedureTestingUtility.NoopProcedure;
 import org.apache.hadoop.hbase.procedure2.store.ProcedureStore;
-import org.apache.hbase.thirdparty.com.google.protobuf.Int32Value;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.ProcedureProtos.ProcedureState;
-import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.testclassification.MasterTests;
-
+import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.Assert.assertEquals;
+import org.apache.hbase.thirdparty.com.google.protobuf.Int32Value;
+
+import org.apache.hadoop.hbase.shaded.protobuf.generated.ProcedureProtos.ProcedureState;
 
 @Category({MasterTests.class, SmallTests.class})
 public class TestProcedureEvents {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestProcedureEvents.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestProcedureEvents.class);
 
   private TestProcEnv procEnv;
@@ -74,7 +80,7 @@ public class TestProcedureEvents {
     fs.delete(logDir, true);
   }
 
-  @Test(timeout=30000)
+  @Test
   public void testTimeoutEventProcedure() throws Exception {
     final int NTIMEOUTS = 5;
 
@@ -86,12 +92,12 @@ public class TestProcedureEvents {
     assertEquals(NTIMEOUTS + 1, proc.getTimeoutsCount());
   }
 
-  @Test(timeout=30000)
+  @Test
   public void testTimeoutEventProcedureDoubleExecution() throws Exception {
     testTimeoutEventProcedureDoubleExecution(false);
   }
 
-  @Test(timeout=30000)
+  @Test
   public void testTimeoutEventProcedureDoubleExecutionKillIfSuspended() throws Exception {
     testTimeoutEventProcedureDoubleExecution(true);
   }
@@ -160,7 +166,7 @@ public class TestProcedureEvents {
     }
 
     @Override
-    protected boolean setTimeoutFailure(final TestProcEnv env) {
+    protected synchronized boolean setTimeoutFailure(final TestProcEnv env) {
       int n = ntimeouts.incrementAndGet();
       LOG.info("HANDLE TIMEOUT " + this + " ntimeouts=" + n);
       setState(ProcedureState.RUNNABLE);

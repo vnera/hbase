@@ -22,11 +22,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import com.google.protobuf.ByteString;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.List;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
@@ -45,15 +46,18 @@ import org.apache.hadoop.hbase.testclassification.SecurityTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 
-import com.google.protobuf.ByteString;
-
 @Category({SecurityTests.class, LargeTests.class})
 public class TestWithDisabledAuthorization {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestWithDisabledAuthorization.class);
 
   private static final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
 
@@ -118,7 +122,7 @@ public class TestWithDisabledAuthorization {
     TEST_UTIL.shutdownMiniCluster();
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testManageUserAuths() throws Throwable {
     // Even though authorization is disabled, we should be able to manage user auths
 
@@ -196,7 +200,7 @@ public class TestWithDisabledAuthorization {
     assertEquals(0, authsList.size());
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testPassiveVisibility() throws Exception {
     // No values should be filtered regardless of authorization if we are passive
     try (Table t = createTableAndWriteDataWithLabels(
@@ -209,25 +213,25 @@ public class TestWithDisabledAuthorization {
       s.setAuthorizations(new Authorizations());
       try (ResultScanner scanner = t.getScanner(s)) {
         Result[] next = scanner.next(10);
-        assertEquals(next.length, 4);
+        assertEquals(4, next.length);
       }
       s = new Scan();
       s.setAuthorizations(new Authorizations(SECRET));
       try (ResultScanner scanner = t.getScanner(s)) {
         Result[] next = scanner.next(10);
-        assertEquals(next.length, 4);
+        assertEquals(4, next.length);
       }
       s = new Scan();
       s.setAuthorizations(new Authorizations(SECRET, CONFIDENTIAL));
       try (ResultScanner scanner = t.getScanner(s)) {
         Result[] next = scanner.next(10);
-        assertEquals(next.length, 4);
+        assertEquals(4, next.length);
       }
       s = new Scan();
       s.setAuthorizations(new Authorizations(SECRET, CONFIDENTIAL, PRIVATE));
       try (ResultScanner scanner = t.getScanner(s)) {
         Result[] next = scanner.next(10);
-        assertEquals(next.length, 4);
+        assertEquals(4, next.length);
       }
     }
   }

@@ -36,7 +36,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-import org.apache.commons.collections4.queue.CircularFifoQueue;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
@@ -51,7 +50,6 @@ import org.apache.hadoop.hbase.procedure2.store.ProcedureStoreBase;
 import org.apache.hadoop.hbase.procedure2.store.ProcedureStoreTracker;
 import org.apache.hadoop.hbase.procedure2.util.ByteSlot;
 import org.apache.hadoop.hbase.procedure2.util.StringUtils;
-import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ProcedureProtos.ProcedureWALHeader;
 import org.apache.hadoop.hbase.util.CommonFSUtils;
 import org.apache.hadoop.hbase.util.Threads;
@@ -60,6 +58,8 @@ import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.yetus.audience.InterfaceStability;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.hbase.thirdparty.org.apache.commons.collections4.queue.CircularFifoQueue;
 
 
 /**
@@ -358,22 +358,30 @@ public class WALProcedureStore extends ProcedureStoreBase {
   public void recoverLease() throws IOException {
     lock.lock();
     try {
-      LOG.info("Starting WAL Procedure Store lease recovery");
-      FileStatus[] oldLogs = getLogFiles();
+      LOG.trace("Starting WAL Procedure Store lease recovery");
+      boolean afterFirstAttempt = false;
       while (isRunning()) {
+        // Don't sleep before first attempt
+        if (afterFirstAttempt) {
+          LOG.trace("Sleep {} ms after first lease recovery attempt.",
+              waitBeforeRoll);
+          Threads.sleepWithoutInterrupt(waitBeforeRoll);
+        } else {
+          afterFirstAttempt = true;
+        }
+        FileStatus[] oldLogs = getLogFiles();
         // Get Log-MaxID and recover lease on old logs
         try {
           flushLogId = initOldLogs(oldLogs);
         } catch (FileNotFoundException e) {
           LOG.warn("Someone else is active and deleted logs. retrying.", e);
-          oldLogs = getLogFiles();
           continue;
         }
 
         // Create new state-log
         if (!rollWriter(flushLogId + 1)) {
           // someone else has already created this log
-          LOG.debug("Someone else has already created log " + flushLogId);
+          LOG.debug("Someone else has already created log {}. Retrying.", flushLogId);
           continue;
         }
 
@@ -387,7 +395,7 @@ public class WALProcedureStore extends ProcedureStoreBase {
           continue;
         }
 
-        LOG.info("Lease acquired for flushLogId: " + flushLogId);
+        LOG.trace("Lease acquired for flushLogId={}", flushLogId);
         break;
       }
     } finally {
@@ -405,9 +413,7 @@ public class WALProcedureStore extends ProcedureStoreBase {
 
       // Nothing to do, If we have only the current log.
       if (logs.size() == 1) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("No state logs to replay.");
-        }
+        LOG.trace("No state logs to replay.");
         loader.setMaxProcId(0);
         return;
       }
@@ -1004,7 +1010,8 @@ public class WALProcedureStore extends ProcedureStoreBase {
     return true;
   }
 
-  private boolean rollWriter(final long logId) throws IOException {
+  @VisibleForTesting
+  boolean rollWriter(final long logId) throws IOException {
     assert logId > flushLogId : "logId=" + logId + " flushLogId=" + flushLogId;
     assert lock.isHeldByCurrentThread() : "expected to be the lock owner. " + lock.isLocked();
 
@@ -1074,7 +1081,10 @@ public class WALProcedureStore extends ProcedureStoreBase {
   }
 
   private void closeCurrentLogStream() {
-    if (stream == null) return;
+    if (stream == null || logs.isEmpty()) {
+      return;
+    }
+
     try {
       ProcedureWALFile log = logs.getLast();
       log.setProcIds(storeTracker.getUpdatedMinProcId(), storeTracker.getUpdatedMaxProcId());

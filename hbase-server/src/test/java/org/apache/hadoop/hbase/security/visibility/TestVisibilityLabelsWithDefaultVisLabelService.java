@@ -20,15 +20,16 @@ package org.apache.hadoop.hbase.security.visibility;
 import static org.apache.hadoop.hbase.security.visibility.VisibilityConstants.LABELS_TABLE_NAME;
 import static org.apache.hadoop.hbase.security.visibility.VisibilityUtils.SYSTEM_LABEL;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import com.google.protobuf.ByteString;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
@@ -49,15 +50,19 @@ import org.apache.hadoop.hbase.util.JVMClusterUtil.RegionServerThread;
 import org.apache.hadoop.hbase.util.Threads;
 import org.junit.Assert;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.protobuf.ByteString;
-
 @Category({SecurityTests.class, MediumTests.class})
 public class TestVisibilityLabelsWithDefaultVisLabelService extends TestVisibilityLabels {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestVisibilityLabelsWithDefaultVisLabelService.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(
     TestVisibilityLabelsWithDefaultVisLabelService.class);
 
@@ -82,6 +87,7 @@ public class TestVisibilityLabelsWithDefaultVisLabelService extends TestVisibili
   public void testAddLabels() throws Throwable {
     PrivilegedExceptionAction<VisibilityLabelsResponse> action =
         new PrivilegedExceptionAction<VisibilityLabelsResponse>() {
+      @Override
       public VisibilityLabelsResponse run() throws Exception {
         String[] labels = { "L1", SECRET, "L2", "invalid~", "L3" };
         VisibilityLabelsResponse response = null;
@@ -108,7 +114,7 @@ public class TestVisibilityLabelsWithDefaultVisLabelService extends TestVisibili
     SUPERUSER.runAs(action);
   }
 
-  @Test(timeout = 60 * 1000)
+  @Test
   public void testAddVisibilityLabelsOnRSRestart() throws Exception {
     List<RegionServerThread> regionServerThreads = TEST_UTIL.getHBaseCluster()
         .getRegionServerThreads();
@@ -122,6 +128,7 @@ public class TestVisibilityLabelsWithDefaultVisLabelService extends TestVisibili
     do {
       PrivilegedExceptionAction<VisibilityLabelsResponse> action =
           new PrivilegedExceptionAction<VisibilityLabelsResponse>() {
+        @Override
         public VisibilityLabelsResponse run() throws Exception {
           String[] labels = { SECRET, CONFIDENTIAL, PRIVATE, "ABC", "XYZ" };
           try (Connection conn = ConnectionFactory.createConnection(conf)) {
@@ -170,6 +177,7 @@ public class TestVisibilityLabelsWithDefaultVisLabelService extends TestVisibili
   public void testListLabels() throws Throwable {
     PrivilegedExceptionAction<ListLabelsResponse> action =
         new PrivilegedExceptionAction<ListLabelsResponse>() {
+      @Override
       public ListLabelsResponse run() throws Exception {
         ListLabelsResponse response = null;
         try (Connection conn = ConnectionFactory.createConnection(conf)) {
@@ -200,6 +208,7 @@ public class TestVisibilityLabelsWithDefaultVisLabelService extends TestVisibili
   public void testListLabelsWithRegEx() throws Throwable {
     PrivilegedExceptionAction<ListLabelsResponse> action =
         new PrivilegedExceptionAction<ListLabelsResponse>() {
+      @Override
       public ListLabelsResponse run() throws Exception {
         ListLabelsResponse response = null;
         try (Connection conn = ConnectionFactory.createConnection(conf)) {
@@ -218,7 +227,7 @@ public class TestVisibilityLabelsWithDefaultVisLabelService extends TestVisibili
     SUPERUSER.runAs(action);
   }
 
-  @Test(timeout = 60 * 1000)
+  @Test
   public void testVisibilityLabelsOnWALReplay() throws Exception {
     final TableName tableName = TableName.valueOf(TEST_NAME.getMethodName());
     try (Table table = createTableAndWriteDataWithLabels(tableName,

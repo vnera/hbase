@@ -22,9 +22,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -43,7 +43,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -155,14 +154,14 @@ public abstract class AbstractTestWALReplay {
     this.hbaseRootDir = FSUtils.getRootDir(this.conf);
     this.oldLogDir = new Path(this.hbaseRootDir, HConstants.HREGION_OLDLOGDIR_NAME);
     String serverName =
-        ServerName.valueOf(currentTest.getMethodName() + "-manual", 16010,
-            System.currentTimeMillis()).toString();
+      ServerName.valueOf(currentTest.getMethodName() + "-manual", 16010, System.currentTimeMillis())
+          .toString();
     this.logName = AbstractFSWALProvider.getWALDirectoryName(serverName);
     this.logDir = new Path(this.hbaseRootDir, logName);
     if (TEST_UTIL.getDFSCluster().getFileSystem().exists(this.hbaseRootDir)) {
       TEST_UTIL.getDFSCluster().getFileSystem().delete(this.hbaseRootDir, true);
     }
-    this.wals = new WALFactory(conf, null, currentTest.getMethodName());
+    this.wals = new WALFactory(conf, currentTest.getMethodName());
   }
 
   @After
@@ -705,9 +704,8 @@ public abstract class AbstractTestWALReplay {
     try {
       region.flush(true);
       fail("Injected exception hasn't been thrown");
-    } catch (Throwable t) {
-      LOG.info("Expected simulated exception when flushing region,"
-          + t.getMessage());
+    } catch (IOException e) {
+      LOG.info("Expected simulated exception when flushing region, {}", e.getMessage());
       // simulated to abort server
       Mockito.doReturn(true).when(rsServices).isAborted();
       region.setClosing(false); // region normally does not accept writes after
@@ -928,8 +926,7 @@ public abstract class AbstractTestWALReplay {
    * testcase for https://issues.apache.org/jira/browse/HBASE-15252
    */
   @Test
-  public void testDatalossWhenInputError() throws IOException, InstantiationException,
-      IllegalAccessException {
+  public void testDatalossWhenInputError() throws Exception {
     final TableName tableName = TableName.valueOf("testDatalossWhenInputError");
     final HRegionInfo hri = createBasic3FamilyHRegionInfo(tableName);
     final Path basedir = FSUtils.getTableDir(this.hbaseRootDir, tableName);
@@ -964,7 +961,7 @@ public abstract class AbstractTestWALReplay {
     Class<? extends AbstractFSWALProvider.Reader> logReaderClass =
         conf.getClass("hbase.regionserver.hlog.reader.impl", ProtobufLogReader.class,
           AbstractFSWALProvider.Reader.class);
-    AbstractFSWALProvider.Reader reader = logReaderClass.newInstance();
+    AbstractFSWALProvider.Reader reader = logReaderClass.getDeclaredConstructor().newInstance();
     reader.init(this.fs, editFile, conf, stream);
     final long headerLength = stream.getPos();
     reader.close();
@@ -1108,7 +1105,7 @@ public abstract class AbstractTestWALReplay {
 
   // Flusher used in this test.  Keep count of how often we are called and
   // actually run the flush inside here.
-  class TestFlusher implements FlushRequester {
+  static class TestFlusher implements FlushRequester {
     private HRegion r;
 
     @Override

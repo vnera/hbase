@@ -21,14 +21,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
-
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.CoordinatedStateManager;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.LocalHBaseCluster;
-import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.MiniHBaseCluster.MiniHBaseClusterRegionServer;
+import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.master.LoadBalancer;
 import org.apache.hadoop.hbase.master.ServerManager;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
@@ -37,6 +36,7 @@ import org.apache.hadoop.hbase.util.JVMClusterUtil.RegionServerThread;
 import org.apache.zookeeper.KeeperException;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -44,6 +44,10 @@ import org.slf4j.LoggerFactory;
 
 @Category(MediumTests.class)
 public class TestRegionServerReportForDuty {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestRegionServerReportForDuty.class);
 
   private static final Logger LOG = LoggerFactory.getLogger(TestRegionServerReportForDuty.class);
 
@@ -77,7 +81,7 @@ public class TestRegionServerReportForDuty {
    * Tests region sever reportForDuty with backup master becomes primary master after
    * the first master goes away.
    */
-  @Test (timeout=180000)
+  @Test
   public void testReportForDutyWithMasterChange() throws Exception {
 
     // Start a master and wait for it to become the active/primary master.

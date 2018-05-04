@@ -18,6 +18,7 @@
 package org.apache.hadoop.hbase.procedure;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyListOf;
 import static org.mockito.Matchers.eq;
@@ -33,19 +34,20 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.hadoop.hbase.Abortable;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
-import org.apache.hadoop.hbase.testclassification.MasterTests;
-import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.errorhandling.ForeignException;
 import org.apache.hadoop.hbase.errorhandling.ForeignExceptionDispatcher;
 import org.apache.hadoop.hbase.errorhandling.TimeoutException;
 import org.apache.hadoop.hbase.procedure.Subprocedure.SubprocedureImpl;
+import org.apache.hadoop.hbase.testclassification.MasterTests;
+import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.mockito.Mockito;
@@ -55,6 +57,7 @@ import org.mockito.stubbing.Answer;
 import org.mockito.verification.VerificationMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 
 /**
@@ -62,6 +65,10 @@ import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
  */
 @Category({MasterTests.class, MediumTests.class})
 public class TestZKProcedure {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestZKProcedure.class);
 
   private static final Logger LOG = LoggerFactory.getLogger(TestZKProcedure.class);
   private static HBaseTestingUtility UTIL = new HBaseTestingUtility();
@@ -244,7 +251,7 @@ public class TestZKProcedure {
             Subprocedure r = ((Subprocedure) invocation.getMock());
             LOG.error("Remote commit failure, not propagating error:" + remoteCause);
             comms.receiveAbortProcedure(r.getName(), remoteCause);
-            assertEquals(r.isComplete(), true);
+            assertTrue(r.isComplete());
             // don't complete the error phase until the coordinator has gotten the error
             // notification (which ensures that we never progress past prepare)
             try {

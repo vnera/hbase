@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.TableName;
@@ -47,6 +48,7 @@ import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.wal.WALFactory;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -59,6 +61,11 @@ import org.mockito.Mockito;
  */
 @Category({RegionServerTests.class, MediumTests.class})
 public class TestCompactionArchiveConcurrentClose {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestCompactionArchiveConcurrentClose.class);
+
   public HBaseTestingUtility testUtil;
 
   private Path testDir;
@@ -87,7 +94,7 @@ public class TestCompactionArchiveConcurrentClose {
 
     TableName tableName = TableName.valueOf(name.getMethodName());
     TableDescriptor htd = TableDescriptorBuilder.newBuilder(tableName)
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.of(fam)).build();
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.of(fam)).build();
     RegionInfo info = RegionInfoBuilder.newBuilder(tableName).build();
     HRegion region = initHRegion(htd, info);
     RegionServerServices rss = mock(RegionServerServices.class);
@@ -125,6 +132,7 @@ public class TestCompactionArchiveConcurrentClose {
 
     // now run the cleaner with a concurrent close
     Thread cleanerThread = new Thread() {
+      @Override
       public void run() {
         cleaner.chore();
       }
@@ -138,6 +146,7 @@ public class TestCompactionArchiveConcurrentClose {
     }
     final AtomicReference<Exception> closeException = new AtomicReference<>();
     Thread closeThread = new Thread() {
+      @Override
       public void run() {
         // wait for the chore to complete and call close
         try {
@@ -166,7 +175,7 @@ public class TestCompactionArchiveConcurrentClose {
     ChunkCreator.initialize(MemStoreLABImpl.CHUNK_SIZE_DEFAULT, false, 0, 0, 0, null);
     final Configuration walConf = new Configuration(conf);
     FSUtils.setRootDir(walConf, tableDir);
-    final WALFactory wals = new WALFactory(walConf, null, "log_" + info.getEncodedName());
+    final WALFactory wals = new WALFactory(walConf, "log_" + info.getEncodedName());
     HRegion region = new HRegion(fs, wals.getWAL(info), conf, htd, null);
 
     region.initialize();

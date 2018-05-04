@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -39,13 +38,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.ChoreService;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestCase;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
@@ -73,6 +72,7 @@ import org.apache.hadoop.hbase.wal.WAL;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -81,12 +81,16 @@ import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
-
 /**
  * Test compaction framework and common functions
  */
 @Category({RegionServerTests.class, MediumTests.class})
 public class TestCompaction {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestCompaction.class);
+
   @Rule public TestName name = new TestName();
   private static final HBaseTestingUtility UTIL = HBaseTestingUtility.createLocalHTU();
   protected Configuration conf = UTIL.getConfiguration();
@@ -116,7 +120,8 @@ public class TestCompaction {
     // Increment the least significant character so we get to next row.
     secondRowBytes[START_KEY_BYTES.length - 1]++;
     thirdRowBytes = START_KEY_BYTES.clone();
-    thirdRowBytes[START_KEY_BYTES.length - 1] += 2;
+    thirdRowBytes[START_KEY_BYTES.length - 1] =
+        (byte) (thirdRowBytes[START_KEY_BYTES.length - 1] + 2);
   }
 
   @Before
@@ -213,7 +218,7 @@ public class TestCompaction {
       final int ttl = 1000;
       for (HStore store : this.r.stores.values()) {
         ScanInfo old = store.getScanInfo();
-        ScanInfo si = old.customize(old.getMaxVersions(), ttl);
+        ScanInfo si = old.customize(old.getMaxVersions(), ttl, old.getKeepDeletedCells());
         store.setScanInfo(si);
       }
       Thread.sleep(ttl);
@@ -264,7 +269,7 @@ public class TestCompaction {
     FileSystem fs = store.getFileSystem();
     // default compaction policy created one and only one new compacted file
     Path dstPath = store.getRegionFileSystem().createTempName();
-    FSDataOutputStream stream = fs.create(dstPath, null, true, 512, (short)3, (long)1024, null);
+    FSDataOutputStream stream = fs.create(dstPath, null, true, 512, (short)3, 1024L, null);
     stream.writeChars("CORRUPT FILE!!!!");
     stream.close();
     Path origPath = store.getRegionFileSystem().commitStoreFile(
@@ -390,7 +395,7 @@ public class TestCompaction {
   class StoreMockMaker extends StatefulStoreMockMaker {
     public ArrayList<HStoreFile> compacting = new ArrayList<>();
     public ArrayList<HStoreFile> notCompacting = new ArrayList<>();
-    private ArrayList<Integer> results;
+    private final ArrayList<Integer> results;
 
     public StoreMockMaker(ArrayList<Integer> results) {
       this.results = results;

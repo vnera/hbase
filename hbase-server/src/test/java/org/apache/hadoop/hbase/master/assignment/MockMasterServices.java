@@ -41,12 +41,14 @@ import org.apache.hadoop.hbase.client.HConnectionTestingUtility;
 import org.apache.hadoop.hbase.client.RegionInfoBuilder;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
+import org.apache.hadoop.hbase.client.TableState;
 import org.apache.hadoop.hbase.master.LoadBalancer;
 import org.apache.hadoop.hbase.master.MasterFileSystem;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.master.MasterWalManager;
 import org.apache.hadoop.hbase.master.MockNoopMasterServices;
 import org.apache.hadoop.hbase.master.ServerManager;
+import org.apache.hadoop.hbase.master.TableStateManager;
 import org.apache.hadoop.hbase.master.balancer.LoadBalancerFactory;
 import org.apache.hadoop.hbase.master.procedure.MasterProcedureConstants;
 import org.apache.hadoop.hbase.master.procedure.MasterProcedureEnv;
@@ -82,6 +84,7 @@ public class MockMasterServices extends MockNoopMasterServices {
   private final MasterFileSystem fileSystemManager;
   private final MasterWalManager walManager;
   private final AssignmentManager assignmentManager;
+  private final TableStateManager tableStateManager;
 
   private MasterProcedureEnv procedureEnv;
   private ProcedureExecutor<MasterProcedureEnv> procedureExecutor;
@@ -103,14 +106,16 @@ public class MockMasterServices extends MockNoopMasterServices {
     super(conf);
     this.regionsToRegionServers = regionsToRegionServers;
     Superusers.initialize(conf);
-    this.fileSystemManager = new MasterFileSystem(this);
+    this.fileSystemManager = new MasterFileSystem(conf);
     this.walManager = new MasterWalManager(this);
     // Mock an AM.
     this.assignmentManager = new AssignmentManager(this, new MockRegionStateStore(this)) {
+      @Override
       public boolean isTableEnabled(final TableName tableName) {
         return true;
       }
 
+      @Override
       public boolean isTableDisabled(final TableName tableName) {
         return false;
       }
@@ -130,6 +135,10 @@ public class MockMasterServices extends MockNoopMasterServices {
     };
     this.balancer = LoadBalancerFactory.getLoadBalancer(conf);
     this.serverManager = new ServerManager(this);
+    this.tableStateManager = Mockito.mock(TableStateManager.class);
+    Mockito.when(this.tableStateManager.getTableState(Mockito.any())).
+        thenReturn(new TableState(TableName.valueOf("AnyTableNameSetInMockMasterServcies"),
+            TableState.State.ENABLED));
 
     // Mock up a Client Interface
     ClientProtos.ClientService.BlockingInterface ri =
@@ -286,6 +295,11 @@ public class MockMasterServices extends MockNoopMasterServices {
   }
 
   @Override
+  public TableStateManager getTableStateManager() {
+    return tableStateManager;
+  }
+
+  @Override
   public ClusterConnection getConnection() {
     return this.connection;
   }
@@ -303,14 +317,6 @@ public class MockMasterServices extends MockNoopMasterServices {
   private static class MockRegionStateStore extends RegionStateStore {
     public MockRegionStateStore(final MasterServices master) {
       super(master);
-    }
-
-    @Override
-    public void start() throws IOException {
-    }
-
-    @Override
-    public void stop() {
     }
 
     @Override
@@ -333,15 +339,10 @@ public class MockMasterServices extends MockNoopMasterServices {
         return null;
       }
 
-      @Override public Map<String, TableDescriptor> getAllDescriptors() throws IOException {
-        // noop
-        return null;
-      }
-
       @Override
       public TableDescriptor get(TableName tablename) throws IOException {
         TableDescriptorBuilder builder = TableDescriptorBuilder.newBuilder(tablename);
-        builder.addColumnFamily(ColumnFamilyDescriptorBuilder.of(DEFAULT_COLUMN_FAMILY_NAME));
+        builder.setColumnFamily(ColumnFamilyDescriptorBuilder.of(DEFAULT_COLUMN_FAMILY_NAME));
         return builder.build();
       }
 

@@ -35,6 +35,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.ClusterMetrics;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
@@ -76,6 +77,7 @@ import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.apache.hadoop.hbase.zookeeper.ZNodePaths;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -83,6 +85,10 @@ import org.slf4j.LoggerFactory;
 
 @Category({ReplicationTests.class, LargeTests.class})
 public class TestMasterReplication {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestMasterReplication.class);
 
   private static final Logger LOG = LoggerFactory.getLogger(TestReplicationBase.class);
 
@@ -130,11 +136,11 @@ public class TestMasterReplication {
         CoprocessorHost.USER_REGION_COPROCESSOR_CONF_KEY,
         CoprocessorCounter.class.getName());
     table = TableDescriptorBuilder.newBuilder(tableName)
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(famName)
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(famName)
             .setScope(HConstants.REPLICATION_SCOPE_GLOBAL).build())
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(famName1)
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(famName1)
             .setScope(HConstants.REPLICATION_SCOPE_GLOBAL).build())
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.of(noRepfamName)).build();
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.of(noRepfamName)).build();
   }
 
   /**
@@ -143,7 +149,7 @@ public class TestMasterReplication {
    * replicated. It also tests that the puts and deletes are not replicated back
    * to the originating cluster.
    */
-  @Test(timeout = 300000)
+  @Test
   public void testCyclicReplication1() throws Exception {
     LOG.info("testSimplePutDelete");
     int numClusters = 2;
@@ -173,7 +179,7 @@ public class TestMasterReplication {
    * {@link BaseReplicationEndpoint#canReplicateToSameCluster()} returns false, so the
    * ReplicationSource should terminate, and no further logs should get enqueued
    */
-  @Test(timeout = 300000)
+  @Test
   public void testLoopedReplication() throws Exception {
     LOG.info("testLoopedReplication");
     startMiniClusters(1);
@@ -210,7 +216,7 @@ public class TestMasterReplication {
    * It tests the replication scenario involving 0 -> 1 -> 0. It does it by bulk loading a set of
    * HFiles to a table in each cluster, checking if it's replicated.
    */
-  @Test(timeout = 300000)
+  @Test
   public void testHFileCyclicReplication() throws Exception {
     LOG.info("testHFileCyclicReplication");
     int numClusters = 2;
@@ -266,7 +272,7 @@ public class TestMasterReplication {
    * originating from itself and also the edits that it received using replication from a different
    * cluster. The scenario is explained in HBASE-9158
    */
-  @Test(timeout = 300000)
+  @Test
   public void testCyclicReplication2() throws Exception {
     LOG.info("testCyclicReplication2");
     int numClusters = 3;
@@ -318,7 +324,7 @@ public class TestMasterReplication {
    * It tests the multi slave hfile replication scenario involving 0 -> 1, 2. It does it by bulk
    * loading a set of HFiles to a table in master cluster, checking if it's replicated in its peers.
    */
-  @Test(timeout = 300000)
+  @Test
   public void testHFileMultiSlaveReplication() throws Exception {
     LOG.info("testHFileMultiSlaveReplication");
     int numClusters = 3;
@@ -376,7 +382,7 @@ public class TestMasterReplication {
    * families. It does it by bulk loading a set of HFiles belonging to both the CFs of table and set
    * only one CF data to replicate.
    */
-  @Test(timeout = 300000)
+  @Test
   public void testHFileReplicationForConfiguredTableCfs() throws Exception {
     LOG.info("testHFileReplicationForConfiguredTableCfs");
     int numClusters = 2;
@@ -430,7 +436,7 @@ public class TestMasterReplication {
   /**
    * Tests cyclic replication scenario of 0 -> 1 -> 2 -> 1.
    */
-  @Test(timeout = 300000)
+  @Test
   public void testCyclicReplication3() throws Exception {
     LOG.info("testCyclicReplication2");
     int numClusters = 3;

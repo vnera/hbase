@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -19,13 +18,11 @@
 package org.apache.hadoop.hbase.thrift2;
 
 import static java.nio.ByteBuffer.wrap;
-
 import static org.apache.hadoop.hbase.thrift2.ThriftUtilities.deleteFromThrift;
 import static org.apache.hadoop.hbase.thrift2.ThriftUtilities.getFromThrift;
 import static org.apache.hadoop.hbase.thrift2.ThriftUtilities.incrementFromThrift;
 import static org.apache.hadoop.hbase.thrift2.ThriftUtilities.putFromThrift;
 import static org.apache.hadoop.hbase.thrift2.ThriftUtilities.scanFromThrift;
-
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -45,12 +42,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CompatibilityFactory;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -99,13 +95,16 @@ import org.apache.thrift.TException;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
+import org.apache.hbase.thirdparty.org.apache.commons.collections4.CollectionUtils;
 
 /**
  * Unit testing for ThriftServer.HBaseHandler, a part of the org.apache.hadoop.hbase.thrift2
@@ -113,6 +112,10 @@ import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
  */
 @Category({ClientTests.class, MediumTests.class})
 public class TestThriftHBaseServiceHandler {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestThriftHBaseServiceHandler.class);
 
   private static final Logger LOG = LoggerFactory.getLogger(TestThriftHBaseServiceHandler.class);
   private static final HBaseTestingUtility UTIL = new HBaseTestingUtility();
@@ -199,7 +202,7 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testExists() throws TIOError, TException {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testExists".getBytes();
+    byte[] rowName = Bytes.toBytes("testExists");
     ByteBuffer table = wrap(tableAname);
 
     TGet get = new TGet(wrap(rowName));
@@ -219,8 +222,8 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testExistsAll() throws TIOError, TException {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName1 = "testExistsAll1".getBytes();
-    byte[] rowName2 = "testExistsAll2".getBytes();
+    byte[] rowName1 = Bytes.toBytes("testExistsAll1");
+    byte[] rowName2 = Bytes.toBytes("testExistsAll2");
     ByteBuffer table = wrap(tableAname);
 
     List<TGet> gets = new ArrayList<>();
@@ -247,7 +250,7 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testPutGet() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testPutGet".getBytes();
+    byte[] rowName = Bytes.toBytes("testPutGet");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValues = new ArrayList<>(2);
@@ -271,8 +274,8 @@ public class TestThriftHBaseServiceHandler {
   public void testPutGetMultiple() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
     ByteBuffer table = wrap(tableAname);
-    byte[] rowName1 = "testPutGetMultiple1".getBytes();
-    byte[] rowName2 = "testPutGetMultiple2".getBytes();
+    byte[] rowName1 = Bytes.toBytes("testPutGetMultiple1");
+    byte[] rowName2 = Bytes.toBytes("testPutGetMultiple2");
 
     List<TColumnValue> columnValues = new ArrayList<>(2);
     columnValues.add(new TColumnValue(wrap(familyAname), wrap(qualifierAname), wrap(valueAname)));
@@ -301,8 +304,8 @@ public class TestThriftHBaseServiceHandler {
   public void testDeleteMultiple() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
     ByteBuffer table = wrap(tableAname);
-    byte[] rowName1 = "testDeleteMultiple1".getBytes();
-    byte[] rowName2 = "testDeleteMultiple2".getBytes();
+    byte[] rowName1 = Bytes.toBytes("testDeleteMultiple1");
+    byte[] rowName2 = Bytes.toBytes("testDeleteMultiple2");
 
     List<TColumnValue> columnValues = new ArrayList<>(2);
     columnValues.add(new TColumnValue(wrap(familyAname), wrap(qualifierAname), wrap(valueAname)));
@@ -328,7 +331,7 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testDelete() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testDelete".getBytes();
+    byte[] rowName = Bytes.toBytes("testDelete");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValues = new ArrayList<>(2);
@@ -365,7 +368,7 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testDeleteAllTimestamps() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testDeleteAllTimestamps".getBytes();
+    byte[] rowName = Bytes.toBytes("testDeleteAllTimestamps");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValues = new ArrayList<>(1);
@@ -405,7 +408,7 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testDeleteSingleTimestamp() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testDeleteSingleTimestamp".getBytes();
+    byte[] rowName = Bytes.toBytes("testDeleteSingleTimestamp");
     ByteBuffer table = wrap(tableAname);
 
     long timestamp1 = System.currentTimeMillis() - 10;
@@ -450,13 +453,13 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testDeleteFamily() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testDeleteFamily".getBytes();
+    byte[] rowName = Bytes.toBytes("testDeleteFamily");
     ByteBuffer table = wrap(tableAname);
 
     long timestamp1 = System.currentTimeMillis() - 10;
     long timestamp2 = System.currentTimeMillis();
 
-    List<TColumnValue> columnValues = new ArrayList<TColumnValue>();
+    List<TColumnValue> columnValues = new ArrayList<>();
     TColumnValue columnValueA =
         new TColumnValue(wrap(familyAname), wrap(qualifierAname), wrap(valueAname));
     columnValueA.setTimestamp(timestamp1);
@@ -475,7 +478,7 @@ public class TestThriftHBaseServiceHandler {
     assertEquals(2, result.getColumnValuesSize());
 
     TDelete delete = new TDelete(wrap(rowName));
-    List<TColumn> deleteColumns = new ArrayList<TColumn>();
+    List<TColumn> deleteColumns = new ArrayList<>();
     TColumn deleteColumn = new TColumn(wrap(familyAname));
     deleteColumns.add(deleteColumn);
     delete.setColumns(deleteColumns);
@@ -492,13 +495,13 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testDeleteFamilyVersion() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testDeleteFamilyVersion".getBytes();
+    byte[] rowName = Bytes.toBytes("testDeleteFamilyVersion");
     ByteBuffer table = wrap(tableAname);
 
     long timestamp1 = System.currentTimeMillis() - 10;
     long timestamp2 = System.currentTimeMillis();
 
-    List<TColumnValue> columnValues = new ArrayList<TColumnValue>();
+    List<TColumnValue> columnValues = new ArrayList<>();
     TColumnValue columnValueA =
         new TColumnValue(wrap(familyAname), wrap(qualifierAname), wrap(valueAname));
     columnValueA.setTimestamp(timestamp1);
@@ -517,7 +520,7 @@ public class TestThriftHBaseServiceHandler {
     assertEquals(2, result.getColumnValuesSize());
 
     TDelete delete = new TDelete(wrap(rowName));
-    List<TColumn> deleteColumns = new ArrayList<TColumn>();
+    List<TColumn> deleteColumns = new ArrayList<>();
     TColumn deleteColumn = new TColumn(wrap(familyAname));
     deleteColumn.setTimestamp(timestamp1);
     deleteColumns.add(deleteColumn);
@@ -536,7 +539,7 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testIncrement() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testIncrement".getBytes();
+    byte[] rowName = Bytes.toBytes("testIncrement");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValues = new ArrayList<>(1);
@@ -563,7 +566,7 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testAppend() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testAppend".getBytes();
+    byte[] rowName = Bytes.toBytes("testAppend");
     ByteBuffer table = wrap(tableAname);
     byte[] v1 = Bytes.toBytes("42");
     byte[] v2 = Bytes.toBytes("23");
@@ -590,13 +593,11 @@ public class TestThriftHBaseServiceHandler {
   /**
    * check that checkAndPut fails if the cell does not exist, then put in the cell, then check
    * that the checkAndPut succeeds.
-   *
-   * @throws Exception
    */
   @Test
   public void testCheckAndPut() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testCheckAndPut".getBytes();
+    byte[] rowName = Bytes.toBytes("testCheckAndPut");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValuesA = new ArrayList<>(1);
@@ -637,13 +638,11 @@ public class TestThriftHBaseServiceHandler {
   /**
    * check that checkAndDelete fails if the cell does not exist, then put in the cell, then
    * check that the checkAndDelete succeeds.
-   *
-   * @throws Exception
    */
   @Test
   public void testCheckAndDelete() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testCheckAndDelete".getBytes();
+    byte[] rowName = Bytes.toBytes("testCheckAndDelete");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValuesA = new ArrayList<>(1);
@@ -694,7 +693,7 @@ public class TestThriftHBaseServiceHandler {
     List<TColumnValue> columnValues = new ArrayList<>(1);
     columnValues.add(columnValue);
     for (int i = 0; i < 10; i++) {
-      TPut put = new TPut(wrap(("testScan" + i).getBytes()), columnValues);
+      TPut put = new TPut(wrap(Bytes.toBytes("testScan" + i)), columnValues);
       handler.put(table, put);
     }
 
@@ -706,8 +705,8 @@ public class TestThriftHBaseServiceHandler {
     column.setQualifier(qualifierAname);
     columns.add(column);
     scan.setColumns(columns);
-    scan.setStartRow("testScan".getBytes());
-    scan.setStopRow("testScan\uffff".getBytes());
+    scan.setStartRow(Bytes.toBytes("testScan"));
+    scan.setStopRow(Bytes.toBytes("testScan\uffff"));
 
     // get scanner and rows
     int scanId = handler.openScanner(table, scan);
@@ -715,7 +714,7 @@ public class TestThriftHBaseServiceHandler {
     assertEquals(10, results.size());
     for (int i = 0; i < 10; i++) {
       // check if the rows are returned and in order
-      assertArrayEquals(("testScan" + i).getBytes(), results.get(i).getRow());
+      assertArrayEquals(Bytes.toBytes("testScan" + i), results.get(i).getRow());
     }
 
     // check that we are at the end of the scan
@@ -734,7 +733,6 @@ public class TestThriftHBaseServiceHandler {
   /**
    * Tests keeping a HBase scanner alive for long periods of time. Each call to getScannerRow()
    * should reset the ConnectionCache timeout for the scanner's connection
-   * @throws Exception
    */
   @Test
   public void testLongLivedScan() throws Exception {
@@ -755,7 +753,7 @@ public class TestThriftHBaseServiceHandler {
     List<TColumnValue> columnValues = new ArrayList<>(1);
     columnValues.add(columnValue);
     for (int i = 0; i < numTrials; i++) {
-      TPut put = new TPut(wrap(("testScan" + i).getBytes()), columnValues);
+      TPut put = new TPut(wrap(Bytes.toBytes("testScan" + i)), columnValues);
       handler.put(table, put);
     }
 
@@ -767,8 +765,8 @@ public class TestThriftHBaseServiceHandler {
     column.setQualifier(qualifierAname);
     columns.add(column);
     scan.setColumns(columns);
-    scan.setStartRow("testScan".getBytes());
-    scan.setStopRow("testScan\uffff".getBytes());
+    scan.setStartRow(Bytes.toBytes("testScan"));
+    scan.setStopRow(Bytes.toBytes("testScan\uffff"));
     // Prevent the scanner from caching results
     scan.setCaching(1);
 
@@ -777,7 +775,7 @@ public class TestThriftHBaseServiceHandler {
     for (int i = 0; i < numTrials; i++) {
       // Make sure that the Scanner doesn't throw an exception after the ConnectionCache timeout
       List<TResult> results = handler.getScannerRows(scanId, 1);
-      assertArrayEquals(("testScan" + i).getBytes(), results.get(0).getRow());
+      assertArrayEquals(Bytes.toBytes("testScan" + i), results.get(0).getRow());
       Thread.sleep(trialPause);
     }
   }
@@ -793,7 +791,7 @@ public class TestThriftHBaseServiceHandler {
     List<TColumnValue> columnValues = new ArrayList<>(1);
     columnValues.add(columnValue);
     for (int i = 0; i < 10; i++) {
-      TPut put = new TPut(wrap(("testReverseScan" + i).getBytes()), columnValues);
+      TPut put = new TPut(wrap(Bytes.toBytes("testReverseScan" + i)), columnValues);
       handler.put(table, put);
     }
 
@@ -806,8 +804,8 @@ public class TestThriftHBaseServiceHandler {
     column.setQualifier(qualifierAname);
     columns.add(column);
     scan.setColumns(columns);
-    scan.setStartRow("testReverseScan\uffff".getBytes());
-    scan.setStopRow("testReverseScan".getBytes());
+    scan.setStartRow(Bytes.toBytes("testReverseScan\uffff"));
+    scan.setStopRow(Bytes.toBytes("testReverseScan"));
 
     // get scanner and rows
     int scanId = handler.openScanner(table, scan);
@@ -815,7 +813,7 @@ public class TestThriftHBaseServiceHandler {
     assertEquals(10, results.size());
     for (int i = 0; i < 10; i++) {
       // check if the rows are returned and in order
-      assertArrayEquals(("testReverseScan" + (9 - i)).getBytes(), results.get(i).getRow());
+      assertArrayEquals(Bytes.toBytes("testReverseScan" + (9 - i)), results.get(i).getRow());
     }
 
     // check that we are at the end of the scan
@@ -842,7 +840,7 @@ public class TestThriftHBaseServiceHandler {
     List<TColumnValue> columnValues = new ArrayList<>(1);
     columnValues.add(columnValue);
     for (int i = 0; i < 10; i++) {
-      TPut put = new TPut(wrap(("testScanWithFilter" + i).getBytes()), columnValues);
+      TPut put = new TPut(wrap(Bytes.toBytes("testScanWithFilter" + i)), columnValues);
       handler.put(table, put);
     }
 
@@ -854,10 +852,10 @@ public class TestThriftHBaseServiceHandler {
     column.setQualifier(qualifierAname);
     columns.add(column);
     scan.setColumns(columns);
-    scan.setStartRow("testScanWithFilter".getBytes());
-    scan.setStopRow("testScanWithFilter\uffff".getBytes());
+    scan.setStartRow(Bytes.toBytes("testScanWithFilter"));
+    scan.setStopRow(Bytes.toBytes("testScanWithFilter\uffff"));
     // only get the key part
-    scan.setFilterString(wrap(("KeyOnlyFilter()").getBytes()));
+    scan.setFilterString(wrap(Bytes.toBytes("KeyOnlyFilter()")));
 
     // get scanner and rows
     int scanId = handler.openScanner(table, scan);
@@ -865,7 +863,7 @@ public class TestThriftHBaseServiceHandler {
     assertEquals(10, results.size());
     for (int i = 0; i < 10; i++) {
       // check if the rows are returned and in order
-      assertArrayEquals(("testScanWithFilter" + i).getBytes(), results.get(i).getRow());
+      assertArrayEquals(Bytes.toBytes("testScanWithFilter" + i), results.get(i).getRow());
       // check that the value is indeed stripped by the filter
       assertEquals(0, results.get(i).getColumnValues().get(0).getValue().length);
     }
@@ -900,7 +898,7 @@ public class TestThriftHBaseServiceHandler {
       List<TColumnValue> columnValues = new ArrayList<>(2);
       columnValues.add(familyAColumnValue);
       columnValues.add(familyBColumnValue);
-      TPut put = new TPut(wrap(("testScanWithColumnFamilyTimeRange" + i).getBytes()),
+      TPut put = new TPut(wrap(Bytes.toBytes("testScanWithColumnFamilyTimeRange" + i)),
           columnValues);
       handler.put(table, put);
     }
@@ -952,17 +950,17 @@ public class TestThriftHBaseServiceHandler {
     // insert data
     TColumnValue columnValue = new TColumnValue(wrap(familyAname), wrap(qualifierAname),
             wrap(valueAname));
-    List<TColumnValue> columnValues = new ArrayList<TColumnValue>();
+    List<TColumnValue> columnValues = new ArrayList<>();
     columnValues.add(columnValue);
     for (int i = 0; i < 10; i++) {
-      TPut put = new TPut(wrap(("testSmallScan" + i).getBytes()), columnValues);
+      TPut put = new TPut(wrap(Bytes.toBytes("testSmallScan" + i)), columnValues);
       handler.put(table, put);
     }
 
     // small scan instance
     TScan scan = new TScan();
-    scan.setStartRow("testSmallScan".getBytes());
-    scan.setStopRow("testSmallScan\uffff".getBytes());
+    scan.setStartRow(Bytes.toBytes("testSmallScan"));
+    scan.setStopRow(Bytes.toBytes("testSmallScan\uffff"));
     scan.setReadType(TReadType.PREAD);
     scan.setCaching(2);
 
@@ -972,7 +970,7 @@ public class TestThriftHBaseServiceHandler {
     assertEquals(10, results.size());
     for (int i = 0; i < 10; i++) {
       // check if the rows are returned and in order
-      assertArrayEquals(("testSmallScan" + i).getBytes(), results.get(i).getRow());
+      assertArrayEquals(Bytes.toBytes("testSmallScan" + i), results.get(i).getRow());
     }
 
     // check that we are at the end of the scan
@@ -991,7 +989,7 @@ public class TestThriftHBaseServiceHandler {
   @Test
   public void testPutTTL() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testPutTTL".getBytes();
+    byte[] rowName = Bytes.toBytes("testPutTTL");
     ByteBuffer table = wrap(tableAname);
     List<TColumnValue> columnValues = new ArrayList<>(1);
 
@@ -1061,10 +1059,10 @@ public class TestThriftHBaseServiceHandler {
     for (int i = 0; i < 100; i++) {
       String colNum = pad(i, (byte) 3);
       TColumnValue columnValue = new TColumnValue(wrap(familyAname),
-        wrap(("col" + colNum).getBytes()), wrap(("val" + colNum).getBytes()));
+        wrap(Bytes.toBytes("col" + colNum)), wrap(Bytes.toBytes("val" + colNum)));
       columnValues.add(columnValue);
     }
-    TPut put = new TPut(wrap(("testScanWithBatchSize").getBytes()), columnValues);
+    TPut put = new TPut(wrap(Bytes.toBytes("testScanWithBatchSize")), columnValues);
     handler.put(table, put);
 
     // create scan instance
@@ -1074,8 +1072,8 @@ public class TestThriftHBaseServiceHandler {
     column.setFamily(familyAname);
     columns.add(column);
     scan.setColumns(columns);
-    scan.setStartRow("testScanWithBatchSize".getBytes());
-    scan.setStopRow("testScanWithBatchSize\uffff".getBytes());
+    scan.setStartRow(Bytes.toBytes("testScanWithBatchSize"));
+    scan.setStopRow(Bytes.toBytes("testScanWithBatchSize\uffff"));
     // set batch size to 10 columns per call
     scan.setBatchSize(10);
 
@@ -1093,7 +1091,7 @@ public class TestThriftHBaseServiceHandler {
       for (int y = 0; y < 10; y++) {
         int colNum = y + (10 * i);
         String colNumPad = pad(colNum, (byte) 3);
-        assertArrayEquals(("col" + colNumPad).getBytes(), cols.get(y).getQualifier());
+        assertArrayEquals(Bytes.toBytes("col" + colNumPad), cols.get(y).getQualifier());
       }
     }
 
@@ -1122,7 +1120,7 @@ public class TestThriftHBaseServiceHandler {
     columnValues.add(columnValue);
     for (int i = 0; i < 20; i++) {
       TPut put =
-          new TPut(wrap(("testGetScannerResults" + pad(i, (byte) 2)).getBytes()), columnValues);
+          new TPut(wrap(Bytes.toBytes("testGetScannerResults" + pad(i, (byte) 2))), columnValues);
       handler.put(table, put);
     }
 
@@ -1134,35 +1132,35 @@ public class TestThriftHBaseServiceHandler {
     column.setQualifier(qualifierAname);
     columns.add(column);
     scan.setColumns(columns);
-    scan.setStartRow("testGetScannerResults".getBytes());
+    scan.setStartRow(Bytes.toBytes("testGetScannerResults"));
 
     // get 5 rows and check the returned results
-    scan.setStopRow("testGetScannerResults05".getBytes());
+    scan.setStopRow(Bytes.toBytes("testGetScannerResults05"));
     List<TResult> results = handler.getScannerResults(table, scan, 5);
     assertEquals(5, results.size());
     for (int i = 0; i < 5; i++) {
       // check if the rows are returned and in order
-      assertArrayEquals(("testGetScannerResults" + pad(i, (byte) 2)).getBytes(), results.get(i)
+      assertArrayEquals(Bytes.toBytes("testGetScannerResults" + pad(i, (byte) 2)), results.get(i)
           .getRow());
     }
 
     // get 10 rows and check the returned results
-    scan.setStopRow("testGetScannerResults10".getBytes());
+    scan.setStopRow(Bytes.toBytes("testGetScannerResults10"));
     results = handler.getScannerResults(table, scan, 10);
     assertEquals(10, results.size());
     for (int i = 0; i < 10; i++) {
       // check if the rows are returned and in order
-      assertArrayEquals(("testGetScannerResults" + pad(i, (byte) 2)).getBytes(), results.get(i)
+      assertArrayEquals(Bytes.toBytes("testGetScannerResults" + pad(i, (byte) 2)), results.get(i)
           .getRow());
     }
 
     // get 20 rows and check the returned results
-    scan.setStopRow("testGetScannerResults20".getBytes());
+    scan.setStopRow(Bytes.toBytes("testGetScannerResults20"));
     results = handler.getScannerResults(table, scan, 20);
     assertEquals(20, results.size());
     for (int i = 0; i < 20; i++) {
       // check if the rows are returned and in order
-      assertArrayEquals(("testGetScannerResults" + pad(i, (byte) 2)).getBytes(), results.get(i)
+      assertArrayEquals(Bytes.toBytes("testGetScannerResults" + pad(i, (byte) 2)), results.get(i)
           .getRow());
     }
 
@@ -1170,14 +1168,14 @@ public class TestThriftHBaseServiceHandler {
     scan = new TScan();
     scan.setColumns(columns);
     scan.setReversed(true);
-    scan.setStartRow("testGetScannerResults20".getBytes());
-    scan.setStopRow("testGetScannerResults".getBytes());
+    scan.setStartRow(Bytes.toBytes("testGetScannerResults20"));
+    scan.setStopRow(Bytes.toBytes("testGetScannerResults"));
     results = handler.getScannerResults(table, scan, 20);
     assertEquals(20, results.size());
     for (int i = 0; i < 20; i++) {
       // check if the rows are returned and in order
-      assertArrayEquals(("testGetScannerResults" + pad(19 - i, (byte) 2)).getBytes(), results.get(i)
-          .getRow());
+      assertArrayEquals(Bytes.toBytes("testGetScannerResults" + pad(19 - i, (byte) 2)),
+          results.get(i).getRow());
     }
  }
 
@@ -1197,7 +1195,7 @@ public class TestThriftHBaseServiceHandler {
     ThriftHBaseServiceHandler hbaseHandler = createHandler();
     THBaseService.Iface handler =
         ThriftHBaseServiceHandler.newInstance(hbaseHandler, metrics);
-    byte[] rowName = "testMetrics".getBytes();
+    byte[] rowName = Bytes.toBytes("testMetrics");
     ByteBuffer table = wrap(tableAname);
 
     TGet get = new TGet(wrap(rowName));
@@ -1342,9 +1340,9 @@ public class TestThriftHBaseServiceHandler {
 
   @Test
   public void testAttribute() throws Exception {
-    byte[] rowName = "testAttribute".getBytes();
-    byte[] attributeKey = "attribute1".getBytes();
-    byte[] attributeValue = "value1".getBytes();
+    byte[] rowName = Bytes.toBytes("testAttribute");
+    byte[] attributeKey = Bytes.toBytes("attribute1");
+    byte[] attributeValue = Bytes.toBytes("value1");
     Map<ByteBuffer, ByteBuffer> attributes = new HashMap<>();
     attributes.put(wrap(attributeKey), wrap(attributeValue));
 
@@ -1381,13 +1379,11 @@ public class TestThriftHBaseServiceHandler {
   /**
    * Put valueA to a row, make sure put has happened, then create a mutation object to put valueB
    * and delete ValueA, then check that the row value is only valueB.
-   *
-   * @throws Exception
    */
   @Test
   public void testMutateRow() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
-    byte[] rowName = "testMutateRow".getBytes();
+    byte[] rowName = Bytes.toBytes("testMutateRow");
     ByteBuffer table = wrap(tableAname);
 
     List<TColumnValue> columnValuesA = new ArrayList<>(1);
@@ -1445,12 +1441,10 @@ public class TestThriftHBaseServiceHandler {
    * Create TPut, TDelete , TIncrement objects, set durability then call ThriftUtility
    * functions to get Put , Delete and Increment respectively. Use getDurability to make sure
    * the returned objects have the appropriate durability setting.
-   *
-   * @throws Exception
    */
   @Test
   public void testDurability() throws Exception {
-    byte[] rowName = "testDurability".getBytes();
+    byte[] rowName = Bytes.toBytes("testDurability");
     List<TColumnValue> columnValues = new ArrayList<>(1);
     columnValues.add(new TColumnValue(wrap(familyAname), wrap(qualifierAname), wrap(valueAname)));
 
@@ -1460,61 +1454,61 @@ public class TestThriftHBaseServiceHandler {
     TDelete tDelete = new TDelete(wrap(rowName));
     tDelete.setDurability(TDurability.SKIP_WAL);
     Delete delete = deleteFromThrift(tDelete);
-    assertEquals(delete.getDurability(), Durability.SKIP_WAL);
+    assertEquals(Durability.SKIP_WAL, delete.getDurability());
 
     tDelete.setDurability(TDurability.ASYNC_WAL);
     delete = deleteFromThrift(tDelete);
-    assertEquals(delete.getDurability(), Durability.ASYNC_WAL);
+    assertEquals(Durability.ASYNC_WAL, delete.getDurability());
 
     tDelete.setDurability(TDurability.SYNC_WAL);
     delete = deleteFromThrift(tDelete);
-    assertEquals(delete.getDurability(), Durability.SYNC_WAL);
+    assertEquals(Durability.SYNC_WAL, delete.getDurability());
 
     tDelete.setDurability(TDurability.FSYNC_WAL);
     delete = deleteFromThrift(tDelete);
-    assertEquals(delete.getDurability(), Durability.FSYNC_WAL);
+    assertEquals(Durability.FSYNC_WAL, delete.getDurability());
 
     TPut tPut = new TPut(wrap(rowName), columnValues);
     tPut.setDurability(TDurability.SKIP_WAL);
     Put put = putFromThrift(tPut);
-    assertEquals(put.getDurability(), Durability.SKIP_WAL);
+    assertEquals(Durability.SKIP_WAL, put.getDurability());
 
     tPut.setDurability(TDurability.ASYNC_WAL);
     put = putFromThrift(tPut);
-    assertEquals(put.getDurability(), Durability.ASYNC_WAL);
+    assertEquals(Durability.ASYNC_WAL, put.getDurability());
 
     tPut.setDurability(TDurability.SYNC_WAL);
     put = putFromThrift(tPut);
-    assertEquals(put.getDurability(), Durability.SYNC_WAL);
+    assertEquals(Durability.SYNC_WAL, put.getDurability());
 
     tPut.setDurability(TDurability.FSYNC_WAL);
     put = putFromThrift(tPut);
-    assertEquals(put.getDurability(), Durability.FSYNC_WAL);
+    assertEquals(Durability.FSYNC_WAL, put.getDurability());
 
     TIncrement tIncrement = new TIncrement(wrap(rowName), incrementColumns);
 
     tIncrement.setDurability(TDurability.SKIP_WAL);
     Increment increment = incrementFromThrift(tIncrement);
-    assertEquals(increment.getDurability(), Durability.SKIP_WAL);
+    assertEquals(Durability.SKIP_WAL, increment.getDurability());
 
     tIncrement.setDurability(TDurability.ASYNC_WAL);
     increment = incrementFromThrift(tIncrement);
-    assertEquals(increment.getDurability(), Durability.ASYNC_WAL);
+    assertEquals(Durability.ASYNC_WAL, increment.getDurability());
 
     tIncrement.setDurability(TDurability.SYNC_WAL);
     increment = incrementFromThrift(tIncrement);
-    assertEquals(increment.getDurability(), Durability.SYNC_WAL);
+    assertEquals(Durability.SYNC_WAL, increment.getDurability());
 
     tIncrement.setDurability(TDurability.FSYNC_WAL);
     increment = incrementFromThrift(tIncrement);
-    assertEquals(increment.getDurability(), Durability.FSYNC_WAL);
+    assertEquals(Durability.FSYNC_WAL, increment.getDurability());
   }
 
   @Test
   public void testCheckAndMutate() throws Exception {
     ThriftHBaseServiceHandler handler = createHandler();
     ByteBuffer table = wrap(tableAname);
-    ByteBuffer row = wrap("row".getBytes());
+    ByteBuffer row = wrap(Bytes.toBytes("row"));
     ByteBuffer family = wrap(familyAname);
     ByteBuffer qualifier = wrap(qualifierAname);
     ByteBuffer value = wrap(valueAname);

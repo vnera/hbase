@@ -17,6 +17,8 @@
  */
 package org.apache.hadoop.hbase.client;
 
+import java.io.IOException;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
@@ -25,15 +27,19 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-
 @Category(MediumTests.class)
 public class TestSmallReversedScanner {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestSmallReversedScanner.class);
+
   public static final Logger LOG = LoggerFactory.getLogger(TestSmallReversedScanner.class);
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
 
@@ -105,7 +111,7 @@ public class TestSmallReversedScanner {
       Assert.assertArrayEquals(r.getRow(), Bytes.toBytes(inputRowKeys[value]));
     }
 
-    Assert.assertEquals(value, 0);
+    Assert.assertEquals(0, value);
   }
 
   /**
@@ -133,6 +139,6 @@ public class TestSmallReversedScanner {
       Assert.assertArrayEquals(r.getRow(), new byte[] { (char) 0x00 });
       Assert.assertTrue(--count >= 0);
     }
-    Assert.assertEquals(count, 0);
+    Assert.assertEquals(0, count);
   }
 }

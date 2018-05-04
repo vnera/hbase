@@ -1,5 +1,4 @@
 /*
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -17,6 +16,8 @@
  * limitations under the License.
  */
 package org.apache.hadoop.hbase.master;
+
+import static org.apache.hadoop.hbase.HConstants.HBASE_MASTER_LOGCLEANER_PLUGINS;
 
 import com.google.protobuf.Descriptors;
 import com.google.protobuf.Service;
@@ -53,13 +54,13 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.ClusterId;
 import org.apache.hadoop.hbase.ClusterMetrics;
 import org.apache.hadoop.hbase.ClusterMetrics.Option;
 import org.apache.hadoop.hbase.ClusterMetricsBuilder;
-import org.apache.hadoop.hbase.CoordinatedStateException;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HBaseIOException;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
@@ -69,7 +70,6 @@ import org.apache.hadoop.hbase.MasterNotRunningException;
 import org.apache.hadoop.hbase.MetaTableAccessor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.PleaseHoldException;
-import org.apache.hadoop.hbase.ServerLoad;
 import org.apache.hadoop.hbase.ServerMetricsBuilder;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableDescriptors;
@@ -107,7 +107,6 @@ import org.apache.hadoop.hbase.master.balancer.ClusterStatusChore;
 import org.apache.hadoop.hbase.master.balancer.LoadBalancerFactory;
 import org.apache.hadoop.hbase.master.cleaner.HFileCleaner;
 import org.apache.hadoop.hbase.master.cleaner.LogCleaner;
-import org.apache.hadoop.hbase.master.cleaner.ReplicationMetaCleaner;
 import org.apache.hadoop.hbase.master.cleaner.ReplicationZKNodeCleaner;
 import org.apache.hadoop.hbase.master.cleaner.ReplicationZKNodeCleanerChore;
 import org.apache.hadoop.hbase.master.locking.LockManager;
@@ -117,6 +116,7 @@ import org.apache.hadoop.hbase.master.normalizer.RegionNormalizer;
 import org.apache.hadoop.hbase.master.normalizer.RegionNormalizerChore;
 import org.apache.hadoop.hbase.master.normalizer.RegionNormalizerFactory;
 import org.apache.hadoop.hbase.master.procedure.CreateTableProcedure;
+import org.apache.hadoop.hbase.master.procedure.DeleteNamespaceProcedure;
 import org.apache.hadoop.hbase.master.procedure.DeleteTableProcedure;
 import org.apache.hadoop.hbase.master.procedure.DisableTableProcedure;
 import org.apache.hadoop.hbase.master.procedure.EnableTableProcedure;
@@ -159,8 +159,10 @@ import org.apache.hadoop.hbase.regionserver.compactions.FIFOCompactionPolicy;
 import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.replication.ReplicationPeerDescription;
+import org.apache.hadoop.hbase.replication.ReplicationUtils;
+import org.apache.hadoop.hbase.replication.master.ReplicationHFileCleaner;
+import org.apache.hadoop.hbase.replication.master.ReplicationLogCleaner;
 import org.apache.hadoop.hbase.replication.master.ReplicationPeerConfigUpgrader;
-import org.apache.hadoop.hbase.replication.regionserver.Replication;
 import org.apache.hadoop.hbase.security.AccessDeniedException;
 import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.trace.TraceUtil;
@@ -168,7 +170,6 @@ import org.apache.hadoop.hbase.util.Addressing;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CompressionTest;
 import org.apache.hadoop.hbase.util.EncryptionTest;
-import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.HFileArchiveUtil;
 import org.apache.hadoop.hbase.util.HasThread;
 import org.apache.hadoop.hbase.util.IdLock;
@@ -176,7 +177,6 @@ import org.apache.hadoop.hbase.util.ModifyRegionUtils;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.util.VersionInfo;
-import org.apache.hadoop.hbase.util.ZKDataMigrator;
 import org.apache.hadoop.hbase.zookeeper.LoadBalancerTracker;
 import org.apache.hadoop.hbase.zookeeper.MasterAddressTracker;
 import org.apache.hadoop.hbase.zookeeper.MasterMaintenanceModeTracker;
@@ -197,6 +197,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
 import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 import org.apache.hbase.thirdparty.com.google.common.collect.Maps;
+
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetRegionInfoResponse.CompactionState;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.HBaseProtos.RegionServerInfo;
@@ -355,7 +356,7 @@ public class HMaster extends HRegionServer implements MasterServices {
   private ClusterStatusPublisher clusterStatusPublisherChore = null;
 
   CatalogJanitor catalogJanitorChore;
-  private ReplicationMetaCleaner replicationMetaCleaner;
+
   private ReplicationZKNodeCleanerChore replicationZKNodeCleanerChore;
   private LogCleaner logCleaner;
   private HFileCleaner hfileCleaner;
@@ -479,7 +480,7 @@ public class HMaster extends HRegionServer implements MasterServices {
       // Disable usage of meta replicas in the master
       this.conf.setBoolean(HConstants.USE_META_REPLICAS, false);
 
-      Replication.decorateMasterConfiguration(this.conf);
+      decorateMasterConfiguration(this.conf);
 
       // Hack! Maps DFSClient => Master for logs.  HDFS made this
       // config param for task trackers, but we can piggyback off of it.
@@ -534,6 +535,11 @@ public class HMaster extends HRegionServer implements MasterServices {
       LOG.error("Failed construction of Master", t);
       throw t;
     }
+  }
+
+  @Override
+  protected String getUseThisHostnameInstead(Configuration conf) {
+    return conf.get(MASTER_HOSTNAME_KEY);
   }
 
   // Main run loop. Calls through to the regionserver run loop AFTER becoming active Master; will
@@ -608,7 +614,8 @@ public class HMaster extends HRegionServer implements MasterServices {
     masterJettyServer.addConnector(connector);
     masterJettyServer.setStopAtShutdown(true);
 
-    final String redirectHostname = shouldUseThisHostnameInstead() ? useThisHostnameInstead : null;
+    final String redirectHostname =
+        StringUtils.isBlank(useThisHostnameInstead) ? null : useThisHostnameInstead;
 
     final RedirectServlet redirect = new RedirectServlet(infoServer, redirectHostname);
     final WebAppContext context = new WebAppContext(null, "/", null, null, null, null, WebAppContext.NO_SESSIONS);
@@ -705,7 +712,7 @@ public class HMaster extends HRegionServer implements MasterServices {
    * Initialize all ZK based system trackers.
    */
   void initializeZKBasedSystemTrackers() throws IOException,
-      InterruptedException, KeeperException, CoordinatedStateException {
+      InterruptedException, KeeperException {
     this.balancer = LoadBalancerFactory.getLoadBalancer(conf);
     this.normalizer = RegionNormalizerFactory.getRegionNormalizer(conf);
     this.normalizer.setMasterServices(this);
@@ -739,7 +746,7 @@ public class HMaster extends HRegionServer implements MasterServices {
     boolean wasUp = this.clusterStatusTracker.isClusterUp();
     if (!wasUp) this.clusterStatusTracker.setClusterUp();
 
-    LOG.info("Server active/primary master=" + this.serverName +
+    LOG.info("Active/primary master=" + this.serverName +
         ", sessionid=0x" +
         Long.toHexString(this.zooKeeper.getRecoverableZooKeeper().getSessionId()) +
         ", setting cluster-up flag (Was=" + wasUp + ")");
@@ -769,7 +776,7 @@ public class HMaster extends HRegionServer implements MasterServices {
    * </ol>
    */
   private void finishActiveMasterInitialization(MonitoredTask status)
-      throws IOException, InterruptedException, KeeperException, CoordinatedStateException {
+      throws IOException, InterruptedException, KeeperException {
 
     Thread zombieDetector = new Thread(new InitializationMonitor(this),
         "ActiveMasterInitializationMonitor-" + System.currentTimeMillis());
@@ -785,7 +792,7 @@ public class HMaster extends HRegionServer implements MasterServices {
     // TODO: Do this using Dependency Injection, using PicoContainer, Guice or Spring.
     // Initialize the chunkCreator
     initializeMemStoreChunkCreator();
-    this.fileSystemManager = new MasterFileSystem(this);
+    this.fileSystemManager = new MasterFileSystem(conf);
     this.walManager = new MasterWalManager(this);
 
     // enable table descriptors cache
@@ -803,17 +810,22 @@ public class HMaster extends HRegionServer implements MasterServices {
     ClusterId clusterId = fileSystemManager.getClusterId();
     status.setStatus("Publishing Cluster ID " + clusterId + " in ZooKeeper");
     ZKClusterId.setClusterId(this.zooKeeper, fileSystemManager.getClusterId());
-    this.clusterId = ZKClusterId.readClusterIdZNode(this.zooKeeper);
+    this.clusterId = clusterId.toString();
 
     this.serverManager = createServerManager(this);
 
-    this.tableStateManager = new TableStateManager(this);
+    // This manager is started AFTER hbase:meta is confirmed on line.
+    // See inside metaBootstrap.recoverMeta(); below. Shouldn't be so cryptic!
+    // hbase.mirror.table.state.to.zookeeper is so hbase1 clients can connect. They read table
+    // state from zookeeper while hbase2 reads it from hbase:meta. Disable if no hbase1 clients.
+    this.tableStateManager =
+        this.conf.getBoolean(MirroringTableStateManager.MIRROR_TABLE_STATE_TO_ZK_KEY, true)?
+        new MirroringTableStateManager(this):
+        new TableStateManager(this);
 
     status.setStatus("Initializing ZK system trackers");
     initializeZKBasedSystemTrackers();
-
-    // Set Master as active now after we've setup zk with stuff like whether cluster is up or not.
-    // RegionServers won't come up if the cluster status is not up.
+    // Set ourselves as active Master now our claim has succeeded up in zk.
     this.activeMaster = true;
 
     // This is for backwards compatibility
@@ -856,21 +868,18 @@ public class HMaster extends HRegionServer implements MasterServices {
     this.balancer.setClusterMetrics(getClusterMetricsWithoutCoprocessor());
     this.balancer.initialize();
 
-    // Check if master is shutting down because of some issue
-    // in initializing the regionserver or the balancer.
-    if (isStopped()) return;
-
     // Make sure meta assigned before proceeding.
     status.setStatus("Recovering  Meta Region");
 
-    // we recover hbase:meta region servers inside master initialization and
-    // handle other failed servers in SSH in order to start up master node ASAP
+    // Check if master is shutting down because issue initializing regionservers or balancer.
+    if (isStopped()) {
+      return;
+    }
+
+    // Bring up hbase:meta. recoverMeta is a blocking call waiting until hbase:meta is deployed.
+    // It also starts the TableStateManager.
     MasterMetaBootstrap metaBootstrap = createMetaBootstrap(this, status);
     metaBootstrap.recoverMeta();
-
-    // check if master is shutting down because above assignMeta could return even hbase:meta isn't
-    // assigned when master is shutting down
-    if (isStopped()) return;
 
     //Initialize after meta as it scans meta
     if (favoredNodesManager != null) {
@@ -879,15 +888,6 @@ public class HMaster extends HRegionServer implements MasterServices {
       snapshotOfRegionAssignment.initialize();
       favoredNodesManager.initialize(snapshotOfRegionAssignment);
     }
-
-    // migrating existent table state from zk, so splitters
-    // and recovery process treat states properly.
-    for (Map.Entry<TableName, TableState.State> entry : ZKDataMigrator
-        .queryForTableStates(getZooKeeper()).entrySet()) {
-      LOG.info("Converting state from zk to new states:" + entry);
-      tableStateManager.setTableState(entry.getKey(), entry.getValue());
-    }
-    ZKUtil.deleteChildrenRecursively(getZooKeeper(), getZooKeeper().znodePaths.tableZNode);
 
     status.setStatus("Submitting log splitting work for previously failed region servers");
     metaBootstrap.processDeadServers();
@@ -928,15 +928,11 @@ public class HMaster extends HRegionServer implements MasterServices {
     configurationManager.registerObserver(this.balancer);
     configurationManager.registerObserver(this.hfileCleaner);
     configurationManager.registerObserver(this.logCleaner);
-
     // Set master as 'initialized'.
     setInitialized(true);
-
     assignmentManager.checkIfShouldMoveSystemRegionAsync();
-
     status.setStatus("Assign meta replicas");
     metaBootstrap.assignMetaReplicas();
-
     status.setStatus("Starting quota manager");
     initQuotaManager();
     if (QuotaUtil.isQuotaEnabled(conf)) {
@@ -1041,7 +1037,7 @@ public class HMaster extends HRegionServer implements MasterServices {
     for (ServerName sn: this.regionServerTracker.getOnlineServers()) {
       // The isServerOnline check is opportunistic, correctness is handled inside
       if (!this.serverManager.isServerOnline(sn) &&
-          serverManager.checkAndRecordNewServer(sn, new ServerLoad(ServerMetricsBuilder.of(sn)))) {
+          serverManager.checkAndRecordNewServer(sn, ServerMetricsBuilder.of(sn))) {
         LOG.info("Registered server found up in zk but who has not yet reported in: " + sn);
       }
     }
@@ -1145,7 +1141,7 @@ public class HMaster extends HRegionServer implements MasterServices {
    startProcedureExecutor();
 
    // Start log cleaner thread
-   int cleanerInterval = conf.getInt("hbase.master.cleaner.interval", 60 * 1000);
+   int cleanerInterval = conf.getInt("hbase.master.cleaner.interval", 600 * 1000);
    this.logCleaner =
       new LogCleaner(cleanerInterval,
          this, conf, getMasterWalManager().getFileSystem(),
@@ -1163,7 +1159,6 @@ public class HMaster extends HRegionServer implements MasterServices {
     if (LOG.isTraceEnabled()) {
       LOG.trace("Started service threads");
     }
-
     // Start replication zk node cleaner
     try {
       replicationZKNodeCleanerChore = new ReplicationZKNodeCleanerChore(this, cleanerInterval,
@@ -1172,8 +1167,6 @@ public class HMaster extends HRegionServer implements MasterServices {
     } catch (Exception e) {
       LOG.error("start replicationZKNodeCleanerChore failed", e);
     }
-    replicationMetaCleaner = new ReplicationMetaCleaner(this, this, cleanerInterval);
-    getChoreService().scheduleChore(replicationMetaCleaner);
   }
 
   @Override
@@ -1197,7 +1190,6 @@ public class HMaster extends HRegionServer implements MasterServices {
     if (this.logCleaner != null) this.logCleaner.cancel(true);
     if (this.hfileCleaner != null) this.hfileCleaner.cancel(true);
     if (this.replicationZKNodeCleanerChore != null) this.replicationZKNodeCleanerChore.cancel(true);
-    if (this.replicationMetaCleaner != null) this.replicationMetaCleaner.cancel(true);
     if (this.quotaManager != null) this.quotaManager.stop();
 
     if (this.activeMasterManager != null) this.activeMasterManager.stop();
@@ -1213,8 +1205,6 @@ public class HMaster extends HRegionServer implements MasterServices {
 
   private void startProcedureExecutor() throws IOException {
     final MasterProcedureEnv procEnv = new MasterProcedureEnv(this);
-    final Path rootDir = FSUtils.getRootDir(conf);
-
     procedureStore = new WALProcedureStore(conf,
         new MasterProcedureEnv.WALStoreLeaseRecovery(this));
     procedureStore.registerListener(new MasterProcedureEnv.MasterProcedureStoreListener(this));
@@ -1222,11 +1212,11 @@ public class HMaster extends HRegionServer implements MasterServices {
     procedureExecutor = new ProcedureExecutor<>(conf, procEnv, procedureStore, procedureScheduler);
     configurationManager.registerObserver(procEnv);
 
-    final int numThreads = conf.getInt(MasterProcedureConstants.MASTER_PROCEDURE_THREADS,
-        Math.max(Runtime.getRuntime().availableProcessors(),
-          MasterProcedureConstants.DEFAULT_MIN_MASTER_PROCEDURE_THREADS));
-    final boolean abortOnCorruption = conf.getBoolean(
-        MasterProcedureConstants.EXECUTOR_ABORT_ON_CORRUPTION,
+    int cpus = Runtime.getRuntime().availableProcessors();
+    final int numThreads = conf.getInt(MasterProcedureConstants.MASTER_PROCEDURE_THREADS, Math.max(
+      (cpus > 0 ? cpus / 4 : 0), MasterProcedureConstants.DEFAULT_MIN_MASTER_PROCEDURE_THREADS));
+    final boolean abortOnCorruption =
+      conf.getBoolean(MasterProcedureConstants.EXECUTOR_ABORT_ON_CORRUPTION,
         MasterProcedureConstants.DEFAULT_EXECUTOR_ABORT_ON_CORRUPTION);
     procedureStore.start(numThreads);
     procedureExecutor.start(numThreads, abortOnCorruption);
@@ -1238,6 +1228,7 @@ public class HMaster extends HRegionServer implements MasterServices {
       configurationManager.deregisterObserver(procedureExecutor.getEnvironment());
       procedureExecutor.getEnvironment().getRemoteDispatcher().stop();
       procedureExecutor.stop();
+      procedureExecutor.join();
       procedureExecutor = null;
     }
 
@@ -1522,8 +1513,8 @@ public class HMaster extends HRegionServer implements MasterServices {
         TableDescriptor tblDesc = getTableDescriptors().get(table);
         if (table.isSystemTable() || (tblDesc != null &&
             !tblDesc.isNormalizationEnabled())) {
-          LOG.debug("Skipping normalization for table: " + table + ", as it's either system"
-              + " table or doesn't have auto normalization turned on");
+          LOG.trace("Skipping normalization for {}, as it's either system"
+              + " table or doesn't have auto normalization turned on", table);
           continue;
         }
         List<NormalizationPlan> plans = this.normalizer.computePlanForTable(table);
@@ -1696,7 +1687,6 @@ public class HMaster extends HRegionServer implements MasterServices {
     // Now we can do the move
     RegionPlan rp = new RegionPlan(hri, regionState.getServerName(), dest);
     assert rp.getDestination() != null: rp.toString() + " " + dest;
-    assert rp.getSource() != null: rp.toString();
 
     try {
       checkInitialized();
@@ -1752,7 +1742,10 @@ public class HMaster extends HRegionServer implements MasterServices {
 
         // TODO: We can handle/merge duplicate requests, and differentiate the case of
         //       TableExistsException by saying if the schema is the same or not.
-        ProcedurePrepareLatch latch = ProcedurePrepareLatch.createLatch();
+        //
+        // We need to wait for the procedure to potentially fail due to "prepare" sanity
+        // checks. This will block only the beginning of the procedure. See HBASE-19953.
+        ProcedurePrepareLatch latch = ProcedurePrepareLatch.createBlockingLatch();
         submitProcedure(new CreateTableProcedure(
             procedureExecutor.getEnvironment(), tableDescriptor, newRegions, latch));
         latch.await();
@@ -2098,7 +2091,10 @@ public class HMaster extends HRegionServer implements MasterServices {
         LOG.info(getClientIdAuditPrefix() + " delete " + tableName);
 
         // TODO: We can handle/merge duplicate request
-        ProcedurePrepareLatch latch = ProcedurePrepareLatch.createLatch();
+        //
+        // We need to wait for the procedure to potentially fail due to "prepare" sanity
+        // checks. This will block only the beginning of the procedure. See HBASE-19953.
+        ProcedurePrepareLatch latch = ProcedurePrepareLatch.createBlockingLatch();
         submitProcedure(new DeleteTableProcedure(procedureExecutor.getEnvironment(),
             tableName, latch));
         latch.await();
@@ -2160,7 +2156,7 @@ public class HMaster extends HRegionServer implements MasterServices {
     }
 
     TableDescriptor newDesc = TableDescriptorBuilder
-        .newBuilder(old).addColumnFamily(column).build();
+        .newBuilder(old).setColumnFamily(column).build();
     return modifyTable(tableName, newDesc, nonceGroup, nonce);
   }
 
@@ -2285,7 +2281,10 @@ public class HMaster extends HRegionServer implements MasterServices {
         // we want to make sure that the table is prepared to be
         // enabled (the table is locked and the table state is set).
         // Note: if the procedure throws exception, we will catch it and rethrow.
-        final ProcedurePrepareLatch prepareLatch = ProcedurePrepareLatch.createLatch();
+        //
+        // We need to wait for the procedure to potentially fail due to "prepare" sanity
+        // checks. This will block only the beginning of the procedure. See HBASE-19953.
+        final ProcedurePrepareLatch prepareLatch = ProcedurePrepareLatch.createBlockingLatch();
         submitProcedure(new DisableTableProcedure(procedureExecutor.getEnvironment(),
             tableName, false, prepareLatch));
         prepareLatch.await();
@@ -2351,7 +2350,10 @@ public class HMaster extends HRegionServer implements MasterServices {
         LOG.info(getClientIdAuditPrefix() + " modify " + tableName);
 
         // Execute the operation synchronously - wait for the operation completes before continuing.
-        ProcedurePrepareLatch latch = ProcedurePrepareLatch.createLatch(2, 0);
+        //
+        // We need to wait for the procedure to potentially fail due to "prepare" sanity
+        // checks. This will block only the beginning of the procedure. See HBASE-19953.
+        ProcedurePrepareLatch latch = ProcedurePrepareLatch.createBlockingLatch();
         submitProcedure(new ModifyTableProcedure(procedureExecutor.getEnvironment(),
             descriptor, latch));
         latch.await();
@@ -2404,8 +2406,9 @@ public class HMaster extends HRegionServer implements MasterServices {
       throw new IOException("Can't modify catalog tables");
     }
     checkTableExists(tableName);
-    if (!getTableStateManager().isTableState(tableName, TableState.State.DISABLED)) {
-      throw new TableNotDisabledException(tableName);
+    TableState ts = getTableStateManager().getTableState(tableName);
+    if (!ts.isDisabled()) {
+      throw new TableNotDisabledException("Not DISABLED; " + ts);
     }
   }
 
@@ -2678,17 +2681,24 @@ public class HMaster extends HRegionServer implements MasterServices {
     if (cpHost != null) {
       cpHost.preShutdown();
     }
-    // Tell the servermanager cluster is down.
+    // Tell the servermanager cluster shutdown has been called. This makes it so when Master is
+    // last running server, it'll stop itself. Next, we broadcast the cluster shutdown by setting
+    // the cluster status as down. RegionServers will notice this change in state and will start
+    // shutting themselves down. When last has exited, Master can go down.
     if (this.serverManager != null) {
       this.serverManager.shutdownCluster();
     }
-    // Set the cluster down flag; broadcast across the cluster.
-    if (this.clusterStatusTracker != null){
+    if (this.clusterStatusTracker != null) {
       try {
         this.clusterStatusTracker.setClusterDown();
       } catch (KeeperException e) {
         LOG.error("ZooKeeper exception trying to set cluster as down in ZK", e);
       }
+    }
+    // Stop the procedure executor. Will stop any ongoing assign, unassign, server crash etc.,
+    // processing so we can go down.
+    if (this.procedureExecutor != null) {
+      this.procedureExecutor.stop();
     }
     // Shutdown our cluster connection. This will kill any hosted RPCs that might be going on;
     // this is what we want especially if the Master is in startup phase doing call outs to
@@ -2708,9 +2718,11 @@ public class HMaster extends HRegionServer implements MasterServices {
 
   @Override
   public void stop(String msg) {
-    super.stop(msg);
-    if (this.activeMasterManager != null) {
-      this.activeMasterManager.stop();
+    if (!isStopped()) {
+      super.stop(msg);
+      if (this.activeMasterManager != null) {
+        this.activeMasterManager.stop();
+      }
     }
   }
 
@@ -2720,11 +2732,21 @@ public class HMaster extends HRegionServer implements MasterServices {
     }
   }
 
-  void checkInitialized()
-      throws PleaseHoldException, ServerNotRunningYetException, MasterNotRunningException {
+  public static class MasterStoppedException extends DoNotRetryIOException {
+    MasterStoppedException() {
+      super();
+    }
+  }
+
+  void checkInitialized() throws PleaseHoldException, ServerNotRunningYetException,
+      MasterNotRunningException, MasterStoppedException {
     checkServiceStarted();
-    if (!isInitialized()) throw new PleaseHoldException("Master is initializing");
-    if (isStopped()) throw new MasterNotRunningException();
+    if (!isInitialized()) {
+      throw new PleaseHoldException("Master is initializing");
+    }
+    if (isStopped()) {
+      throw new MasterStoppedException();
+    }
   }
 
   /**
@@ -2924,10 +2946,14 @@ public class HMaster extends HRegionServer implements MasterServices {
       @Override
       protected void run() throws IOException {
         getMaster().getMasterCoprocessorHost().preCreateNamespace(namespaceDescriptor);
+        // We need to wait for the procedure to potentially fail due to "prepare" sanity
+        // checks. This will block only the beginning of the procedure. See HBASE-19953.
+        ProcedurePrepareLatch latch = ProcedurePrepareLatch.createBlockingLatch();
         LOG.info(getClientIdAuditPrefix() + " creating " + namespaceDescriptor);
         // Execute the operation synchronously - wait for the operation to complete before
         // continuing.
-        setProcId(getClusterSchema().createNamespace(namespaceDescriptor, getNonceKey()));
+        setProcId(getClusterSchema().createNamespace(namespaceDescriptor, getNonceKey(), latch));
+        latch.await();
         getMaster().getMasterCoprocessorHost().postCreateNamespace(namespaceDescriptor);
       }
 
@@ -2956,10 +2982,14 @@ public class HMaster extends HRegionServer implements MasterServices {
       @Override
       protected void run() throws IOException {
         getMaster().getMasterCoprocessorHost().preModifyNamespace(namespaceDescriptor);
+        // We need to wait for the procedure to potentially fail due to "prepare" sanity
+        // checks. This will block only the beginning of the procedure. See HBASE-19953.
+        ProcedurePrepareLatch latch = ProcedurePrepareLatch.createBlockingLatch();
         LOG.info(getClientIdAuditPrefix() + " modify " + namespaceDescriptor);
         // Execute the operation synchronously - wait for the operation to complete before
         // continuing.
-        setProcId(getClusterSchema().modifyNamespace(namespaceDescriptor, getNonceKey()));
+        setProcId(getClusterSchema().modifyNamespace(namespaceDescriptor, getNonceKey(), latch));
+        latch.await();
         getMaster().getMasterCoprocessorHost().postModifyNamespace(namespaceDescriptor);
       }
 
@@ -2989,7 +3019,14 @@ public class HMaster extends HRegionServer implements MasterServices {
         LOG.info(getClientIdAuditPrefix() + " delete " + name);
         // Execute the operation synchronously - wait for the operation to complete before
         // continuing.
-        setProcId(getClusterSchema().deleteNamespace(name, getNonceKey()));
+        //
+        // We need to wait for the procedure to potentially fail due to "prepare" sanity
+        // checks. This will block only the beginning of the procedure. See HBASE-19953.
+        ProcedurePrepareLatch latch = ProcedurePrepareLatch.createBlockingLatch();
+        setProcId(submitProcedure(
+              new DeleteNamespaceProcedure(procedureExecutor.getEnvironment(), name, latch)));
+        latch.await();
+        // Will not be invoked in the face of Exception thrown by the Procedure's execution
         getMaster().getMasterCoprocessorHost().postDeleteNamespace(name);
       }
 
@@ -3536,10 +3573,9 @@ public class HMaster extends HRegionServer implements MasterServices {
   @Override
   public boolean recoverMeta() throws IOException {
     ProcedurePrepareLatch latch = ProcedurePrepareLatch.createLatch(2, 0);
-    LOG.info("Running RecoverMetaProcedure to ensure proper hbase:meta deploy.");
-    long procId = procedureExecutor.submitProcedure(new RecoverMetaProcedure(null, true, latch));
+    procedureExecutor.submitProcedure(new RecoverMetaProcedure(null, true, latch));
     latch.await();
-    LOG.info("hbase:meta (default replica) deployed at=" +
+    LOG.info("hbase:meta deployed at=" +
         getMetaTableLocator().getMetaRegionLocation(getZooKeeper()));
     return assignmentManager.isMetaInitialized();
   }
@@ -3550,5 +3586,24 @@ public class HMaster extends HRegionServer implements MasterServices {
 
   public SpaceQuotaSnapshotNotifier getSpaceQuotaSnapshotNotifier() {
     return this.spaceQuotaSnapshotNotifier;
+  }
+
+  /**
+   * This method modifies the master's configuration in order to inject replication-related features
+   */
+  @VisibleForTesting
+  public static void decorateMasterConfiguration(Configuration conf) {
+    String plugins = conf.get(HBASE_MASTER_LOGCLEANER_PLUGINS);
+    String cleanerClass = ReplicationLogCleaner.class.getCanonicalName();
+    if (!plugins.contains(cleanerClass)) {
+      conf.set(HBASE_MASTER_LOGCLEANER_PLUGINS, plugins + "," + cleanerClass);
+    }
+    if (ReplicationUtils.isReplicationForBulkLoadDataEnabled(conf)) {
+      plugins = conf.get(HFileCleaner.MASTER_HFILE_CLEANER_PLUGINS);
+      cleanerClass = ReplicationHFileCleaner.class.getCanonicalName();
+      if (!plugins.contains(cleanerClass)) {
+        conf.set(HFileCleaner.MASTER_HFILE_CLEANER_PLUGINS, plugins + "," + cleanerClass);
+      }
+    }
   }
 }

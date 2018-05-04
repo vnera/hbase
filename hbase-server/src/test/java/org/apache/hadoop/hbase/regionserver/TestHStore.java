@@ -61,6 +61,7 @@ import org.apache.hadoop.hbase.CellBuilderType;
 import org.apache.hadoop.hbase.CellComparator;
 import org.apache.hadoop.hbase.CellComparatorImpl;
 import org.apache.hadoop.hbase.CellUtil;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
@@ -105,6 +106,7 @@ import org.apache.hadoop.util.Progressable;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -120,6 +122,11 @@ import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
  */
 @Category({ RegionServerTests.class, MediumTests.class })
 public class TestHStore {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestHStore.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestHStore.class);
   @Rule
   public TestName name = new TestName();
@@ -196,7 +203,7 @@ public class TestHStore {
 
   private void initHRegion(String methodName, Configuration conf, TableDescriptorBuilder builder,
       ColumnFamilyDescriptor hcd, MyStoreHook hook, boolean switchToPread) throws IOException {
-    TableDescriptor htd = builder.addColumnFamily(hcd).build();
+    TableDescriptor htd = builder.setColumnFamily(hcd).build();
     Path basedir = new Path(DIR + methodName);
     Path tableDir = FSUtils.getTableDir(basedir, htd.getTableName());
     final Path logdir = new Path(basedir, AbstractFSWALProvider.getWALDirectoryName(methodName));
@@ -209,7 +216,7 @@ public class TestHStore {
     RegionInfo info = RegionInfoBuilder.newBuilder(htd.getTableName()).build();
     Configuration walConf = new Configuration(conf);
     FSUtils.setRootDir(walConf, basedir);
-    WALFactory wals = new WALFactory(walConf, null, methodName);
+    WALFactory wals = new WALFactory(walConf, methodName);
     region = new HRegion(new HRegionFileSystem(conf, fs, tableDir, info), wals.getWAL(info), conf,
         htd, null);
   }
@@ -258,7 +265,7 @@ public class TestHStore {
         MemStoreSizing kvSize = new MemStoreSizing();
         store.add(new KeyValue(row, family, qf1, 1, (byte[]) null), kvSize);
         // add the heap size of active (mutable) segment
-        kvSize.incMemStoreSize(0, MutableSegment.DEEP_OVERHEAD);
+        kvSize.incMemStoreSize(0, MutableSegment.DEEP_OVERHEAD, 0);
         size = store.memstore.getFlushableSize();
         assertEquals(kvSize, size);
         // Flush.  Bug #1 from HBASE-10466.  Make sure size calculation on failed flush is right.
@@ -271,12 +278,12 @@ public class TestHStore {
         }
         // due to snapshot, change mutable to immutable segment
         kvSize.incMemStoreSize(0,
-            CSLMImmutableSegment.DEEP_OVERHEAD_CSLM-MutableSegment.DEEP_OVERHEAD);
+            CSLMImmutableSegment.DEEP_OVERHEAD_CSLM-MutableSegment.DEEP_OVERHEAD, 0);
         size = store.memstore.getFlushableSize();
         assertEquals(kvSize, size);
         MemStoreSizing kvSize2 = new MemStoreSizing();
         store.add(new KeyValue(row, family, qf2, 2, (byte[])null), kvSize2);
-        kvSize2.incMemStoreSize(0, MutableSegment.DEEP_OVERHEAD);
+        kvSize2.incMemStoreSize(0, MutableSegment.DEEP_OVERHEAD, 0);
         // Even though we add a new kv, we expect the flushable size to be 'same' since we have
         // not yet cleared the snapshot -- the above flush failed.
         assertEquals(kvSize, size);
@@ -756,7 +763,7 @@ public class TestHStore {
     }
 
     @Override
-    public void write(byte[] buf, int offset, int length) throws IOException {
+    public synchronized void write(byte[] buf, int offset, int length) throws IOException {
       System.err.println("faulty stream write at pos " + getPos());
       injectFault();
       super.write(buf, offset, length);
@@ -1458,7 +1465,7 @@ public class TestHStore {
    * @throws IOException
    * @throws InterruptedException
    */
-  @Test (timeout=30000)
+  @Test
   public void testRunDoubleMemStoreCompactors() throws IOException, InterruptedException {
     int flushSize = 500;
     Configuration conf = HBaseConfiguration.create();
@@ -1551,7 +1558,7 @@ public class TestHStore {
       ColumnFamilyDescriptorBuilder.newBuilder(family).setMaxVersions(5).build(), hook);
   }
 
-  private class MyStore extends HStore {
+  private static class MyStore extends HStore {
     private final MyStoreHook hook;
 
     MyStore(final HRegion region, final ColumnFamilyDescriptor family, final Configuration
@@ -1576,7 +1583,7 @@ public class TestHStore {
     }
   }
 
-  private abstract class MyStoreHook {
+  private abstract static class MyStoreHook {
 
     void getScanners(MyStore store) throws IOException {
     }
@@ -1595,7 +1602,7 @@ public class TestHStore {
     MyStore store = initMyStore(name.getMethodName(), conf, new MyStoreHook() {});
     MemStoreSizing memStoreSizing = new MemStoreSizing();
     long ts = System.currentTimeMillis();
-    long seqID = 1l;
+    long seqID = 1L;
     // Add some data to the region and do some flushes
     for (int i = 1; i < 10; i++) {
       store.add(createCell(Bytes.toBytes("row" + i), qf1, ts, seqID++, Bytes.toBytes("")),
@@ -1663,6 +1670,7 @@ public class TestHStore {
       return this.heap;
     }
 
+    @Override
     public void run() {
       scanner.trySwitchToStreamRead();
       heap = scanner.heap;

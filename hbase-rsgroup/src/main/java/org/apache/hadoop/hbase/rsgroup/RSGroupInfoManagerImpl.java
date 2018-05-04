@@ -18,6 +18,8 @@
 
 package org.apache.hadoop.hbase.rsgroup;
 
+import com.google.protobuf.ServiceException;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -44,7 +46,6 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MetaTableAccessor;
 import org.apache.hadoop.hbase.MetaTableAccessor.DefaultVisitorBase;
-import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.ClusterConnection;
@@ -87,8 +88,6 @@ import org.apache.hbase.thirdparty.com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos;
 
-import com.google.protobuf.ServiceException;
-
 /**
  * This is an implementation of {@link RSGroupInfoManager} which makes
  * use of an HBase table as the persistence store for the group information.
@@ -114,7 +113,7 @@ import com.google.protobuf.ServiceException;
  * no other has access concurrently. Reads must be able to continue concurrently.
  */
 @InterfaceAudience.Private
-class RSGroupInfoManagerImpl implements RSGroupInfoManager {
+final class RSGroupInfoManagerImpl implements RSGroupInfoManager {
   private static final Logger LOG = LoggerFactory.getLogger(RSGroupInfoManagerImpl.class);
 
   /** Table descriptor for <code>hbase:rsgroup</code> catalog table */
@@ -156,7 +155,6 @@ class RSGroupInfoManagerImpl implements RSGroupInfoManager {
 
   private synchronized void init() throws IOException{
     refresh();
-    rsGroupStartupWorker.start();
     serverEventsListenerThread.start();
     masterServices.getServerManager().registerListener(serverEventsListenerThread);
     failedOpenUpdaterThread = new FailedOpenUpdaterThread(masterServices.getConfiguration());
@@ -168,6 +166,11 @@ class RSGroupInfoManagerImpl implements RSGroupInfoManager {
     RSGroupInfoManagerImpl instance = new RSGroupInfoManagerImpl(master);
     instance.init();
     return instance;
+  }
+
+  public void start(){
+    // create system table of rsgroup
+    rsGroupStartupWorker.start();
   }
 
   @Override
@@ -399,14 +402,8 @@ class RSGroupInfoManagerImpl implements RSGroupInfoManager {
       orphanTables.add(TableName.valueOf(entry));
     }
 
-    final List<TableName> specialTables;
-    if(!masterServices.isInitialized()) {
-      specialTables = Arrays.asList(AccessControlLists.ACL_TABLE_NAME, TableName.META_TABLE_NAME,
-          TableName.NAMESPACE_TABLE_NAME, RSGROUP_TABLE_NAME);
-    } else {
-      specialTables =
-          masterServices.listTableNamesByNamespace(NamespaceDescriptor.SYSTEM_NAMESPACE_NAME_STR);
-    }
+    final List<TableName> specialTables = Arrays.asList(AccessControlLists.ACL_TABLE_NAME,
+        TableName.META_TABLE_NAME, TableName.NAMESPACE_TABLE_NAME, RSGROUP_TABLE_NAME);
 
     for (TableName table : specialTables) {
       orphanTables.add(table);

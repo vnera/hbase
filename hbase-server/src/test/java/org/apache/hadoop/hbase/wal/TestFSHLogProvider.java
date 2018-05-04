@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -33,6 +32,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.ServerName;
@@ -43,7 +43,6 @@ import org.apache.hadoop.hbase.client.RegionInfoBuilder;
 import org.apache.hadoop.hbase.client.TableDescriptor;
 import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.apache.hadoop.hbase.regionserver.MultiVersionConcurrencyControl;
-// imports for things that haven't moved from regionserver.wal yet.
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.testclassification.RegionServerTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -51,6 +50,7 @@ import org.apache.hadoop.hbase.util.FSUtils;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -60,6 +60,11 @@ import org.slf4j.LoggerFactory;
 
 @Category({RegionServerTests.class, MediumTests.class})
 public class TestFSHLogProvider {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestFSHLogProvider.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestFSHLogProvider.class);
 
   private static Configuration conf;
@@ -181,10 +186,10 @@ public class TestFSHLogProvider {
     LOG.info(currentTest.getMethodName());
     TableDescriptor htd =
         TableDescriptorBuilder.newBuilder(TableName.valueOf(currentTest.getMethodName()))
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.of("row")).build();
+            .setColumnFamily(ColumnFamilyDescriptorBuilder.of("row")).build();
     TableDescriptor htd2 =
         TableDescriptorBuilder.newBuilder(TableName.valueOf(currentTest.getMethodName() + "2"))
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.of("row")).build();
+            .setColumnFamily(ColumnFamilyDescriptorBuilder.of("row")).build();
     NavigableMap<byte[], Integer> scopes1 = new TreeMap<>(Bytes.BYTES_COMPARATOR);
     for (byte[] fam : htd.getColumnFamilyNames()) {
       scopes1.put(fam, 0);
@@ -195,7 +200,7 @@ public class TestFSHLogProvider {
     }
     Configuration localConf = new Configuration(conf);
     localConf.set(WALFactory.WAL_PROVIDER, FSHLogProvider.class.getName());
-    WALFactory wals = new WALFactory(localConf, null, currentTest.getMethodName());
+    WALFactory wals = new WALFactory(localConf, currentTest.getMethodName());
     try {
       RegionInfo hri = RegionInfoBuilder.newBuilder(htd.getTableName()).build();
       RegionInfo hri2 = RegionInfoBuilder.newBuilder(htd2.getTableName()).build();
@@ -261,10 +266,10 @@ public class TestFSHLogProvider {
     LOG.debug(currentTest.getMethodName());
     TableDescriptor table1 =
         TableDescriptorBuilder.newBuilder(TableName.valueOf(currentTest.getMethodName() + "1"))
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.of("row")).build();
+            .setColumnFamily(ColumnFamilyDescriptorBuilder.of("row")).build();
     TableDescriptor table2 =
         TableDescriptorBuilder.newBuilder(TableName.valueOf(currentTest.getMethodName() + "2"))
-            .addColumnFamily(ColumnFamilyDescriptorBuilder.of("row")).build();
+            .setColumnFamily(ColumnFamilyDescriptorBuilder.of("row")).build();
     NavigableMap<byte[], Integer> scopes1 = new TreeMap<>(Bytes.BYTES_COMPARATOR);
     for (byte[] fam : table1.getColumnFamilyNames()) {
       scopes1.put(fam, 0);
@@ -275,7 +280,7 @@ public class TestFSHLogProvider {
     }
     Configuration localConf = new Configuration(conf);
     localConf.set(WALFactory.WAL_PROVIDER, FSHLogProvider.class.getName());
-    WALFactory wals = new WALFactory(localConf, null, currentTest.getMethodName());
+    WALFactory wals = new WALFactory(localConf, currentTest.getMethodName());
     try {
       WAL wal = wals.getWAL(null);
       assertEquals(0, AbstractFSWALProvider.getNumRolledLogFiles(wal));
@@ -349,7 +354,7 @@ public class TestFSHLogProvider {
   public void setMembershipDedups() throws IOException {
     Configuration localConf = new Configuration(conf);
     localConf.set(WALFactory.WAL_PROVIDER, FSHLogProvider.class.getName());
-    WALFactory wals = new WALFactory(localConf, null, currentTest.getMethodName());
+    WALFactory wals = new WALFactory(localConf, currentTest.getMethodName());
     try {
       final Set<WAL> seen = new HashSet<>(1);
       assertTrue("first attempt to add WAL from default provider should work.",

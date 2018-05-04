@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,6 +17,8 @@
  */
 package org.apache.hadoop.hbase.regionserver.wal;
 
+import static org.junit.Assert.assertEquals;
+
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.List;
@@ -27,16 +28,18 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HConstants;
-import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
 import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.RegionInfo;
+import org.apache.hadoop.hbase.client.RegionInfoBuilder;
+import org.apache.hadoop.hbase.client.TableDescriptor;
+import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.apache.hadoop.hbase.regionserver.ChunkCreator;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.MemStoreLABImpl;
@@ -48,18 +51,22 @@ import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.wal.WALEdit;
 import org.apache.hadoop.hbase.wal.WALKey;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
-
-import static org.junit.Assert.assertEquals;
 
 /**
  * Provides FSHLog test cases.
  */
 @Category({ RegionServerTests.class, MediumTests.class })
 public class TestFSHLog extends AbstractTestFSWAL {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestFSHLog.class);
+
   @Rule
   public TestName name = new TestName();
 
@@ -92,7 +99,7 @@ public class TestFSHLog extends AbstractTestFSWAL {
       SecurityException, IllegalArgumentException, IllegalAccessException {
     final String name = this.name.getMethodName();
     FSHLog log = new FSHLog(FS, FSUtils.getRootDir(CONF), name, HConstants.HREGION_OLDLOGDIR_NAME,
-        CONF, null, true, null, null);
+      CONF, null, true, null, null);
     try {
       Field ringBufferEventHandlerField = FSHLog.class.getDeclaredField("ringBufferEventHandler");
       ringBufferEventHandlerField.setAccessible(true);
@@ -102,14 +109,14 @@ public class TestFSHLog extends AbstractTestFSWAL {
           FSHLog.RingBufferEventHandler.class.getDeclaredField("syncRunnerIndex");
       syncRunnerIndexField.setAccessible(true);
       syncRunnerIndexField.set(ringBufferEventHandler, Integer.MAX_VALUE - 1);
-      HTableDescriptor htd =
-          new HTableDescriptor(TableName.valueOf(this.name.getMethodName())).addFamily(new HColumnDescriptor("row"));
+      TableDescriptor htd =
+          TableDescriptorBuilder.newBuilder(TableName.valueOf(this.name.getMethodName()))
+            .setColumnFamily(ColumnFamilyDescriptorBuilder.of("row")).build();
       NavigableMap<byte[], Integer> scopes = new TreeMap<>(Bytes.BYTES_COMPARATOR);
-      for (byte[] fam : htd.getFamiliesKeys()) {
+      for (byte[] fam : htd.getColumnFamilyNames()) {
         scopes.put(fam, 0);
       }
-      HRegionInfo hri =
-          new HRegionInfo(htd.getTableName(), HConstants.EMPTY_START_ROW, HConstants.EMPTY_END_ROW);
+      RegionInfo hri = RegionInfoBuilder.newBuilder(htd.getTableName()).build();
       MultiVersionConcurrencyControl mvcc = new MultiVersionConcurrencyControl();
       for (int i = 0; i < 10; i++) {
         addEdits(log, hri, htd, 1, mvcc, scopes);
@@ -122,7 +129,7 @@ public class TestFSHLog extends AbstractTestFSWAL {
   /**
    * Test case for https://issues.apache.org/jira/browse/HBASE-16721
    */
-  @Test (timeout = 30000)
+  @Test
   public void testUnflushedSeqIdTracking() throws IOException, InterruptedException {
     final String name = this.name.getMethodName();
     final byte[] b = Bytes.toBytes("b");
@@ -151,10 +158,10 @@ public class TestFSHLog extends AbstractTestFSWAL {
       });
 
       // open a new region which uses this WAL
-      HTableDescriptor htd =
-          new HTableDescriptor(TableName.valueOf(this.name.getMethodName())).addFamily(new HColumnDescriptor(b));
-      HRegionInfo hri =
-          new HRegionInfo(htd.getTableName(), HConstants.EMPTY_START_ROW, HConstants.EMPTY_END_ROW);
+      TableDescriptor htd =
+          TableDescriptorBuilder.newBuilder(TableName.valueOf(this.name.getMethodName()))
+            .setColumnFamily(ColumnFamilyDescriptorBuilder.of(b)).build();
+      RegionInfo hri = RegionInfoBuilder.newBuilder(htd.getTableName()).build();
       ChunkCreator.initialize(MemStoreLABImpl.CHUNK_SIZE_DEFAULT, false, 0, 0, 0, null);
       final HRegion region = TEST_UTIL.createLocalHRegion(hri, htd, log);
       ExecutorService exec = Executors.newFixedThreadPool(2);

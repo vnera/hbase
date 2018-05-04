@@ -1,5 +1,4 @@
-/*
- *
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -31,9 +30,9 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.CompatibilityFactory;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -63,6 +62,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Threads;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -76,6 +76,11 @@ import org.slf4j.LoggerFactory;
  */
 @Category({ClientTests.class, LargeTests.class})
 public class TestThriftServer {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestThriftServer.class);
+
   private static final HBaseTestingUtility UTIL = new HBaseTestingUtility();
   private static final Logger LOG = LoggerFactory.getLogger(TestThriftServer.class);
   private static final MetricsAssertHelper metricsHelper = CompatibilityFactory
@@ -241,13 +246,13 @@ public class TestThriftServer {
 
   public static void createTestTables(Hbase.Iface handler) throws Exception {
     // Create/enable/disable/delete tables, ensure methods act correctly
-    assertEquals(handler.getTableNames().size(), 0);
+    assertEquals(0, handler.getTableNames().size());
     handler.createTable(tableAname, getColumnDescriptors());
-    assertEquals(handler.getTableNames().size(), 1);
-    assertEquals(handler.getColumnDescriptors(tableAname).size(), 2);
+    assertEquals(1, handler.getTableNames().size());
+    assertEquals(2, handler.getColumnDescriptors(tableAname).size());
     assertTrue(handler.isTableEnabled(tableAname));
     handler.createTable(tableBname, getColumnDescriptors());
-    assertEquals(handler.getTableNames().size(), 2);
+    assertEquals(2, handler.getTableNames().size());
   }
 
   public static void checkTableList(Hbase.Iface handler) throws Exception {
@@ -258,7 +263,7 @@ public class TestThriftServer {
     handler.disableTable(tableBname);
     assertFalse(handler.isTableEnabled(tableBname));
     handler.deleteTable(tableBname);
-    assertEquals(handler.getTableNames().size(), 1);
+    assertEquals(1, handler.getTableNames().size());
     handler.disableTable(tableAname);
     assertFalse(handler.isTableEnabled(tableAname));
     /* TODO Reenable.
@@ -267,7 +272,7 @@ public class TestThriftServer {
     assertTrue(handler.isTableEnabled(tableAname));
     handler.disableTable(tableAname);*/
     handler.deleteTable(tableAname);
-    assertEquals(handler.getTableNames().size(), 0);
+    assertEquals(0, handler.getTableNames().size());
   }
 
   public void doTestIncrements() throws Exception {
@@ -504,12 +509,12 @@ public class TestThriftServer {
     // This used to be '1'.  I don't know why when we are asking for two columns
     // and when the mutations above would seem to add two columns to the row.
     // -- St.Ack 05/12/2009
-    assertEquals(rowResult1a.columns.size(), 1);
+    assertEquals(1, rowResult1a.columns.size());
     assertEquals(rowResult1a.columns.get(columnBname).value, valueCname);
 
     TRowResult rowResult1b = handler.scannerGet(scanner1).get(0);
     assertEquals(rowResult1b.row, rowBname);
-    assertEquals(rowResult1b.columns.size(), 2);
+    assertEquals(2, rowResult1b.columns.size());
     assertEquals(rowResult1b.columns.get(columnAname).value, valueCname);
     assertEquals(rowResult1b.columns.get(columnBname).value, valueDname);
     closeScanner(scanner1, handler);
@@ -517,7 +522,7 @@ public class TestThriftServer {
     // Test a scanner on all rows and all columns, with timestamp
     int scanner2 = handler.scannerOpenTs(tableAname, rowAname, getColumnList(true, true), time1, null);
     TRowResult rowResult2a = handler.scannerGet(scanner2).get(0);
-    assertEquals(rowResult2a.columns.size(), 1);
+    assertEquals(1, rowResult2a.columns.size());
     // column A deleted, does not exist.
     //assertTrue(Bytes.equals(rowResult2a.columns.get(columnAname).value, valueAname));
     assertEquals(rowResult2a.columns.get(columnBname).value, valueBname);
@@ -532,7 +537,7 @@ public class TestThriftServer {
     int scanner4 = handler.scannerOpenWithStopTs(tableAname, rowAname, rowBname,
         getColumnList(false, true), time1, null);
     TRowResult rowResult4a = handler.scannerGet(scanner4).get(0);
-    assertEquals(rowResult4a.columns.size(), 1);
+    assertEquals(1, rowResult4a.columns.size());
     assertEquals(rowResult4a.columns.get(columnBname).value, valueBname);
 
     // Test scanner using a TScan object once with sortColumns False and once with sortColumns true
@@ -542,7 +547,7 @@ public class TestThriftServer {
 
     int scanner5 = handler.scannerOpenWithScan(tableAname , scanNoSortColumns, null);
     TRowResult rowResult5 = handler.scannerGet(scanner5).get(0);
-    assertEquals(rowResult5.columns.size(), 1);
+    assertEquals(1, rowResult5.columns.size());
     assertEquals(rowResult5.columns.get(columnBname).value, valueCname);
 
     TScan scanSortColumns = new TScan();
@@ -552,7 +557,7 @@ public class TestThriftServer {
 
     int scanner6 = handler.scannerOpenWithScan(tableAname ,scanSortColumns, null);
     TRowResult rowResult6 = handler.scannerGet(scanner6).get(0);
-    assertEquals(rowResult6.sortedColumns.size(), 1);
+    assertEquals(1, rowResult6.sortedColumns.size());
     assertEquals(rowResult6.sortedColumns.get(0).getCell().value, valueCname);
 
     List<Mutation> rowBmutations = new ArrayList<>(20);
@@ -583,7 +588,7 @@ public class TestThriftServer {
     int scanner8 = handler.scannerOpenWithScan(tableAname , reversedScan, null);
     List<TRowResult> results = handler.scannerGet(scanner8);
     handler.scannerClose(scanner8);
-    assertEquals(results.size(), 1);
+    assertEquals(1, results.size());
     assertEquals(ByteBuffer.wrap(results.get(0).getRow()), rowBname);
 
     // Teardown
@@ -606,19 +611,19 @@ public class TestThriftServer {
 
   public static void doTestGetTableRegions(Hbase.Iface handler)
       throws Exception {
-    assertEquals(handler.getTableNames().size(), 0);
+    assertEquals(0, handler.getTableNames().size());
     handler.createTable(tableAname, getColumnDescriptors());
-    assertEquals(handler.getTableNames().size(), 1);
+    assertEquals(1, handler.getTableNames().size());
     List<TRegionInfo> regions = handler.getTableRegions(tableAname);
     int regionCount = regions.size();
     assertEquals("empty table should have only 1 region, " +
-            "but found " + regionCount, regionCount, 1);
+            "but found " + regionCount, 1, regionCount);
     LOG.info("Region found:" + regions.get(0));
     handler.disableTable(tableAname);
     handler.deleteTable(tableAname);
     regionCount = handler.getTableRegions(tableAname).size();
     assertEquals("non-existing table should have 0 region, " +
-            "but found " + regionCount, regionCount, 0);
+            "but found " + regionCount, 0, regionCount);
   }
 
   public void doTestFilterRegistration() throws Exception {

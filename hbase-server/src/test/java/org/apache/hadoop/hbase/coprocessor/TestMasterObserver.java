@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.hadoop.hbase.coprocessor;
 
 import static org.junit.Assert.assertFalse;
@@ -31,6 +30,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HRegionLocation;
@@ -63,6 +63,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Threads;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -75,13 +76,17 @@ import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.GetTableDescriptorsRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProtos.GetTableNamesRequest;
 
-
 /**
  * Tests invocation of the {@link org.apache.hadoop.hbase.coprocessor.MasterObserver}
  * interface hooks at all appropriate times during normal HMaster operations.
  */
 @Category({CoprocessorTests.class, MediumTests.class})
 public class TestMasterObserver {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestMasterObserver.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestMasterObserver.class);
 
   public static CountDownLatch tableCreationLatch = new CountDownLatch(1);
@@ -932,6 +937,7 @@ public class TestMasterObserver {
       return preModifyTableActionCalled && !postCompletedModifyTableActionCalled;
     }
 
+    @Override
     public void preEnableTableAction(
         final ObserverContext<MasterCoprocessorEnvironment> ctx, final TableName tableName)
         throws IOException {
@@ -1255,7 +1261,7 @@ public class TestMasterObserver {
     UTIL.shutdownMiniCluster();
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testStarted() throws Exception {
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
 
@@ -1274,7 +1280,7 @@ public class TestMasterObserver {
         cp.wasStartMasterCalled());
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testTableOperations() throws Exception {
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
     final TableName tableName = TableName.valueOf(name.getMethodName());
@@ -1403,7 +1409,7 @@ public class TestMasterObserver {
     }
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testSnapshotOperations() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
@@ -1464,7 +1470,7 @@ public class TestMasterObserver {
     }
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testNamespaceOperations() throws Exception {
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
     String testNamespace = "observed_ns";
@@ -1497,7 +1503,7 @@ public class TestMasterObserver {
     }
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testRegionTransitionOperations() throws Exception {
     final TableName tableName = TableName.valueOf(name.getMethodName());
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
@@ -1586,7 +1592,7 @@ public class TestMasterObserver {
     }
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testTableDescriptorsEnumeration() throws Exception {
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
 
@@ -1603,7 +1609,7 @@ public class TestMasterObserver {
       cp.wasGetTableDescriptorsCalled());
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testTableNamesEnumeration() throws Exception {
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
 
@@ -1618,7 +1624,7 @@ public class TestMasterObserver {
       cp.wasGetTableNamesCalled());
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testAbortProcedureOperation() throws Exception {
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
 
@@ -1633,7 +1639,7 @@ public class TestMasterObserver {
       cp.wasAbortProcedureCalled());
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testGetProceduresOperation() throws Exception {
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
 
@@ -1648,7 +1654,7 @@ public class TestMasterObserver {
       cp.wasGetProceduresCalled());
   }
 
-  @Test (timeout=180000)
+  @Test
   public void testGetLocksOperation() throws Exception {
     MiniHBaseCluster cluster = UTIL.getHBaseCluster();
 

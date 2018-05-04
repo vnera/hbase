@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -35,6 +35,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.Coprocessor;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
@@ -67,6 +68,7 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -81,6 +83,11 @@ import org.slf4j.LoggerFactory;
  */
 @Category({CoprocessorTests.class, MediumTests.class})
 public class TestWALObserver {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestWALObserver.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestWALObserver.class);
   private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
 
@@ -148,7 +155,7 @@ public class TestWALObserver {
     if (TEST_UTIL.getDFSCluster().getFileSystem().exists(this.hbaseWALRootDir)) {
       TEST_UTIL.getDFSCluster().getFileSystem().delete(this.hbaseWALRootDir, true);
     }
-    this.wals = new WALFactory(conf, null, serverName);
+    this.wals = new WALFactory(conf, serverName);
   }
 
   @After
@@ -341,12 +348,14 @@ public class TestWALObserver {
     User user = HBaseTestingUtility.getDifferentUser(newConf,
         ".replay.wal.secondtime");
     user.runAs(new PrivilegedExceptionAction<Void>() {
+      @Override
       public Void run() throws Exception {
         Path p = runWALSplit(newConf);
         LOG.info("WALSplit path == " + p);
         // Make a new wal for new region open.
-        final WALFactory wals2 = new WALFactory(conf, null,
-            ServerName.valueOf(currentTest.getMethodName()+"2", 16010, System.currentTimeMillis()).toString());
+        final WALFactory wals2 = new WALFactory(conf,
+            ServerName.valueOf(currentTest.getMethodName() + "2", 16010, System.currentTimeMillis())
+                .toString());
         WAL wal2 = wals2.getWAL(null);
         HRegion region = HRegion.openHRegion(newConf, FileSystem.get(newConf), hbaseRootDir,
             hri, htd, wal2, TEST_UTIL.getHBaseCluster().getRegionServer(0), null);
@@ -476,14 +485,14 @@ public class TestWALObserver {
   private TableDescriptor getBasic3FamilyHTableDescriptor(TableName tableName) {
     TableDescriptorBuilder builder = TableDescriptorBuilder.newBuilder(tableName);
     Arrays.stream(TEST_FAMILY).map(ColumnFamilyDescriptorBuilder::of)
-        .forEachOrdered(builder::addColumnFamily);
+        .forEachOrdered(builder::setColumnFamily);
     return builder.build();
   }
 
   private TableDescriptor createBasic3FamilyHTD(String tableName) {
     return TableDescriptorBuilder.newBuilder(TableName.valueOf(tableName))
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.of("a"))
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.of("b"))
-        .addColumnFamily(ColumnFamilyDescriptorBuilder.of("c")).build();
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.of("a"))
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.of("b"))
+        .setColumnFamily(ColumnFamilyDescriptorBuilder.of("c")).build();
   }
 }

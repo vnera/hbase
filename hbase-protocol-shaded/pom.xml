@@ -33,19 +33,21 @@
     <maven.javadoc.skip>true</maven.javadoc.skip>
     <!--Version of protobuf that hbase uses internally (we shade our pb)
          Must match what is out in hbase-thirdparty include.
-         (Note, there may only be a 3.3.0 protoc... no 3.3.1 protoc
+         3.5.1-1 is the same as 3.5.1 except includes corrected binaries for el6
+         to work around https://github.com/google/protobuf/issues/4109
            -->
-    <internal.protobuf.version>3.3.0</internal.protobuf.version>
+    <internal.protobuf.version>3.5.1-1</internal.protobuf.version>
   </properties>
   <build>
+    <resources>
+      <resource>
+        <directory>src/main/</directory>
+        <includes>
+          <include>**/*.proto</include>
+        </includes>
+      </resource>
+    </resources>
     <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-site-plugin</artifactId>
-        <configuration>
-          <skip>true</skip>
-        </configuration>
-      </plugin>
       <!-- Make a jar and put the sources in the jar -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -176,6 +178,10 @@
         <configuration>
           <failOnViolation>true</failOnViolation>
         </configuration>
+      </plugin>
+      <plugin>
+        <groupId>net.revelc.code</groupId>
+        <artifactId>warbucks-maven-plugin</artifactId>
       </plugin>
     </plugins>
     <pluginManagement>

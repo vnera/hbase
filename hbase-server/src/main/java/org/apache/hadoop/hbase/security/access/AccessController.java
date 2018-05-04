@@ -756,7 +756,7 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
 
     authorizationEnabled = AccessChecker.isAuthorizationSupported(conf);
     if (!authorizationEnabled) {
-      LOG.warn("The AccessController has been loaded with authorization checks disabled.");
+      LOG.warn("AccessController has been loaded with authorization checks DISABLED!");
     }
 
     shouldCheckExecPermission = conf.getBoolean(AccessControlConstants.EXEC_PERMISSION_CHECKS_KEY,
@@ -794,13 +794,14 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
 
     // set the user-provider.
     this.userProvider = UserProvider.instantiate(env.getConfiguration());
+    // Throws RuntimeException if fails to load TableAuthManager so that coprocessor is unloaded.
     accessChecker = new AccessChecker(env.getConfiguration(), zk);
     tableAcls = new MapMaker().weakValues().makeMap();
   }
 
   @Override
   public void stop(CoprocessorEnvironment env) {
-    TableAuthManager.release(getAuthManager());
+    accessChecker.stop();
   }
 
   /*********************************** Observer/Service Getters ***********************************/
@@ -1126,7 +1127,7 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
         setScope(HConstants.REPLICATION_SCOPE_LOCAL).build();
     TableDescriptor td =
         TableDescriptorBuilder.newBuilder(AccessControlLists.ACL_TABLE_NAME).
-        addColumnFamily(cfd).build();
+          setColumnFamily(cfd).build();
     admin.createTable(td);
   }
 
@@ -1134,6 +1135,7 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
   public void preSnapshot(final ObserverContext<MasterCoprocessorEnvironment> ctx,
       final SnapshotDescription snapshot, final TableDescriptor hTableDescriptor)
       throws IOException {
+    // Move this ACL check to SnapshotManager#checkPermissions as part of AC deprecation.
     requirePermission(ctx, "snapshot " + snapshot.getName(),
         hTableDescriptor.getTableName(), null, null, Permission.Action.ADMIN);
   }
@@ -1264,6 +1266,8 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
   @Override
   public void preTableFlush(final ObserverContext<MasterCoprocessorEnvironment> ctx,
       final TableName tableName) throws IOException {
+    // Move this ACL check to MasterFlushTableProcedureManager#checkPermissions as part of AC
+    // deprecation.
     requirePermission(ctx, "flushTable", tableName,
         null, null, Action.ADMIN, Action.CREATE);
   }
@@ -1569,7 +1573,7 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
           }
           AuthResult authResult = null;
           if (checkCoveringPermission(user, opType, c.getEnvironment(), m.getRow(),
-            m.getFamilyCellMap(), m.getTimeStamp(), Action.WRITE)) {
+            m.getFamilyCellMap(), m.getTimestamp(), Action.WRITE)) {
             authResult = AuthResult.allow(opType.toString(), "Covering cell set",
               user, Action.WRITE, table, m.getFamilyCellMap());
           } else {
@@ -2186,8 +2190,8 @@ public class AccessController implements MasterCoprocessor, RegionCoprocessor,
           // Also using acl as table name to be inline  with the results of global admin and will
           // help in avoiding any leakage of information about being superusers.
           for (String user: Superusers.getSuperUsers()) {
-            perms.add(new UserPermission(user.getBytes(), AccessControlLists.ACL_TABLE_NAME, null,
-                Action.values()));
+            perms.add(new UserPermission(Bytes.toBytes(user), AccessControlLists.ACL_TABLE_NAME,
+                null, Action.values()));
           }
         }
         response = AccessControlUtil.buildGetUserPermissionsResponse(perms);

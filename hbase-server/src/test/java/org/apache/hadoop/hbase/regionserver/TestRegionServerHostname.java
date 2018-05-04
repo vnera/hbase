@@ -26,8 +26,8 @@ import java.net.NetworkInterface;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.master.LoadBalancer;
@@ -37,6 +37,7 @@ import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -47,6 +48,11 @@ import org.slf4j.LoggerFactory;
  */
 @Category({RegionServerTests.class, MediumTests.class})
 public class TestRegionServerHostname {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestRegionServerHostname.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(TestRegionServerHostname.class);
 
   private HBaseTestingUtility TEST_UTIL;
@@ -65,7 +71,7 @@ public class TestRegionServerHostname {
     TEST_UTIL.shutdownMiniCluster();
   }
 
-  @Test (timeout=30000)
+  @Test
   public void testInvalidRegionServerHostnameAbortsServer() throws Exception {
     String invalidHostname = "hostAddr.invalid";
     TEST_UTIL.getConfiguration().set(HRegionServer.RS_HOSTNAME_KEY, invalidHostname);
@@ -80,7 +86,7 @@ public class TestRegionServerHostname {
     assertNull("Failed to validate against invalid hostname", hrs);
   }
 
-  @Test(timeout=120000)
+  @Test
   public void testRegionServerHostname() throws Exception {
     Enumeration<NetworkInterface> netInterfaceList = NetworkInterface.getNetworkInterfaces();
     while (netInterfaceList.hasMoreElements()) {
@@ -116,7 +122,7 @@ public class TestRegionServerHostname {
     }
   }
 
-  @Test(timeout=30000)
+  @Test
   public void testConflictRegionServerHostnameConfigurationsAbortServer() throws Exception {
     Enumeration<NetworkInterface> netInterfaceList = NetworkInterface.getNetworkInterfaces();
     while (netInterfaceList.hasMoreElements()) {
@@ -153,7 +159,7 @@ public class TestRegionServerHostname {
     }
   }
 
-  @Test(timeout=30000)
+  @Test
   public void testRegionServerHostnameReportedToMaster() throws Exception {
     TEST_UTIL.getConfiguration().setBoolean(HRegionServer.RS_HOSTNAME_DISABLE_MASTER_REVERSEDNS_KEY,
     true);

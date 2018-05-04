@@ -50,12 +50,17 @@ module Hbase
     end
 
     #----------------------------------------------------------------------------------------------
-    # Requests a table or region flush
-    def flush(table_or_region_name)
-      @admin.flushRegion(table_or_region_name.to_java_bytes)
-    rescue java.lang.IllegalArgumentException => e
+    # Requests a table or region or region server flush
+    def flush(name)
+      @admin.flushRegion(name.to_java_bytes)
+    rescue java.lang.IllegalArgumentException
       # Unknown region. Try table.
-      @admin.flush(TableName.valueOf(table_or_region_name))
+      begin
+        @admin.flush(TableName.valueOf(name))
+      rescue java.lang.IllegalArgumentException
+        # Unknown table. Try region server.
+        @admin.flushRegionServer(ServerName.valueOf(name))
+      end
     end
 
     #----------------------------------------------------------------------------------------------
@@ -137,9 +142,9 @@ module Hbase
     def splitormerge_switch(type, enabled)
       switch_type = nil
       if type == 'SPLIT'
-        switch_type = org.apache.hadoop.hbase.client.Admin::MasterSwitchType::SPLIT
+        switch_type = org.apache.hadoop.hbase.client::MasterSwitchType::SPLIT
       elsif type == 'MERGE'
-        switch_type = org.apache.hadoop.hbase.client.Admin::MasterSwitchType::MERGE
+        switch_type = org.apache.hadoop.hbase.client::MasterSwitchType::MERGE
       else
         raise ArgumentError, 'only SPLIT or MERGE accepted for type!'
       end
@@ -155,9 +160,9 @@ module Hbase
     def splitormerge_enabled(type)
       switch_type = nil
       if type == 'SPLIT'
-        switch_type = org.apache.hadoop.hbase.client.Admin::MasterSwitchType::SPLIT
+        switch_type = org.apache.hadoop.hbase.client::MasterSwitchType::SPLIT
       elsif type == 'MERGE'
-        switch_type = org.apache.hadoop.hbase.client.Admin::MasterSwitchType::MERGE
+        switch_type = org.apache.hadoop.hbase.client::MasterSwitchType::MERGE
       else
         raise ArgumentError, 'only SPLIT or MERGE accepted for type!'
       end
@@ -221,6 +226,13 @@ module Hbase
     # Returns the state of region normalizer (true is enabled).
     def normalizer_enabled?
       @admin.isNormalizerEnabled
+    end
+
+    #----------------------------------------------------------------------------------------------
+    # Query the current state of master in maintenance mode.
+    # Returns the state of maintenance mode (true is on).
+    def in_maintenance_mode?
+      @admin.isMasterInMaintenanceMode
     end
 
     #----------------------------------------------------------------------------------------------
@@ -456,8 +468,10 @@ module Hbase
 
     #----------------------------------------------------------------------------------------------
     # Merge two regions
-    def merge_region(encoded_region_a_name, encoded_region_b_name, force)
-      @admin.mergeRegions(encoded_region_a_name.to_java_bytes, encoded_region_b_name.to_java_bytes, java.lang.Boolean.valueOf(force))
+    def merge_region(region_a_name, region_b_name, force)
+      @admin.mergeRegions(region_a_name.to_java_bytes,
+                          region_b_name.to_java_bytes,
+                          java.lang.Boolean.valueOf(force))
     end
 
     #----------------------------------------------------------------------------------------------
@@ -694,6 +708,7 @@ module Hbase
           next unless k =~ /coprocessor/i
           v = String.new(value)
           v.strip!
+          # TODO: We should not require user to config the coprocessor with our inner format.
           htd.addCoprocessorWithSpec(v)
           valid_coproc_keys << key
         end
@@ -1278,6 +1293,12 @@ module Hbase
         end
       end
       @admin.clearDeadServers(servers).to_a
+    end
+
+    #----------------------------------------------------------------------------------------------
+    # List live region servers
+    def list_liveservers
+      @admin.getClusterStatus.getServers.to_a
     end
   end
 end

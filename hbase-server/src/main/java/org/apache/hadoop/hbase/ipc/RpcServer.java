@@ -114,6 +114,9 @@ public abstract class RpcServer implements RpcServerInterface,
       + Server.class.getName());
   protected SecretManager<TokenIdentifier> secretManager;
   protected final Map<String, String> saslProps;
+
+  @edu.umd.cs.findbugs.annotations.SuppressWarnings(value="IS2_INCONSISTENT_SYNC",
+      justification="Start is synchronized so authManager creation is single-threaded")
   protected ServiceAuthorizationManager authManager;
 
   /** This is set to Call object before Handler invokes an RPC and ybdie
@@ -355,10 +358,12 @@ public abstract class RpcServer implements RpcServerInterface,
   }
 
   @Override
-  public synchronized void refreshAuthManager(PolicyProvider pp) {
+  public void refreshAuthManager(PolicyProvider pp) {
     // Ignore warnings that this should be accessed in a static way instead of via an instance;
     // it'll break if you go via static route.
-    this.authManager.refresh(this.conf, pp);
+    synchronized (authManager) {
+      authManager.refresh(this.conf, pp);
+    }
   }
 
   protected AuthenticationTokenSecretManager createSecretManager() {
@@ -534,19 +539,18 @@ public abstract class RpcServer implements RpcServerInterface,
 
   /**
    * Authorize the incoming client connection.
-   *
    * @param user client user
    * @param connection incoming connection
    * @param addr InetAddress of incoming connection
-   * @throws org.apache.hadoop.security.authorize.AuthorizationException
-   *         when the client isn't authorized to talk the protocol
+   * @throws AuthorizationException when the client isn't authorized to talk the protocol
    */
-  public synchronized void authorize(UserGroupInformation user,
-      ConnectionHeader connection, InetAddress addr)
-      throws AuthorizationException {
+  public void authorize(UserGroupInformation user, ConnectionHeader connection,
+      InetAddress addr) throws AuthorizationException {
     if (authorize) {
       Class<?> c = getServiceInterface(services, connection.getServiceName());
-      this.authManager.authorize(user != null ? user : null, c, getConf(), addr);
+      synchronized (authManager) {
+        authManager.authorize(user, c, getConf(), addr);
+      }
     }
   }
 

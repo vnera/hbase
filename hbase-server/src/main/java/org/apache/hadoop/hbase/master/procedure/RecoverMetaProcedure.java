@@ -20,24 +20,27 @@ package org.apache.hadoop.hbase.master.procedure;
 
 import java.io.IOException;
 import java.util.Set;
-
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.RegionInfoBuilder;
 import org.apache.hadoop.hbase.client.RegionReplicaUtil;
-import org.apache.hadoop.hbase.master.HMaster;
+import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.master.assignment.AssignProcedure;
+import org.apache.hadoop.hbase.master.assignment.AssignmentManager;
+import org.apache.hadoop.hbase.master.assignment.RegionTransitionProcedure;
 import org.apache.hadoop.hbase.procedure2.ProcedureStateSerializer;
 import org.apache.hadoop.hbase.procedure2.ProcedureSuspendedException;
 import org.apache.hadoop.hbase.procedure2.ProcedureYieldException;
 import org.apache.hadoop.hbase.procedure2.StateMachineProcedure;
 import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.hbase.thirdparty.com.google.common.base.Preconditions;
+
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos.RecoverMetaState;
@@ -48,6 +51,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos.R
  * assigning meta region/s. Any place where meta is accessed and requires meta to be online, need to
  * submit this procedure instead of duplicating steps to recover meta in the code.
  */
+@InterfaceAudience.Private
 public class RecoverMetaProcedure
     extends StateMachineProcedure<MasterProcedureEnv, MasterProcedureProtos.RecoverMetaState>
     implements TableProcedureInterface {
@@ -58,7 +62,7 @@ public class RecoverMetaProcedure
   private int replicaId;
 
   private final ProcedurePrepareLatch syncLatch;
-  private HMaster master;
+  private MasterServices master;
 
   /**
    * Call this constructor to queue up a {@link RecoverMetaProcedure} in response to meta
@@ -102,6 +106,21 @@ public class RecoverMetaProcedure
 
     try {
       switch (state) {
+        case RECOVER_META_PREPARE:
+          // If Master is going down or cluster is up, skip this assign by returning NO_MORE_STATE
+          if (!master.isClusterUp()) {
+            String msg = "Cluster not up! Skipping hbase:meta assign.";
+            LOG.warn(msg);
+            return Flow.NO_MORE_STATE;
+          }
+          if (master.isStopping() || master.isStopped()) {
+            String msg = "Master stopping=" + master.isStopping() + ", stopped=" +
+                master.isStopped() + "; skipping hbase:meta assign.";
+            LOG.warn(msg);
+            return Flow.NO_MORE_STATE;
+          }
+          setNextState(RecoverMetaState.RECOVER_META_SPLIT_LOGS);
+          break;
         case RECOVER_META_SPLIT_LOGS:
           LOG.info("Start " + this);
           if (shouldSplitWal) {
@@ -126,17 +145,17 @@ public class RecoverMetaProcedure
               RegionInfoBuilder.FIRST_META_REGIONINFO, this.replicaId);
 
           AssignProcedure metaAssignProcedure;
+          AssignmentManager am = master.getAssignmentManager();
           if (failedMetaServer != null) {
-            LOG.info(this + "; Assigning meta with new plan. previous meta server=" +
-                failedMetaServer);
-            metaAssignProcedure = master.getAssignmentManager().createAssignProcedure(hri);
+            handleRIT(env, hri, this.failedMetaServer);
+            LOG.info(this + "; Assigning meta with new plan; previous server=" + failedMetaServer);
+            metaAssignProcedure = am.createAssignProcedure(hri);
           } else {
             // get server carrying meta from zk
             ServerName metaServer =
                 MetaTableLocator.getMetaRegionState(master.getZooKeeper()).getServerName();
             LOG.info(this + "; Retaining meta assignment to server=" + metaServer);
-            metaAssignProcedure =
-                master.getAssignmentManager().createAssignProcedure(hri, metaServer);
+            metaAssignProcedure = am.createAssignProcedure(hri, metaServer);
           }
 
           addChildProcedure(metaAssignProcedure);
@@ -150,6 +169,34 @@ public class RecoverMetaProcedure
           getCycles(), e);
     }
     return Flow.HAS_MORE_STATE;
+  }
+
+  /**
+   * Is the region stuck assigning to this failedMetaServer? If so, cancel the call
+   * just as we do over in ServerCrashProcedure#handleRIT except less to do here; less context
+   * to carry.
+   */
+  // NOTE: Make sure any fix or improvement done here is also done in SCP#handleRIT; the methods
+  // have overlap.
+  private void handleRIT(MasterProcedureEnv env, RegionInfo ri, ServerName crashedServerName) {
+    AssignmentManager am = env.getAssignmentManager();
+    RegionTransitionProcedure rtp = am.getRegionStates().getRegionTransitionProcedure(ri);
+    if (rtp == null) {
+      return; // Nothing to do. Not in RIT.
+    }
+    // Make sure the RIT is against this crashed server. In the case where there are many
+    // processings of a crashed server -- backed up for whatever reason (slow WAL split)
+    // -- then a previous SCP may have already failed an assign, etc., and it may have a
+    // new location target; DO NOT fail these else we make for assign flux.
+    ServerName rtpServerName = rtp.getServer(env);
+    if (rtpServerName == null) {
+      LOG.warn("RIT with ServerName null! " + rtp);
+    } else if (rtpServerName.equals(crashedServerName)) {
+      LOG.info("pid=" + getProcId() + " found RIT " + rtp + "; " +
+          rtp.getRegionState(env).toShortString());
+      rtp.remoteCallFailed(env, crashedServerName,
+          new ServerCrashException(getProcId(), crashedServerName));
+    }
   }
 
   @Override
@@ -172,7 +219,7 @@ public class RecoverMetaProcedure
 
   @Override
   protected MasterProcedureProtos.RecoverMetaState getInitialState() {
-    return RecoverMetaState.RECOVER_META_SPLIT_LOGS;
+    return RecoverMetaState.RECOVER_META_PREPARE;
   }
 
   @Override
@@ -250,7 +297,7 @@ public class RecoverMetaProcedure
    */
   private void prepare(MasterProcedureEnv env) {
     if (master == null) {
-      master = (HMaster) env.getMasterServices();
+      master = env.getMasterServices();
       Preconditions.checkArgument(master != null);
     }
   }

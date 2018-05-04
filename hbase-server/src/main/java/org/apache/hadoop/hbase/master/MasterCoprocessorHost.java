@@ -20,6 +20,7 @@ package org.apache.hadoop.hbase.master;
 
 import com.google.protobuf.Service;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.Set;
 import org.apache.hadoop.conf.Configuration;
@@ -133,6 +134,7 @@ public class MasterCoprocessorHost
      * @return An instance of MasterServices, an object NOT for general user-space Coprocessor
      * consumption.
      */
+    @Override
     public MasterServices getMasterServices() {
       return this.masterServices;
     }
@@ -149,7 +151,7 @@ public class MasterCoprocessorHost
     // only one MasterCoprocessorHost instance in the master process
     boolean coprocessorsEnabled = conf.getBoolean(COPROCESSORS_ENABLED_CONF_KEY,
       DEFAULT_COPROCESSORS_ENABLED);
-    LOG.info("System coprocessor loading is " + (coprocessorsEnabled ? "enabled" : "disabled"));
+    LOG.trace("System coprocessor loading is {}",  (coprocessorsEnabled ? "enabled" : "disabled"));
     loadSystemCoprocessors(conf, MASTER_COPROCESSOR_CONF_KEY);
   }
 
@@ -169,17 +171,22 @@ public class MasterCoprocessorHost
   @Override
   public MasterCoprocessor checkAndGetInstance(Class<?> implClass)
       throws InstantiationException, IllegalAccessException {
-    if (MasterCoprocessor.class.isAssignableFrom(implClass)) {
-      return (MasterCoprocessor)implClass.newInstance();
-    } else if (CoprocessorService.class.isAssignableFrom(implClass)) {
-      // For backward compatibility with old CoprocessorService impl which don't extend
-      // MasterCoprocessor.
-      return new CoprocessorServiceBackwardCompatiblity.MasterCoprocessorService(
-          (CoprocessorService)implClass.newInstance());
-    } else {
-      LOG.error(implClass.getName() + " is not of type MasterCoprocessor. Check the "
-          + "configuration " + CoprocessorHost.MASTER_COPROCESSOR_CONF_KEY);
-      return null;
+    try {
+      if (MasterCoprocessor.class.isAssignableFrom(implClass)) {
+        return implClass.asSubclass(MasterCoprocessor.class).getDeclaredConstructor().newInstance();
+      } else if (CoprocessorService.class.isAssignableFrom(implClass)) {
+        // For backward compatibility with old CoprocessorService impl which don't extend
+        // MasterCoprocessor.
+        CoprocessorService cs;
+        cs = implClass.asSubclass(CoprocessorService.class).getDeclaredConstructor().newInstance();
+        return new CoprocessorServiceBackwardCompatiblity.MasterCoprocessorService(cs);
+      } else {
+        LOG.error("{} is not of type MasterCoprocessor. Check the configuration of {}",
+            implClass.getName(), CoprocessorHost.MASTER_COPROCESSOR_CONF_KEY);
+        return null;
+      }
+    } catch (NoSuchMethodException | InvocationTargetException e) {
+      throw (InstantiationException) new InstantiationException(implClass.getName()).initCause(e);
     }
   }
 

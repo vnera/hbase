@@ -28,6 +28,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.master.HMaster;
 import org.apache.hadoop.hbase.regionserver.HRegion;
+import org.apache.hadoop.hbase.regionserver.HRegion.FlushResult;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.security.User;
@@ -107,9 +108,11 @@ public class MiniHBaseCluster extends HBaseCluster {
          Class<? extends MiniHBaseCluster.MiniHBaseClusterRegionServer> regionserverClass)
       throws IOException, InterruptedException {
     super(conf);
-    conf.set(HConstants.MASTER_PORT, "0");
-    if (conf.getInt(HConstants.MASTER_INFO_PORT, 0) != -1) {
-      conf.set(HConstants.MASTER_INFO_PORT, "0");
+    if (conf.getBoolean(LocalHBaseCluster.ASSIGN_RANDOM_PORTS, false)) {
+      conf.set(HConstants.MASTER_PORT, "0");
+      if (conf.getInt(HConstants.MASTER_INFO_PORT, 0) != -1) {
+        conf.set(HConstants.MASTER_INFO_PORT, "0");
+      }
     }
 
     // Hadoop 2
@@ -164,7 +167,8 @@ public class MiniHBaseCluster extends HBaseCluster {
     @Override
     public void run() {
       try {
-        this.user.runAs(new PrivilegedAction<Object>(){
+        this.user.runAs(new PrivilegedAction<Object>() {
+          @Override
           public Object run() {
             runRegionServer();
             return null;
@@ -194,6 +198,7 @@ public class MiniHBaseCluster extends HBaseCluster {
     @Override
     public void abort(final String reason, final Throwable cause) {
       this.user.runAs(new PrivilegedAction<Object>() {
+        @Override
         public Object run() {
           abortRegionServer(reason, cause);
           return null;
@@ -399,7 +404,6 @@ public class MiniHBaseCluster extends HBaseCluster {
    * within the timeout.
    *
    * @return New RegionServerThread
-   * @throws IOException
    */
   public JVMClusterUtil.RegionServerThread startRegionServerAndWait(long timeout)
       throws IOException {
@@ -476,7 +480,6 @@ public class MiniHBaseCluster extends HBaseCluster {
   /**
    * Starts a master thread running
    *
-   * @throws IOException
    * @return New RegionServerThread
    */
   public JVMClusterUtil.MasterThread startMaster() throws IOException {
@@ -498,6 +501,7 @@ public class MiniHBaseCluster extends HBaseCluster {
    * Returns the current active master, if available.
    * @return the active HMaster, null if none is active.
    */
+  @Override
   public MasterService.BlockingInterface getMasterAdminService() {
     return this.hbaseCluster.getActiveMaster().getMasterRpcServices();
   }
@@ -589,6 +593,7 @@ public class MiniHBaseCluster extends HBaseCluster {
    *         masters left.
    * @throws InterruptedException
    */
+  @Override
   public boolean waitForActiveAndReadyMaster(long timeout) throws IOException {
     List<JVMClusterUtil.MasterThread> mts;
     long start = System.currentTimeMillis();
@@ -628,9 +633,8 @@ public class MiniHBaseCluster extends HBaseCluster {
 
   /**
    * Shut down the mini HBase cluster
-   * @throws IOException
    */
-  @SuppressWarnings("deprecation")
+  @Override
   public void shutdown() throws IOException {
     if (this.hbaseCluster != null) {
       this.hbaseCluster.shutdown();
@@ -657,29 +661,36 @@ public class MiniHBaseCluster extends HBaseCluster {
     return master == null ? null : master.getClusterMetrics();
   }
 
+  private void executeFlush(HRegion region) throws IOException {
+    // retry 5 times if we can not flush
+    for (int i = 0; i < 5; i++) {
+      FlushResult result = region.flush(true);
+      if (result.getResult() != FlushResult.Result.CANNOT_FLUSH) {
+        return;
+      }
+      Threads.sleep(1000);
+    }
+  }
+
   /**
    * Call flushCache on all regions on all participating regionservers.
-   * @throws IOException
    */
   public void flushcache() throws IOException {
-    for (JVMClusterUtil.RegionServerThread t:
-        this.hbaseCluster.getRegionServers()) {
-      for(HRegion r: t.getRegionServer().getOnlineRegionsLocalContext()) {
-        r.flush(true);
+    for (JVMClusterUtil.RegionServerThread t : this.hbaseCluster.getRegionServers()) {
+      for (HRegion r : t.getRegionServer().getOnlineRegionsLocalContext()) {
+        executeFlush(r);
       }
     }
   }
 
   /**
    * Call flushCache on all regions of the specified table.
-   * @throws IOException
    */
   public void flushcache(TableName tableName) throws IOException {
-    for (JVMClusterUtil.RegionServerThread t:
-        this.hbaseCluster.getRegionServers()) {
-      for(HRegion r: t.getRegionServer().getOnlineRegionsLocalContext()) {
-        if(r.getTableDescriptor().getTableName().equals(tableName)) {
-          r.flush(true);
+    for (JVMClusterUtil.RegionServerThread t : this.hbaseCluster.getRegionServers()) {
+      for (HRegion r : t.getRegionServer().getOnlineRegionsLocalContext()) {
+        if (r.getTableDescriptor().getTableName().equals(tableName)) {
+          executeFlush(r);
         }
       }
     }
@@ -833,11 +844,21 @@ public class MiniHBaseCluster extends HBaseCluster {
    * impossible to bring the mini-cluster back for clean shutdown.
    */
   public void killAll() {
+    // Do backups first.
+    MasterThread activeMaster = null;
+    for (MasterThread masterThread : getMasterThreads()) {
+      if (!masterThread.getMaster().isActiveMaster()) {
+        masterThread.getMaster().abort("killAll");
+      } else {
+        activeMaster = masterThread;
+      }
+    }
+    // Do active after.
+    if (activeMaster != null) {
+      activeMaster.getMaster().abort("killAll");
+    }
     for (RegionServerThread rst : getRegionServerThreads()) {
       rst.getRegionServer().abort("killAll");
-    }
-    for (MasterThread masterThread : getMasterThreads()) {
-      masterThread.getMaster().abort("killAll", new Throwable());
     }
   }
 

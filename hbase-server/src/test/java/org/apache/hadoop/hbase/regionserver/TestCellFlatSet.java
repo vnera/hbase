@@ -1,5 +1,4 @@
 /**
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,41 +17,45 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import java.lang.management.ManagementFactory;
-
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.SortedSet;
-import junit.framework.TestCase;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellComparator;
 import org.apache.hadoop.hbase.CellUtil;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValueUtil;
-
 import org.apache.hadoop.hbase.io.util.MemorySizeUtil;
-
-
 import org.apache.hadoop.hbase.testclassification.RegionServerTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.apache.hadoop.hbase.util.ByteBufferUtils;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.ClassSize;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import static org.junit.Assert.assertTrue;
-
 @Category({RegionServerTests.class, SmallTests.class})
 @RunWith(Parameterized.class)
-public class TestCellFlatSet extends TestCase {
+public class TestCellFlatSet {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestCellFlatSet.class);
+
   @Parameterized.Parameters
   public static Object[] data() {
     return new Object[] { "SMALL_CHUNKS", "NORMAL_CHUNKS" }; // test with different chunk sizes
@@ -77,25 +80,22 @@ public class TestCellFlatSet extends TestCase {
   public TestCellFlatSet(String chunkType){
     long globalMemStoreLimit = (long) (ManagementFactory.getMemoryMXBean().getHeapMemoryUsage()
         .getMax() * MemorySizeUtil.getGlobalMemStoreHeapPercent(CONF, false));
-    if (chunkType == "NORMAL_CHUNKS") {
+    if (chunkType.equals("NORMAL_CHUNKS")) {
       chunkCreator = ChunkCreator.initialize(MemStoreLABImpl.CHUNK_SIZE_DEFAULT, false,
           globalMemStoreLimit, 0.2f, MemStoreLAB.POOL_INITIAL_SIZE_DEFAULT, null);
-      assertTrue(chunkCreator != null);
+      assertNotNull(chunkCreator);
       smallChunks = false;
     } else {
       // chunkCreator with smaller chunk size, so only 3 cell-representations can accommodate a chunk
       chunkCreator = ChunkCreator.initialize(SMALL_CHUNK_SIZE, false,
           globalMemStoreLimit, 0.2f, MemStoreLAB.POOL_INITIAL_SIZE_DEFAULT, null);
-      assertTrue(chunkCreator != null);
+      assertNotNull(chunkCreator);
       smallChunks = true;
     }
   }
 
   @Before
-  @Override
   public void setUp() throws Exception {
-    super.setUp();
-
     // create array of Cells to bass to the CellFlatMap under CellSet
     final byte[] one = Bytes.toBytes(15);
     final byte[] two = Bytes.toBytes(25);
@@ -126,7 +126,7 @@ public class TestCellFlatSet extends TestCase {
     ascCCM = setUpCellChunkMap(true);
     descCCM = setUpCellChunkMap(false);
 
-    if (smallChunks == true) {    // check jumbo chunks as well
+    if (smallChunks) {    // check jumbo chunks as well
       ascCCM = setUpJumboCellChunkMap(true);
     }
   }

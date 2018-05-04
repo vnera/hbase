@@ -558,7 +558,7 @@ public class SimpleRegionObserver implements RegionCoprocessor, RegionObserver {
         TestRegionObserverInterface.TEST_TABLE)) {
       assertNotNull(familyPaths);
       assertEquals(1,familyPaths.size());
-      assertArrayEquals(familyPaths.get(0).getFirst(), TestRegionObserverInterface.A);
+      assertArrayEquals(TestRegionObserverInterface.A, familyPaths.get(0).getFirst());
       String familyPath = familyPaths.get(0).getSecond();
       String familyName = Bytes.toString(TestRegionObserverInterface.A);
       assertEquals(familyPath.substring(familyPath.length()-familyName.length()-1),"/"+familyName);
@@ -577,7 +577,7 @@ public class SimpleRegionObserver implements RegionCoprocessor, RegionObserver {
         TestRegionObserverInterface.TEST_TABLE)) {
       assertNotNull(familyPaths);
       assertEquals(1,familyPaths.size());
-      assertArrayEquals(familyPaths.get(0).getFirst(), TestRegionObserverInterface.A);
+      assertArrayEquals(TestRegionObserverInterface.A, familyPaths.get(0).getFirst());
       String familyPath = familyPaths.get(0).getSecond();
       String familyName = Bytes.toString(TestRegionObserverInterface.A);
       assertEquals(familyPath.substring(familyPath.length()-familyName.length()-1),"/"+familyName);
@@ -600,7 +600,7 @@ public class SimpleRegionObserver implements RegionCoprocessor, RegionObserver {
   @Override
   public void preWALRestore(ObserverContext<? extends RegionCoprocessorEnvironment> env,
       RegionInfo info, WALKey logKey, WALEdit logEdit) throws IOException {
-    String tableName = logKey.getTablename().getNameAsString();
+    String tableName = logKey.getTableName().getNameAsString();
     if (tableName.equals(TABLE_SKIPPED)) {
       // skip recovery of TABLE_SKIPPED for testing purpose
       env.bypass();

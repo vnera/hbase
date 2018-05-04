@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.RegionInfo;
@@ -34,12 +33,15 @@ import org.apache.hadoop.hbase.master.ServerListener;
 import org.apache.hadoop.hbase.procedure2.RemoteProcedureDispatcher;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.ipc.RemoteException;
+import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.hbase.thirdparty.com.google.common.collect.ArrayListMultimap;
 import org.apache.hbase.thirdparty.com.google.protobuf.RpcCallback;
 import org.apache.hbase.thirdparty.com.google.protobuf.RpcController;
 import org.apache.hbase.thirdparty.com.google.protobuf.ServiceException;
+
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.AdminService;
@@ -53,6 +55,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.OpenRegionR
 /**
  * A remote procecdure dispatcher for regionservers.
  */
+@InterfaceAudience.Private
 public class RSProcedureDispatcher
     extends RemoteProcedureDispatcher<MasterProcedureEnv, ServerName>
     implements ServerListener {
@@ -105,9 +108,8 @@ public class RSProcedureDispatcher
       final Set<RemoteProcedure> remoteProcedures) {
     final int rsVersion = master.getAssignmentManager().getServerVersion(serverName);
     if (rsVersion >= RS_VERSION_WITH_EXEC_PROCS) {
-      LOG.info(String.format(
-        "Using procedure batch rpc execution for serverName=%s version=%s",
-        serverName, rsVersion));
+      LOG.trace("Using procedure batch rpc execution for serverName={} version={}",
+        serverName, rsVersion);
       submitTask(new ExecuteProceduresRemoteCall(serverName, remoteProcedures));
     } else {
       LOG.info(String.format(
@@ -117,6 +119,7 @@ public class RSProcedureDispatcher
     }
   }
 
+  @Override
   protected void abortPendingOperations(final ServerName serverName,
       final Set<RemoteProcedure> operations) {
     // TODO: Replace with a ServerNotOnlineException()
@@ -126,10 +129,12 @@ public class RSProcedureDispatcher
     }
   }
 
+  @Override
   public void serverAdded(final ServerName serverName) {
     addNode(serverName);
   }
 
+  @Override
   public void serverRemoved(final ServerName serverName) {
     removeNode(serverName);
   }
@@ -138,6 +143,7 @@ public class RSProcedureDispatcher
    * Base remote call
    */
   protected abstract class AbstractRSRemoteCall implements Callable<Void> {
+    @Override
     public abstract Void call();
 
     private final ServerName serverName;
@@ -269,6 +275,7 @@ public class RSProcedureDispatcher
       this.remoteProcedures = remoteProcedures;
     }
 
+    @Override
     public Void call() {
       request = ExecuteProceduresRequest.newBuilder();
       if (LOG.isTraceEnabled()) {
@@ -290,11 +297,13 @@ public class RSProcedureDispatcher
       return null;
     }
 
+    @Override
     public void dispatchOpenRequests(final MasterProcedureEnv env,
         final List<RegionOpenOperation> operations) {
       request.addOpenRegion(buildOpenRegionRequest(env, getServerName(), operations));
     }
 
+    @Override
     public void dispatchCloseRequests(final MasterProcedureEnv env,
         final List<RegionCloseOperation> operations) {
       for (RegionCloseOperation op: operations) {
@@ -471,11 +480,13 @@ public class RSProcedureDispatcher
       return null;
     }
 
+    @Override
     public void dispatchOpenRequests(final MasterProcedureEnv env,
         final List<RegionOpenOperation> operations) {
       submitTask(new OpenRegionRemoteCall(serverName, operations));
     }
 
+    @Override
     public void dispatchCloseRequests(final MasterProcedureEnv env,
         final List<RegionCloseOperation> operations) {
       for (RegionCloseOperation op: operations) {

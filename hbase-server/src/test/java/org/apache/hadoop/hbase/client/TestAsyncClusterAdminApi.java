@@ -34,6 +34,7 @@ import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ClusterMetrics;
 import org.apache.hadoop.hbase.ClusterMetrics.Option;
+import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.RegionMetrics;
@@ -43,10 +44,11 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.testclassification.ClientTests;
-import org.apache.hadoop.hbase.testclassification.MediumTests;
+import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.wal.AbstractFSWALProvider;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -56,8 +58,12 @@ import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 import org.apache.hbase.thirdparty.com.google.common.collect.Maps;
 
 @RunWith(Parameterized.class)
-@Category({ ClientTests.class, MediumTests.class })
+@Category({ ClientTests.class, LargeTests.class })
 public class TestAsyncClusterAdminApi extends TestAsyncAdminBase {
+
+  @ClassRule
+  public static final HBaseClassTestRule CLASS_RULE =
+      HBaseClassTestRule.forClass(TestAsyncClusterAdminApi.class);
 
   private final Path cnfPath = FileSystems.getDefault().getPath("target/test-classes/hbase-site.xml");
   private final Path cnf2Path = FileSystems.getDefault().getPath("target/test-classes/hbase-site2.xml");
@@ -307,7 +313,7 @@ public class TestAsyncClusterAdminApi extends TestAsyncAdminBase {
   private void createAndLoadTable(TableName[] tables) {
     for (TableName table : tables) {
       TableDescriptorBuilder builder = TableDescriptorBuilder.newBuilder(table);
-      builder.addColumnFamily(ColumnFamilyDescriptorBuilder.of(FAMILY));
+      builder.setColumnFamily(ColumnFamilyDescriptorBuilder.of(FAMILY));
       admin.createTable(builder.build(), Bytes.toBytes("aaaaa"), Bytes.toBytes("zzzzz"), 16).join();
       AsyncTable<?> asyncTable = ASYNC_CONN.getTable(table);
       List<Put> puts = new ArrayList<>();

@@ -64,6 +64,14 @@ function personality_globals
 
   # Override the maven options
   MAVEN_OPTS="${MAVEN_OPTS:-"-Xmx3100M"}"
+
+  # Yetus 0.7.0 enforces limits. Default proclimit is 1000.
+  # Up it. See HBASE-19902 for how we arrived at this number.
+  PROCLIMIT=10000
+
+  # Set docker container to run with 20g. Default is 4g in yetus.
+  # See HBASE-19902 for how we arrived at 20g.
+  DOCKERMEMLIMIT=20g
 }
 
 ## @description  Parse extra arguments required by personalities, if any.
@@ -147,6 +155,10 @@ function personality_modules
     return
   fi
 
+  if [[ ${testtype} == compile ]]; then
+    extra="${extra} -PerrorProne"
+  fi
+
   # If EXCLUDE_TESTS_URL/INCLUDE_TESTS_URL is set, fetches the url
   # and sets -Dtest.exclude.pattern/-Dtest to exclude/include the
   # tests respectively.
@@ -166,6 +178,26 @@ function personality_modules
     # shellcheck disable=SC2086
     personality_enqueue_module ${module} ${extra}
   done
+}
+
+## @description places where we override the built in assumptions about what tests to run
+## @audience    private
+## @stability   evolving
+## @param       filename of changed file
+function personality_file_tests
+{
+  local filename=$1
+  # If the change is to the refguide, then we don't need any builtin yetus tests
+  # the refguide test (below) will suffice for coverage.
+  if [[ ${filename} =~ src/main/asciidoc ]] ||
+     [[ ${filename} =~ src/main/xslt ]]; then
+    yetus_debug "Skipping builtin yetus checks for ${filename}. refguide test should pick it up."
+  # fallback to checking which tests based on what yetus would do by default
+  elif declare -f "${BUILDTOOL}_builtin_personality_file_tests" >/dev/null; then
+    "${BUILDTOOL}_builtin_personality_file_tests" "${filename}"
+  elif declare -f builtin_personality_file_tests >/dev/null; then
+    builtin_personality_file_tests "${filename}"
+  fi
 }
 
 ## @description  Uses relevant include/exclude env variable to fetch list of included/excluded
@@ -213,6 +245,76 @@ function get_include_exclude_tests_arg
 
 ###################################################
 
+add_test_type refguide
+
+function refguide_initialize
+{
+  maven_add_install refguide
+}
+
+function refguide_filefilter
+{
+  local filename=$1
+
+  if [[ ${filename} =~ src/main/asciidoc ]] ||
+     [[ ${filename} =~ src/main/xslt ]] ||
+     [[ ${filename} =~ hbase-common/src/main/resources/hbase-default.xml ]]; then
+    add_test refguide
+  fi
+}
+
+function refguide_rebuild
+{
+  local repostatus=$1
+  local logfile="${PATCH_DIR}/${repostatus}-refguide.log"
+  declare -i count
+
+  if ! verify_needed_test refguide; then
+    return 0
+  fi
+
+  big_console_header "Checking we can create the ref guide on ${repostatus}"
+
+  start_clock
+
+  # disabled because "maven_executor" needs to return both command and args
+  # shellcheck disable=2046
+  echo_and_redirect "${logfile}" \
+    $(maven_executor) clean site --batch-mode \
+      -pl . \
+      -Dtest=NoUnitTests -DHBasePatchProcess -Prelease \
+      -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Dfindbugs.skip=true
+
+  count=$(${GREP} -c '\[ERROR\]' "${logfile}")
+  if [[ ${count} -gt 0 ]]; then
+    add_vote_table -1 refguide "${repostatus} has ${count} errors when building the reference guide."
+    add_footer_table refguide "@@BASE@@/${repostatus}-refguide.log"
+    return 1
+  fi
+
+  if ! mv target/site "${PATCH_DIR}/${repostatus}-site"; then
+    add_vote_table -1 refguide "${repostatus} failed to produce a site directory."
+    add_footer_table refguide "@@BASE@@/${repostatus}-refguide.log"
+    return 1
+  fi
+
+  if [[ ! -f "${PATCH_DIR}/${repostatus}-site/book.html" ]]; then
+    add_vote_table -1 refguide "${repostatus} failed to produce the html version of the reference guide."
+    add_footer_table refguide "@@BASE@@/${repostatus}-refguide.log"
+    return 1
+  fi
+
+  if [[ ! -f "${PATCH_DIR}/${repostatus}-site/apache_hbase_reference_guide.pdf" ]]; then
+    add_vote_table -1 refguide "${repostatus} failed to produce the pdf version of the reference guide."
+    add_footer_table refguide "@@BASE@@/${repostatus}-refguide.log"
+    return 1
+  fi
+
+  add_vote_table 0 refguide "${repostatus} has no errors when building the reference guide. See footer for rendered docs, which you should manually inspect."
+  add_footer_table refguide "@@BASE@@/${repostatus}-site/book.html"
+  return 0
+}
+
 add_test_type shadedjars
 
 
@@ -250,8 +352,12 @@ function shadedjars_rebuild
 
   big_console_header "Checking shaded client builds on ${repostatus}"
 
+  start_clock
+
+  # disabled because "maven_executor" needs to return both command and args
+  # shellcheck disable=2046
   echo_and_redirect "${logfile}" \
-    "${MAVEN}" "${MAVEN_ARGS[@]}" clean verify -fae --batch-mode \
+    $(maven_executor) clean verify -fae --batch-mode \
       -pl hbase-shaded/hbase-shaded-check-invariants -am \
       -Dtest=NoUnitTests -DHBasePatchProcess -Prelease \
       -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Dfindbugs.skip=true
@@ -259,6 +365,7 @@ function shadedjars_rebuild
   count=$(${GREP} -c '\[ERROR\]' "${logfile}")
   if [[ ${count} -gt 0 ]]; then
     add_vote_table -1 shadedjars "${repostatus} has ${count} errors when building our shaded downstream artifacts."
+    add_footer_table shadedjars "@@BASE@@/${repostatus}-shadedjars.txt"
     return 1
   fi
 
@@ -331,6 +438,8 @@ function hadoopcheck_rebuild
 
   big_console_header "Compiling against various Hadoop versions"
 
+  start_clock
+
   # All supported Hadoop versions that we want to test the compilation with
   # See the Hadoop section on prereqs in the HBase Reference Guide
   hbase_common_hadoop2_versions="2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3 2.7.4"
@@ -355,27 +464,33 @@ function hadoopcheck_rebuild
   export MAVEN_OPTS="${MAVEN_OPTS}"
   for hadoopver in ${hbase_hadoop2_versions}; do
     logfile="${PATCH_DIR}/patch-javac-${hadoopver}.txt"
+    # disabled because "maven_executor" needs to return both command and args
+    # shellcheck disable=2046
     echo_and_redirect "${logfile}" \
-      "${MAVEN}" clean install \
+      $(maven_executor) clean install \
         -DskipTests -DHBasePatchProcess \
         -Dhadoop-two.version="${hadoopver}"
     count=$(${GREP} -c '\[ERROR\]' "${logfile}")
     if [[ ${count} -gt 0 ]]; then
       add_vote_table -1 hadoopcheck "${BUILDMODEMSG} causes ${count} errors with Hadoop v${hadoopver}."
+      add_footer_table hadoopcheck "@@BASE@@/patch-javac-${hadoopver}.txt"
       ((result=result+1))
     fi
   done
 
   for hadoopver in ${hbase_hadoop3_versions}; do
     logfile="${PATCH_DIR}/patch-javac-${hadoopver}.txt"
+    # disabled because "maven_executor" needs to return both command and args
+    # shellcheck disable=2046
     echo_and_redirect "${logfile}" \
-      "${MAVEN}" clean install \
+      $(maven_executor) clean install \
         -DskipTests -DHBasePatchProcess \
         -Dhadoop-three.version="${hadoopver}" \
         -Dhadoop.profile=3.0
     count=$(${GREP} -c '\[ERROR\]' "${logfile}")
     if [[ ${count} -gt 0 ]]; then
       add_vote_table -1 hadoopcheck "${BUILDMODEMSG} causes ${count} errors with Hadoop v${hadoopver}."
+      add_footer_table hadoopcheck "@@BASE@@/patch-javac-${hadoopver}.txt"
       ((result=result+1))
     fi
   done
@@ -524,6 +639,12 @@ function hbaseanti_patchfile
   warnings=$(${GREP} -c 'import org.codehaus.jackson' "${patchfile}")
   if [[ ${warnings} -gt 0 ]]; then
     add_vote_table -1 hbaseanti "" "The patch appears use Jackson 1 classes/annotations."
+    ((result=result+1))
+  fi
+
+  warnings=$(${GREP} -cE 'org.apache.commons.logging.Log(Factory|;)' "${patchfile}")
+  if [[ ${warnings} -gt 0 ]]; then
+    add_vote_table -1 hbaseanti "" "The patch appears to use commons-logging instead of slf4j."
     ((result=result+1))
   fi
 

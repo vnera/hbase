@@ -296,7 +296,11 @@ public class JVMClusterUtil {
         if (!atLeastOneLiveServer) break;
         for (RegionServerThread t : regionservers) {
           if (t.isAlive()) {
-            LOG.warn("RegionServerThreads taking too long to stop, interrupting");
+            LOG.warn("RegionServerThreads taking too long to stop, interrupting; thread dump "  +
+              "if > 3 attempts: i=" + i);
+            if (i > 3) {
+              Threads.printThreadInfo(System.out, "Thread dump " + t.getName());
+            }
             t.interrupt();
           }
         }
