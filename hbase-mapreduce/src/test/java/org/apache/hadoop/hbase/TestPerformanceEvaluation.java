@@ -40,6 +40,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.PerformanceEvaluation.RandomReadTest;
 import org.apache.hadoop.hbase.PerformanceEvaluation.TestOptions;
+import org.apache.hadoop.hbase.regionserver.CompactingMemStore;
 import org.apache.hadoop.hbase.testclassification.MiscTests;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.junit.ClassRule;
@@ -55,6 +56,19 @@ public class TestPerformanceEvaluation {
       HBaseClassTestRule.forClass(TestPerformanceEvaluation.class);
 
   private static final HBaseTestingUtility HTU = new HBaseTestingUtility();
+
+  @Test
+  public void testDefaultInMemoryCompaction() {
+    PerformanceEvaluation.TestOptions defaultOpts =
+        new PerformanceEvaluation.TestOptions();
+    assertEquals(CompactingMemStore.COMPACTING_MEMSTORE_TYPE_DEFAULT.toString(),
+        defaultOpts.getInMemoryCompaction().toString());
+    HTableDescriptor htd = PerformanceEvaluation.getTableDescriptor(defaultOpts);
+    for (HColumnDescriptor hcd: htd.getFamilies()) {
+      assertEquals(CompactingMemStore.COMPACTING_MEMSTORE_TYPE_DEFAULT.toString(),
+          hcd.getInMemoryCompaction().toString());
+    }
+  }
 
   @Test
   public void testSerialization()
@@ -176,6 +190,16 @@ public class TestPerformanceEvaluation {
     assertTrue(snapshot.getStdDev() != 0);
     double median = snapshot.getMedian();
     assertTrue(median != 0 && median != 1 && median != valueSize);
+  }
+
+  @Test
+  public void testSetBufferSizeOption() {
+    TestOptions opts = new PerformanceEvaluation.TestOptions();
+    long bufferSize = opts.getBufferSize();
+    assertEquals(bufferSize, 2l * 1024l * 1024l);
+    opts.setBufferSize(64l * 1024l);
+    bufferSize = opts.getBufferSize();
+    assertEquals(bufferSize, 64l * 1024l);
   }
 
   @Test
