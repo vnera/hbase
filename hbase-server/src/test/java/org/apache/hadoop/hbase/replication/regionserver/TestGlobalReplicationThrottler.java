@@ -57,13 +57,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Category({ ReplicationTests.class, LargeTests.class })
-public class TestGlobalThrottler {
+public class TestGlobalReplicationThrottler {
 
   @ClassRule
   public static final HBaseClassTestRule CLASS_RULE =
-      HBaseClassTestRule.forClass(TestGlobalThrottler.class);
+      HBaseClassTestRule.forClass(TestGlobalReplicationThrottler.class);
 
-  private static final Logger LOG = LoggerFactory.getLogger(TestGlobalThrottler.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestGlobalReplicationThrottler.class);
   private static Configuration conf1;
   private static Configuration conf2;
 

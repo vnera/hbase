@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -15,31 +15,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.hadoop.hbase.procedure2;
 
-package org.apache.hadoop.hbase.replication.regionserver;
-
-import org.apache.hadoop.hbase.metrics.BaseSourceImpl;
 import org.apache.yetus.audience.InterfaceAudience;
 
 /**
- * Hadoop2 implementation of MetricsReplicationSource. This provides access to metrics gauges and
- * counters.
- *
- * Implements BaseSource through BaseSourceImpl, following the pattern
+ * Used internally signaling failed queue of a remote procedure operation.
+ * In particular, no dispatch Node was found for the passed server name
+ * key AFTER queuing dispatch.
  */
+@SuppressWarnings("serial")
 @InterfaceAudience.Private
-public class MetricsReplicationSourceImpl extends BaseSourceImpl implements
-    MetricsReplicationSource {
-
-
-  public MetricsReplicationSourceImpl() {
-    this(METRICS_NAME, METRICS_DESCRIPTION, METRICS_CONTEXT, METRICS_JMX_CONTEXT);
-  }
-
-  MetricsReplicationSourceImpl(String metricsName,
-                               String metricsDescription,
-                               String metricsContext,
-                               String metricsJmxContext) {
-    super(metricsName, metricsDescription, metricsContext, metricsJmxContext);
+public class NoNodeDispatchException extends FailedRemoteDispatchException {
+  public NoNodeDispatchException(String msg) {
+    super(msg);
   }
 }
