@@ -1,4 +1,5 @@
-/*
+/**
+ *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -16,11 +17,40 @@
  * limitations under the License.
  */
 
-package org.apache.hadoop.hbase.procedure2;
+package org.apache.hadoop.hbase.tool.coprocessor;
 
 import org.apache.yetus.audience.InterfaceAudience;
 
+import org.apache.hbase.thirdparty.com.google.common.base.Throwables;
+
 @InterfaceAudience.Private
-public enum LockedResourceType {
-  SERVER, NAMESPACE, TABLE, REGION, META
+public class CoprocessorViolation {
+  public enum Severity {
+    WARNING, ERROR
+  }
+
+  private final Severity severity;
+  private final String message;
+
+  public CoprocessorViolation(Severity severity, String message) {
+    this(severity, message, null);
+  }
+
+  public CoprocessorViolation(Severity severity, String message, Throwable t) {
+    this.severity = severity;
+
+    if (t == null) {
+      this.message = message;
+    } else {
+      this.message = message + "\n" + Throwables.getStackTraceAsString(t);
+    }
+  }
+
+  public Severity getSeverity() {
+    return severity;
+  }
+
+  public String getMessage() {
+    return message;
+  }
 }
