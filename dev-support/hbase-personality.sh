@@ -67,10 +67,12 @@ function personality_globals
 
   # Yetus 0.7.0 enforces limits. Default proclimit is 1000.
   # Up it. See HBASE-19902 for how we arrived at this number.
+  #shellcheck disable=SC2034
   PROCLIMIT=10000
 
   # Set docker container to run with 20g. Default is 4g in yetus.
   # See HBASE-19902 for how we arrived at 20g.
+  #shellcheck disable=SC2034
   DOCKERMEMLIMIT=20g
 }
 
@@ -106,13 +108,16 @@ function personality_modules
   local repostatus=$1
   local testtype=$2
   local extra=""
-  local MODULES=(${CHANGED_MODULES[@]})
+  local MODULES=("${CHANGED_MODULES[@]}")
 
   yetus_info "Personality: ${repostatus} ${testtype}"
 
   clear_personality_queue
 
   extra="-DHBasePatchProcess"
+  if [[ "${PATCH_BRANCH}" = branch-1* ]]; then
+    extra="${extra} -Dhttps.protocols=TLSv1.2"
+  fi
 
   if [[ -n "${HADOOP_PROFILE}" ]]; then
     extra="${extra} -Dhadoop.profile=${HADOOP_PROFILE}"
@@ -126,6 +131,11 @@ function personality_modules
   # modules if root is included. HBASE-18505
   if [[ "${BUILDMODE}" == "full" ]] || \
      [[ ( "${testtype}" == unit || "${testtype}" == compile ) && "${MODULES[*]}" =~ \. ]]; then
+    MODULES=(.)
+  fi
+
+  # If the checkstyle configs change, check everything.
+  if [[ "${testtype}" == checkstyle ]] && [[ "${MODULES[*]}" =~ hbase-checkstyle ]]; then
     MODULES=(.)
   fi
 
@@ -187,16 +197,31 @@ function personality_modules
 function personality_file_tests
 {
   local filename=$1
+  yetus_debug "HBase specific personality_file_tests"
   # If the change is to the refguide, then we don't need any builtin yetus tests
   # the refguide test (below) will suffice for coverage.
   if [[ ${filename} =~ src/main/asciidoc ]] ||
      [[ ${filename} =~ src/main/xslt ]]; then
     yetus_debug "Skipping builtin yetus checks for ${filename}. refguide test should pick it up."
-  # fallback to checking which tests based on what yetus would do by default
-  elif declare -f "${BUILDTOOL}_builtin_personality_file_tests" >/dev/null; then
-    "${BUILDTOOL}_builtin_personality_file_tests" "${filename}"
-  elif declare -f builtin_personality_file_tests >/dev/null; then
-    builtin_personality_file_tests "${filename}"
+  else
+    # If we change our asciidoc, rebuild mvnsite
+    if [[ ${BUILDTOOL} = maven ]]; then
+      if [[ ${filename} =~ src/site || ${filename} =~ src/main/asciidoc ]]; then
+        yetus_debug "tests/mvnsite: ${filename}"
+        add_test mvnsite
+      fi
+    fi
+    # If we change checkstyle configs, run checkstyle
+    if [[ ${filename} =~ checkstyle.*\.xml ]]; then
+      yetus_debug "tests/checkstyle: ${filename}"
+      add_test checkstyle
+    fi
+    # fallback to checking which tests based on what yetus would do by default
+    if declare -f "${BUILDTOOL}_builtin_personality_file_tests" >/dev/null; then
+      "${BUILDTOOL}_builtin_personality_file_tests" "${filename}"
+    elif declare -f builtin_personality_file_tests >/dev/null; then
+      builtin_personality_file_tests "${filename}"
+    fi
   fi
 }
 
@@ -268,6 +293,7 @@ function refguide_rebuild
   local repostatus=$1
   local logfile="${PATCH_DIR}/${repostatus}-refguide.log"
   declare -i count
+  declare pdf_output
 
   if ! verify_needed_test refguide; then
     return 0
@@ -304,7 +330,13 @@ function refguide_rebuild
     return 1
   fi
 
-  if [[ ! -f "${PATCH_DIR}/${repostatus}-site/apache_hbase_reference_guide.pdf" ]]; then
+  if [[ "${PATCH_BRANCH}" = branch-1* ]]; then
+    pdf_output="book.pdf"
+  else
+    pdf_output="apache_hbase_reference_guide.pdf"
+  fi
+
+  if [[ ! -f "${PATCH_DIR}/${repostatus}-site/${pdf_output}" ]]; then
     add_vote_table -1 refguide "${repostatus} failed to produce the pdf version of the reference guide."
     add_footer_table refguide "@@BASE@@/${repostatus}-refguide.log"
     return 1
@@ -654,23 +686,6 @@ function hbaseanti_patchfile
 
   add_vote_table +1 hbaseanti "" "Patch does not have any anti-patterns."
   return 0
-}
-
-
-## @description  hbase custom mvnsite file filter.  See HBASE-15042
-## @audience     private
-## @stability    evolving
-## @param        filename
-function mvnsite_filefilter
-{
-  local filename=$1
-
-  if [[ ${BUILDTOOL} = maven ]]; then
-    if [[ ${filename} =~ src/site || ${filename} =~ src/main/asciidoc ]]; then
-      yetus_debug "tests/mvnsite: ${filename}"
-      add_test mvnsite
-    fi
-  fi
 }
 
 ## This is named so that yetus will check us right after running tests.

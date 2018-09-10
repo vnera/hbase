@@ -82,7 +82,6 @@ public class MergeTableRegionsProcedure
     extends AbstractStateMachineTableProcedure<MergeTableRegionsState> {
   private static final Logger LOG = LoggerFactory.getLogger(MergeTableRegionsProcedure.class);
   private Boolean traceEnabled;
-  private volatile boolean lock = false;
   private ServerName regionLocation;
   private RegionInfo[] regionsToMerge;
   private RegionInfo mergedRegion;
@@ -219,7 +218,7 @@ public class MergeTableRegionsProcedure
 
   @Override
   protected Flow executeFromState(final MasterProcedureEnv env,
-      final MergeTableRegionsState state) {
+      MergeTableRegionsState state) {
     LOG.trace("{} execute state={}", this, state);
     try {
       switch (state) {
@@ -236,7 +235,24 @@ public class MergeTableRegionsProcedure
           break;
         case MERGE_TABLE_REGIONS_CLOSE_REGIONS:
           addChildProcedure(createUnassignProcedures(env, getRegionReplication(env)));
-          setNextState(MergeTableRegionsState.MERGE_TABLE_REGIONS_CREATE_MERGED_REGION);
+          setNextState(MergeTableRegionsState.MERGE_TABLE_REGIONS_CHECK_CLOSED_REGIONS);
+          break;
+        case MERGE_TABLE_REGIONS_CHECK_CLOSED_REGIONS:
+          List<RegionInfo> ris = hasRecoveredEdits(env);
+          if (ris.isEmpty()) {
+            setNextState(MergeTableRegionsState.MERGE_TABLE_REGIONS_CREATE_MERGED_REGION);
+          } else {
+            // Need to reopen parent regions to pickup missed recovered.edits. Do it by creating
+            // child assigns and then stepping back to MERGE_TABLE_REGIONS_CLOSE_REGIONS.
+            // Just assign the primary regions recovering the missed recovered.edits -- no replicas.
+            // May need to cycle here a few times if heavy writes.
+            // TODO: Add an assign read-only.
+            for (RegionInfo ri: ris) {
+              LOG.info("Found recovered.edits under {}, reopen to pickup missed edits!", ri);
+              addChildProcedure(env.getAssignmentManager().createAssignProcedure(ri));
+            }
+            setNextState(MergeTableRegionsState.MERGE_TABLE_REGIONS_CLOSE_REGIONS);
+          }
           break;
         case MERGE_TABLE_REGIONS_CREATE_MERGED_REGION:
           createMergedRegion(env);
@@ -313,6 +329,8 @@ public class MergeTableRegionsProcedure
         case MERGE_TABLE_REGIONS_CREATE_MERGED_REGION:
         case MERGE_TABLE_REGIONS_WRITE_MAX_SEQUENCE_ID_FILE:
           cleanupMergedRegion(env);
+          break;
+        case MERGE_TABLE_REGIONS_CHECK_CLOSED_REGIONS:
           break;
         case MERGE_TABLE_REGIONS_CLOSE_REGIONS:
           rollbackCloseRegionsForMerge(env);
@@ -414,24 +432,20 @@ public class MergeTableRegionsProcedure
 
   @Override
   protected LockState acquireLock(final MasterProcedureEnv env) {
-    if (env.waitInitialized(this)) return LockState.LOCK_EVENT_WAIT;
     if (env.getProcedureScheduler().waitRegions(this, getTableName(),
         mergedRegion, regionsToMerge[0], regionsToMerge[1])) {
       try {
         LOG.debug(LockState.LOCK_EVENT_WAIT + " " + env.getProcedureScheduler().dumpLocks());
       } catch (IOException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
+        // Ignore, just for logging
       }
       return LockState.LOCK_EVENT_WAIT;
     }
-    this.lock = true;
     return LockState.LOCK_ACQUIRED;
   }
 
   @Override
   protected void releaseLock(final MasterProcedureEnv env) {
-    this.lock = false;
     env.getProcedureScheduler().wakeRegions(this, getTableName(),
       mergedRegion, regionsToMerge[0], regionsToMerge[1]);
   }
@@ -439,11 +453,6 @@ public class MergeTableRegionsProcedure
   @Override
   protected boolean holdLock(MasterProcedureEnv env) {
     return true;
-  }
-
-  @Override
-  protected boolean hasLock(MasterProcedureEnv env) {
-    return this.lock;
   }
 
   @Override
@@ -459,6 +468,22 @@ public class MergeTableRegionsProcedure
   @Override
   protected ProcedureMetrics getProcedureMetrics(MasterProcedureEnv env) {
     return env.getAssignmentManager().getAssignmentManagerMetrics().getMergeProcMetrics();
+  }
+
+  /**
+   * Return list of regions that have recovered.edits... usually its an empty list.
+   * @param env the master env
+   * @throws IOException IOException
+   */
+  private List<RegionInfo> hasRecoveredEdits(final MasterProcedureEnv env) throws IOException {
+    List<RegionInfo> ris =  new ArrayList<RegionInfo>(regionsToMerge.length);
+    for (int i = 0; i < regionsToMerge.length; i++) {
+      RegionInfo ri = regionsToMerge[i];
+      if (SplitTableRegionProcedure.hasRecoveredEdits(env, ri)) {
+        ris.add(ri);
+      }
+    }
+    return ris;
   }
 
   /**
@@ -553,7 +578,7 @@ public class MergeTableRegionsProcedure
     try {
       env.getMasterServices().getMasterQuotaManager().onRegionMerged(this.mergedRegion);
     } catch (QuotaExceededException e) {
-      env.getAssignmentManager().getRegionNormalizer().planSkipped(this.mergedRegion,
+      env.getMasterServices().getRegionNormalizer().planSkipped(this.mergedRegion,
           NormalizationPlan.PlanType.MERGE);
       throw e;
     }

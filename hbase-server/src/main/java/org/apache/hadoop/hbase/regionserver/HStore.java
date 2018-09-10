@@ -331,7 +331,8 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
     switch (inMemoryCompaction) {
       case NONE:
         ms = ReflectionUtils.newInstance(DefaultMemStore.class,
-            new Object[]{conf, this.comparator});
+            new Object[] { conf, this.comparator,
+                this.getHRegion().getRegionServicesForStores()});
         break;
       default:
         Class<? extends CompactingMemStore> clz = conf.getClass(MEMSTORE_CLASS_NAME,
@@ -1632,7 +1633,28 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
 
   @Override
   public boolean hasReferences() {
-    return StoreUtils.hasReferences(this.storeEngine.getStoreFileManager().getStorefiles());
+    List<HStoreFile> reloadedStoreFiles = null;
+    try {
+      // Reloading the store files from file system due to HBASE-20940. As split can happen with an
+      // region which has references
+      reloadedStoreFiles = loadStoreFiles();
+      return StoreUtils.hasReferences(reloadedStoreFiles);
+    } catch (IOException ioe) {
+      LOG.error("Error trying to determine if store has references, assuming references exists",
+        ioe);
+      return true;
+    } finally {
+      if (reloadedStoreFiles != null) {
+        for (HStoreFile storeFile : reloadedStoreFiles) {
+          try {
+            storeFile.closeStoreFile(false);
+          } catch (IOException ioe) {
+            LOG.warn("Encountered exception closing " + storeFile + ": " + ioe.getMessage());
+            // continue with closing the remaining store files
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -2311,6 +2333,10 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
     @Override
     public void abort() throws IOException {
       if (snapshot != null) {
+        //We need to close the snapshot when aborting, otherwise, the segment scanner
+        //won't be closed. If we are using MSLAB, the chunk referenced by those scanners
+        //can't be released, thus memory leak
+        snapshot.close();
         HStore.this.updateStorefiles(Collections.emptyList(), snapshot.getId());
       }
     }
@@ -2527,6 +2553,11 @@ public class HStore implements Store, HeapSize, StoreConfigInformation, Propagat
             r.close(true);
             // Just close and return
             filesToRemove.add(file);
+          } else {
+            LOG.info("Can't archive compacted file " + file.getPath()
+                + " because of either isCompactedAway = " + file.isCompactedAway()
+                + " or file has reference, isReferencedInReads = " + file.isReferencedInReads()
+                + ", skipping for now.");
           }
         } catch (Exception e) {
           LOG.error("Exception while trying to close the compacted store file {}",

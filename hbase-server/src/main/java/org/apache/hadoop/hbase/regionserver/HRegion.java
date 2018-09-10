@@ -857,7 +857,8 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    * @return What the next sequence (edit) id should be.
    * @throws IOException e
    */
-  private long initialize(final CancelableProgressable reporter) throws IOException {
+  @VisibleForTesting
+  long initialize(final CancelableProgressable reporter) throws IOException {
 
     //Refuse to open the region if there is no column family in the table
     if (htableDescriptor.getColumnFamilyCount() == 0) {
@@ -870,6 +871,22 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     try {
       nextSeqId = initializeRegionInternals(reporter, status);
       return nextSeqId;
+    } catch (IOException e) {
+      LOG.warn("Failed initialize of region= {}, starting to roll back memstore",
+          getRegionInfo().getRegionNameAsString(), e);
+      // global memstore size will be decreased when dropping memstore
+      try {
+        //drop the memory used by memstore if open region fails
+        dropMemStoreContents();
+      } catch (IOException ioE) {
+        if (conf.getBoolean(MemStoreLAB.USEMSLAB_KEY, MemStoreLAB.USEMSLAB_DEFAULT)) {
+          LOG.warn("Failed drop memstore of region= {}, "
+                  + "some chunks may not released forever since MSLAB is enabled",
+              getRegionInfo().getRegionNameAsString());
+        }
+
+      }
+      throw e;
     } finally {
       // nextSeqid will be -1 if the initialization fails.
       // At least it will be 0 otherwise.
@@ -950,7 +967,11 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     long maxSeqIdFromFile =
       WALSplitter.getMaxRegionSequenceId(fs.getFileSystem(), fs.getRegionDir());
     long nextSeqId = Math.max(maxSeqId, maxSeqIdFromFile) + 1;
-    if (writestate.writesEnabled) {
+    // The openSeqNum will always be increase even for read only region, as we rely on it to
+    // determine whether a region has been successfully reopend, so here we always need to update
+    // the max sequence id file.
+    if (RegionReplicaUtil.isDefaultReplica(getRegionInfo())) {
+      LOG.debug("writing seq id for {}", this.getRegionInfo().getEncodedName());
       WALSplitter.writeRegionSequenceIdFile(fs.getFileSystem(), fs.getRegionDir(), nextSeqId);
     }
 
@@ -1501,7 +1522,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     // the close flag?
     if (!abort && worthPreFlushing() && canFlush) {
       status.setStatus("Pre-flushing region before close");
-      LOG.info("Running close preflush of {}" + this.getRegionInfo().getEncodedName());
+      LOG.info("Running close preflush of {}", this.getRegionInfo().getEncodedName());
       try {
         internalFlushcache(status);
       } catch (IOException ioe) {
@@ -1625,7 +1646,10 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       }
 
       status.setStatus("Writing region close event to WAL");
-      if (!abort && wal != null && getRegionServerServices() != null && !writestate.readOnly) {
+      // Always write close marker to wal even for read only table. This is not a big problem as we
+      // do not write any data into the region.
+      if (!abort && wal != null && getRegionServerServices() != null &&
+        RegionReplicaUtil.isDefaultReplica(getRegionInfo())) {
         writeRegionCloseMarker(wal);
       }
 
@@ -2056,6 +2080,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       }
 
       status = TaskMonitor.get().createStatus("Compacting " + store + " in " + this);
+      status.enableStatusJournal(false);
       if (this.closed.get()) {
         String msg = "Skipping compaction on " + this + " because closed";
         LOG.debug(msg);
@@ -2104,7 +2129,10 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       return true;
     } finally {
       if (requestNeedsCancellation) store.cancelRequestedCompaction(compaction);
-      if (status != null) status.cleanup();
+      if (status != null) {
+        LOG.debug("Compaction status journal:\n\t" + status.prettyPrintJournal());
+        status.cleanup();
+      }
     }
   }
 
@@ -2185,6 +2213,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       return new FlushResultImpl(FlushResult.Result.CANNOT_FLUSH, msg, false);
     }
     MonitoredTask status = TaskMonitor.get().createStatus("Flushing " + this);
+    status.enableStatusJournal(false);
     status.setStatus("Acquiring readlock on region");
     // block waiting for the lock for flushing cache
     lock.readLock().lock();
@@ -2248,6 +2277,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       }
     } finally {
       lock.readLock().unlock();
+      LOG.debug("Flush status journal:\n\t" + status.prettyPrintJournal());
       status.cleanup();
     }
   }
@@ -4412,11 +4442,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
         }
       }
     }
-    // The edits size added into rsAccounting during this replaying will not
-    // be required any more. So just clear it.
-    if (this.rsAccounting != null) {
-      this.rsAccounting.clearRegionReplayEditsSize(getRegionInfo().getRegionName());
-    }
     if (seqid > minSeqIdForTheRegion) {
       // Then we added some edits to memory. Flush and cleanup split edit files.
       internalFlushcache(null, seqid, stores.values(), status, false, FlushLifeCycleTracker.DUMMY);
@@ -4598,9 +4623,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
             editsCount++;
           }
           MemStoreSize mss = memStoreSizing.getMemStoreSize();
-          if (this.rsAccounting != null) {
-            rsAccounting.addRegionReplayEditsSize(getRegionInfo().getRegionName(), mss);
-          }
           incMemStoreSize(mss);
           flush = isFlushSize(this.memStoreSizing.getMemStoreSize());
           if (flush) {
@@ -5039,6 +5061,28 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
 
       // Record latest flush time
       this.lastStoreFlushTimeMap.put(store, startTime);
+    }
+  }
+
+  /**
+   * Be careful, this method will drop all data in the memstore of this region.
+   * Currently, this method is used to drop memstore to prevent memory leak
+   * when replaying recovered.edits while opening region.
+   */
+  public MemStoreSize dropMemStoreContents() throws IOException {
+    MemStoreSizing totalFreedSize = new NonThreadSafeMemStoreSizing();
+    this.updatesLock.writeLock().lock();
+    try {
+      for (HStore s : stores.values()) {
+        MemStoreSize memStoreSize = doDropStoreMemStoreContentsForSeqId(s, HConstants.NO_SEQNUM);
+        LOG.info("Drop memstore for Store " + s.getColumnFamilyName() + " in region "
+                + this.getRegionInfo().getRegionNameAsString()
+                + " , dropped memstoresize: [" + memStoreSize + " }");
+        totalFreedSize.incMemStoreSize(memStoreSize);
+      }
+      return totalFreedSize.getMemStoreSize();
+    } finally {
+      this.updatesLock.writeLock().unlock();
     }
   }
 
@@ -6925,7 +6969,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    * HRegion#getMinSequenceId() to ensure the wal id is properly kept
    * up.  HRegionStore does this every time it opens a new region.
    * @return new HRegion
-   * @throws IOException
    */
   public static HRegion openHRegion(final Configuration conf, final FileSystem fs,
       final Path rootDir, final RegionInfo info, final TableDescriptor htd, final WAL wal)
@@ -6947,7 +6990,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    * @param rsServices An interface we can request flushes against.
    * @param reporter An interface we can report progress against.
    * @return new HRegion
-   * @throws IOException
    */
   public static HRegion openHRegion(final Configuration conf, final FileSystem fs,
       final Path rootDir, final RegionInfo info, final TableDescriptor htd, final WAL wal,
@@ -6971,7 +7013,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    * @param rsServices An interface we can request flushes against.
    * @param reporter An interface we can report progress against.
    * @return new HRegion
-   * @throws IOException
    */
   public static HRegion openHRegion(final Configuration conf, final FileSystem fs,
       final Path rootDir, final Path tableDir, final RegionInfo info, final TableDescriptor htd,
@@ -6996,7 +7037,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    * @param other original object
    * @param reporter An interface we can report progress against.
    * @return new HRegion
-   * @throws IOException
    */
   public static HRegion openHRegion(final HRegion other, final CancelableProgressable reporter)
       throws IOException {
@@ -7027,8 +7067,11 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     checkClassLoading();
     this.openSeqNum = initialize(reporter);
     this.mvcc.advanceTo(openSeqNum);
-    if (wal != null && getRegionServerServices() != null && !writestate.readOnly) {
-      // Only write the region open event marker to WAL if we are not read-only.
+    // The openSeqNum must be increased every time when a region is assigned, as we rely on it to
+    // determine whether a region has been successfully reopened. So here we always write open
+    // marker, even if the table is read only.
+    if (wal != null && getRegionServerServices() != null &&
+      RegionReplicaUtil.isDefaultReplica(getRegionInfo())) {
       writeRegionOpenMarker(wal, openSeqNum);
     }
     return this;
@@ -7041,7 +7084,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    * @param info Info for region to be opened.
    * @param htd the table descriptor
    * @return new HRegion
-   * @throws IOException e
    */
   public static HRegion openReadOnlyFileSystemHRegion(final Configuration conf, final FileSystem fs,
       final Path tableDir, RegionInfo info, final TableDescriptor htd) throws IOException {

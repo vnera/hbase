@@ -123,7 +123,8 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
     } else if (isTableProcedure(proc)) {
       doAdd(tableRunQueue, getTableQueue(getTableName(proc)), proc, addFront);
     } else if (isServerProcedure(proc)) {
-      doAdd(serverRunQueue, getServerQueue(getServerName(proc)), proc, addFront);
+      ServerProcedureInterface spi = (ServerProcedureInterface) proc;
+      doAdd(serverRunQueue, getServerQueue(spi.getServerName(), spi), proc, addFront);
     } else {
       // TODO: at the moment we only have Table and Server procedures
       // if you are implementing a non-table/non-server procedure, you have two options: create
@@ -136,17 +137,16 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
 
   private <T extends Comparable<T>> void doAdd(final FairQueue<T> fairq,
       final Queue<T> queue, final Procedure proc, final boolean addFront) {
-    queue.add(proc, addFront);
-    if (!queue.getLockStatus().hasExclusiveLock() || queue.getLockStatus().isLockOwner(proc.getProcId())) {
-      // if the queue was not remove for an xlock execution
-      // or the proc is the lock owner, put the queue back into execution
+    if (!queue.getLockStatus().hasExclusiveLock()) {
+      // if the queue was not remove for an xlock execution,put the queue back into execution
+      queue.add(proc, addFront);
       addToRunQueue(fairq, queue);
-    } else if (queue.getLockStatus().hasParentLock(proc)) {
-      assert addFront : "expected to add a child in the front";
-      // our (proc) parent has the xlock,
-      // so the queue is not in the fairq (run-queue)
-      // add it back to let the child run (inherit the lock)
+    } else if (queue.getLockStatus().hasLockAccess(proc)) {
+      // always add it to front as the have the lock access.
+      queue.add(proc, true);
       addToRunQueue(fairq, queue);
+    } else {
+      queue.add(proc, addFront);
     }
   }
 
@@ -301,8 +301,10 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
         markTableAsDeleted(iProcTable.getTableName(), proc);
         return;
       }
+    } else if (proc instanceof ServerProcedureInterface) {
+      tryCleanupServerQueue(getServerName(proc), proc);
     } else {
-      // No cleanup for ServerProcedureInterface types, yet.
+      // No cleanup for other procedure types, yet.
       return;
     }
   }
@@ -350,14 +352,47 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
   // ============================================================================
   //  Server Queue Lookup Helpers
   // ============================================================================
-  private ServerQueue getServerQueue(ServerName serverName) {
+  private ServerQueue getServerQueue(ServerName serverName, ServerProcedureInterface proc) {
     final int index = getBucketIndex(serverBuckets, serverName.hashCode());
     ServerQueue node = AvlTree.get(serverBuckets[index], serverName, SERVER_QUEUE_KEY_COMPARATOR);
-    if (node != null) return node;
-
-    node = new ServerQueue(serverName, locking.getServerLock(serverName));
+    if (node != null) {
+      return node;
+    }
+    int priority;
+    if (proc != null) {
+      priority = MasterProcedureUtil.getServerPriority(proc);
+    } else {
+      priority = 1;
+    }
+    node = new ServerQueue(serverName, priority, locking.getServerLock(serverName));
     serverBuckets[index] = AvlTree.insert(serverBuckets[index], node);
     return node;
+  }
+
+  private void removeServerQueue(ServerName serverName) {
+    int index = getBucketIndex(serverBuckets, serverName.hashCode());
+    serverBuckets[index] =
+      AvlTree.remove(serverBuckets[index], serverName, SERVER_QUEUE_KEY_COMPARATOR);
+    locking.removeServerLock(serverName);
+  }
+
+  private void tryCleanupServerQueue(ServerName serverName, Procedure<?> proc) {
+    schedLock();
+    try {
+      int index = getBucketIndex(serverBuckets, serverName.hashCode());
+      ServerQueue node = AvlTree.get(serverBuckets[index], serverName, SERVER_QUEUE_KEY_COMPARATOR);
+      if (node == null) {
+        return;
+      }
+
+      LockAndQueue lock = locking.getServerLock(serverName);
+      if (node.isEmpty() && lock.tryExclusiveLock(proc)) {
+        removeFromRunQueue(serverRunQueue, node);
+        removeServerQueue(serverName);
+      }
+    } finally {
+      schedUnlock();
+    }
   }
 
   private static int getBucketIndex(Object[] buckets, int hashCode) {
@@ -420,13 +455,13 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @param table Table to lock
    * @return true if the procedure has to wait for the table to be available
    */
-  public boolean waitTableExclusiveLock(final Procedure procedure, final TableName table) {
+  public boolean waitTableExclusiveLock(final Procedure<?> procedure, final TableName table) {
     schedLock();
     try {
       final String namespace = table.getNamespaceAsString();
       final LockAndQueue namespaceLock = locking.getNamespaceLock(namespace);
       final LockAndQueue tableLock = locking.getTableLock(table);
-      if (!namespaceLock.trySharedLock()) {
+      if (!namespaceLock.trySharedLock(procedure)) {
         waitProcedure(namespaceLock, procedure);
         logLockedResource(LockedResourceType.NAMESPACE, namespace);
         return true;
@@ -449,15 +484,13 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @param procedure the procedure releasing the lock
    * @param table the name of the table that has the exclusive lock
    */
-  public void wakeTableExclusiveLock(final Procedure procedure, final TableName table) {
+  public void wakeTableExclusiveLock(final Procedure<?> procedure, final TableName table) {
     schedLock();
     try {
       final LockAndQueue namespaceLock = locking.getNamespaceLock(table.getNamespaceAsString());
       final LockAndQueue tableLock = locking.getTableLock(table);
       int waitingCount = 0;
-
-      if (!tableLock.hasParentLock(procedure)) {
-        tableLock.releaseExclusiveLock(procedure);
+      if (tableLock.releaseExclusiveLock(procedure)) {
         waitingCount += wakeWaitingProcedures(tableLock);
       }
       if (namespaceLock.releaseSharedLock()) {
@@ -477,7 +510,7 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @param table Table to lock
    * @return true if the procedure has to wait for the table to be available
    */
-  public boolean waitTableSharedLock(final Procedure procedure, final TableName table) {
+  public boolean waitTableSharedLock(final Procedure<?> procedure, final TableName table) {
     return waitTableQueueSharedLock(procedure, table) == null;
   }
 
@@ -486,12 +519,12 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
     try {
       final LockAndQueue namespaceLock = locking.getNamespaceLock(table.getNamespaceAsString());
       final LockAndQueue tableLock = locking.getTableLock(table);
-      if (!namespaceLock.trySharedLock()) {
+      if (!namespaceLock.trySharedLock(procedure)) {
         waitProcedure(namespaceLock, procedure);
         return null;
       }
 
-      if (!tableLock.trySharedLock()) {
+      if (!tableLock.trySharedLock(procedure)) {
         namespaceLock.releaseSharedLock();
         waitProcedure(tableLock, procedure);
         return null;
@@ -508,7 +541,7 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @param procedure the procedure releasing the lock
    * @param table the name of the table that has the shared lock
    */
-  public void wakeTableSharedLock(final Procedure procedure, final TableName table) {
+  public void wakeTableSharedLock(final Procedure<?> procedure, final TableName table) {
     schedLock();
     try {
       final LockAndQueue namespaceLock = locking.getNamespaceLock(table.getNamespaceAsString());
@@ -569,7 +602,7 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @param regionInfo the region we are trying to lock
    * @return true if the procedure has to wait for the regions to be available
    */
-  public boolean waitRegion(final Procedure procedure, final RegionInfo regionInfo) {
+  public boolean waitRegion(final Procedure<?> procedure, final RegionInfo regionInfo) {
     return waitRegions(procedure, regionInfo.getTable(), regionInfo);
   }
 
@@ -580,16 +613,14 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @param regionInfo the list of regions we are trying to lock
    * @return true if the procedure has to wait for the regions to be available
    */
-  public boolean waitRegions(final Procedure procedure, final TableName table,
+  public boolean waitRegions(final Procedure<?> procedure, final TableName table,
       final RegionInfo... regionInfo) {
     Arrays.sort(regionInfo, RegionInfo.COMPARATOR);
     schedLock();
     try {
-      // If there is parent procedure, it would have already taken xlock, so no need to take
-      // shared lock here. Otherwise, take shared lock.
-      if (!procedure.hasParent()
-          && waitTableQueueSharedLock(procedure, table) == null) {
-          return true;
+      assert table != null;
+      if (waitTableSharedLock(procedure, table)) {
+        return true;
       }
 
       // acquire region xlocks or wait
@@ -597,7 +628,6 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
       final LockAndQueue[] regionLocks = new LockAndQueue[regionInfo.length];
       for (int i = 0; i < regionInfo.length; ++i) {
         LOG.info("{} checking lock on {}", procedure, regionInfo[i].getEncodedName());
-        assert table != null;
         assert regionInfo[i] != null;
         assert regionInfo[i].getTable() != null;
         assert regionInfo[i].getTable().equals(table): regionInfo[i] + " " + procedure;
@@ -614,7 +644,7 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
         }
       }
 
-      if (!hasLock && !procedure.hasParent()) {
+      if (!hasLock) {
         wakeTableSharedLock(procedure, table);
       }
       return !hasLock;
@@ -628,7 +658,7 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @param procedure the procedure that was holding the region
    * @param regionInfo the region the procedure was holding
    */
-  public void wakeRegion(final Procedure procedure, final RegionInfo regionInfo) {
+  public void wakeRegion(final Procedure<?> procedure, final RegionInfo regionInfo) {
     wakeRegions(procedure, regionInfo.getTable(), regionInfo);
   }
 
@@ -637,20 +667,20 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @param procedure the procedure that was holding the regions
    * @param regionInfo the list of regions the procedure was holding
    */
-  public void wakeRegions(final Procedure procedure,final TableName table,
+  public void wakeRegions(final Procedure<?> procedure,final TableName table,
       final RegionInfo... regionInfo) {
     Arrays.sort(regionInfo, RegionInfo.COMPARATOR);
     schedLock();
     try {
       int numProcs = 0;
-      final Procedure[] nextProcs = new Procedure[regionInfo.length];
+      final Procedure<?>[] nextProcs = new Procedure[regionInfo.length];
       for (int i = 0; i < regionInfo.length; ++i) {
         assert regionInfo[i].getTable().equals(table);
         assert i == 0 || regionInfo[i] != regionInfo[i - 1] : "duplicate region: " + regionInfo[i];
 
         LockAndQueue regionLock = locking.getRegionLock(regionInfo[i].getEncodedName());
         if (regionLock.releaseExclusiveLock(procedure)) {
-          if (!regionLock.isEmpty()) {
+          if (!regionLock.isWaitingQueueEmpty()) {
             // release one procedure at the time since regions has an xlock
             nextProcs[numProcs++] = regionLock.removeFirst();
           } else {
@@ -664,11 +694,8 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
         wakeProcedure(nextProcs[i]);
       }
       wakePollIfNeeded(numProcs);
-      if (!procedure.hasParent()) {
-        // release the table shared-lock.
-        // (if we have a parent, it is holding an xlock so we didn't take the shared-lock)
-        wakeTableSharedLock(procedure, table);
-      }
+      // release the table shared-lock.
+      wakeTableSharedLock(procedure, table);
     } finally {
       schedUnlock();
     }
@@ -684,15 +711,15 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @param namespace Namespace to lock
    * @return true if the procedure has to wait for the namespace to be available
    */
-  public boolean waitNamespaceExclusiveLock(final Procedure procedure, final String namespace) {
+  public boolean waitNamespaceExclusiveLock(Procedure<?> procedure, String namespace) {
     schedLock();
     try {
       final LockAndQueue systemNamespaceTableLock =
-          locking.getTableLock(TableName.NAMESPACE_TABLE_NAME);
-      if (!systemNamespaceTableLock.trySharedLock()) {
+        locking.getTableLock(TableName.NAMESPACE_TABLE_NAME);
+      if (!systemNamespaceTableLock.trySharedLock(procedure)) {
         waitProcedure(systemNamespaceTableLock, procedure);
         logLockedResource(LockedResourceType.TABLE,
-            TableName.NAMESPACE_TABLE_NAME.getNameAsString());
+          TableName.NAMESPACE_TABLE_NAME.getNameAsString());
         return true;
       }
 
@@ -715,19 +742,20 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @param procedure the procedure releasing the lock
    * @param namespace the namespace that has the exclusive lock
    */
-  public void wakeNamespaceExclusiveLock(final Procedure procedure, final String namespace) {
+  public void wakeNamespaceExclusiveLock(final Procedure<?> procedure, final String namespace) {
     schedLock();
     try {
       final LockAndQueue namespaceLock = locking.getNamespaceLock(namespace);
       final LockAndQueue systemNamespaceTableLock =
           locking.getTableLock(TableName.NAMESPACE_TABLE_NAME);
-      namespaceLock.releaseExclusiveLock(procedure);
       int waitingCount = 0;
+      if (namespaceLock.releaseExclusiveLock(procedure)) {
+        waitingCount += wakeWaitingProcedures(namespaceLock);
+      }
       if (systemNamespaceTableLock.releaseSharedLock()) {
         addToRunQueue(tableRunQueue, getTableQueue(TableName.NAMESPACE_TABLE_NAME));
         waitingCount += wakeWaitingProcedures(systemNamespaceTableLock);
       }
-      waitingCount += wakeWaitingProcedures(namespaceLock);
       wakePollIfNeeded(waitingCount);
     } finally {
       schedUnlock();
@@ -749,7 +777,12 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
     try {
       final LockAndQueue lock = locking.getServerLock(serverName);
       if (lock.tryExclusiveLock(procedure)) {
-        removeFromRunQueue(serverRunQueue, getServerQueue(serverName));
+        // In tests we may pass procedures other than ServerProcedureInterface, just pass null if
+        // so.
+        removeFromRunQueue(serverRunQueue,
+          getServerQueue(serverName,
+            procedure instanceof ServerProcedureInterface ? (ServerProcedureInterface) procedure
+              : null));
         return false;
       }
       waitProcedure(lock, procedure);
@@ -770,8 +803,14 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
     schedLock();
     try {
       final LockAndQueue lock = locking.getServerLock(serverName);
+      // Only SCP will acquire/release server lock so do not need to check the return value here.
       lock.releaseExclusiveLock(procedure);
-      addToRunQueue(serverRunQueue, getServerQueue(serverName));
+      // In tests we may pass procedures other than ServerProcedureInterface, just pass null if
+      // so.
+      addToRunQueue(serverRunQueue,
+        getServerQueue(serverName,
+          procedure instanceof ServerProcedureInterface ? (ServerProcedureInterface) procedure
+            : null));
       int waitingCount = wakeWaitingProcedures(lock);
       wakePollIfNeeded(waitingCount);
     } finally {
@@ -787,7 +826,10 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * @see #wakeMetaExclusiveLock(Procedure)
    * @param procedure the procedure trying to acquire the lock
    * @return true if the procedure has to wait for meta to be available
+   * @deprecated only used for {@link RecoverMetaProcedure}. Should be removed along with
+   *             {@link RecoverMetaProcedure}.
    */
+  @Deprecated
   public boolean waitMetaExclusiveLock(Procedure<?> procedure) {
     schedLock();
     try {
@@ -808,7 +850,10 @@ public class MasterProcedureScheduler extends AbstractProcedureScheduler {
    * Wake the procedures waiting for meta.
    * @see #waitMetaExclusiveLock(Procedure)
    * @param procedure the procedure releasing the lock
+   * @deprecated only used for {@link RecoverMetaProcedure}. Should be removed along with
+   *             {@link RecoverMetaProcedure}.
    */
+  @Deprecated
   public void wakeMetaExclusiveLock(Procedure<?> procedure) {
     schedLock();
     try {

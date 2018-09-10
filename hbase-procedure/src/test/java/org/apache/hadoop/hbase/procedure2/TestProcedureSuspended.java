@@ -60,9 +60,9 @@ public class TestProcedureSuspended {
     htu = new HBaseCommonTestingUtility();
 
     procStore = new NoopProcedureStore();
-    procExecutor = new ProcedureExecutor(htu.getConfiguration(), new TestProcEnv(), procStore);
+    procExecutor = new ProcedureExecutor<>(htu.getConfiguration(), new TestProcEnv(), procStore);
     procStore.start(PROCEDURE_EXECUTOR_SLOTS);
-    procExecutor.start(PROCEDURE_EXECUTOR_SLOTS, true);
+    ProcedureTestingUtility.initAndStartWorkers(procExecutor, PROCEDURE_EXECUTOR_SLOTS, true);
   }
 
   @After
@@ -227,17 +227,11 @@ public class TestProcedureSuspended {
     protected void releaseLock(final TestProcEnv env) {
       LOG.info("RELEASE LOCK " + this + " " + hasLock);
       lock.set(false);
-      hasLock = false;
     }
 
     @Override
     protected boolean holdLock(final TestProcEnv env) {
       return true;
-    }
-
-    @Override
-    protected boolean hasLock(final TestProcEnv env) {
-      return hasLock;
     }
 
     public ArrayList<Long> getTimestamps() {

@@ -24,17 +24,19 @@ import java.io.IOException;
 import org.apache.hadoop.hbase.HBaseIOException;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.DoNotRetryRegionException;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.master.RegionPlan;
 import org.apache.hadoop.hbase.master.procedure.AbstractStateMachineRegionProcedure;
 import org.apache.hadoop.hbase.master.procedure.MasterProcedureEnv;
 import org.apache.hadoop.hbase.procedure2.ProcedureStateSerializer;
-import org.apache.yetus.audience.InterfaceAudience;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos.MoveRegionState;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.MasterProcedureProtos.MoveRegionStateData;
+import org.apache.hbase.thirdparty.com.google.common.annotations.VisibleForTesting;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Procedure that implements a RegionPlan.
@@ -55,24 +57,32 @@ public class MoveRegionProcedure extends AbstractStateMachineRegionProcedure<Mov
     super();
   }
 
+  @VisibleForTesting
+  protected RegionPlan getPlan() {
+    return this.plan;
+  }
+
   /**
-   * @throws IOException If the cluster is offline or master is stopping or if table is disabled
-   *   or non-existent.
+   * @param check whether we should do some checks in the constructor. We will skip the checks if we
+   *          are reopening a region as this may fail the whole procedure and cause stuck. We will
+   *          do the check later when actually executing the procedure so not a big problem.
+   * @throws IOException If the cluster is offline or master is stopping or if table is disabled or
+   *           non-existent.
    */
-  public MoveRegionProcedure(final MasterProcedureEnv env, final RegionPlan plan)
-  throws HBaseIOException {
+  public MoveRegionProcedure(MasterProcedureEnv env, RegionPlan plan, boolean check)
+      throws HBaseIOException {
     super(env, plan.getRegionInfo());
     this.plan = plan;
-    preflightChecks(env, true);
-    checkOnline(env, plan.getRegionInfo());
+    if (check) {
+      preflightChecks(env, true);
+      checkOnline(env, plan.getRegionInfo());
+    }
   }
 
   @Override
   protected Flow executeFromState(final MasterProcedureEnv env, final MoveRegionState state)
       throws InterruptedException {
-    if (LOG.isTraceEnabled()) {
-      LOG.trace(this + " execute state=" + state);
-    }
+    LOG.trace("{} execute state={}", this, state);
     switch (state) {
       case MOVE_REGION_PREPARE:
         // Check context again and that region is online; do it here after we have lock on region.
@@ -88,6 +98,13 @@ public class MoveRegionProcedure extends AbstractStateMachineRegionProcedure<Mov
         }
         break;
       case MOVE_REGION_UNASSIGN:
+        try {
+          checkOnline(env, this.plan.getRegionInfo());
+        } catch (DoNotRetryRegionException dnrre) {
+          LOG.info("Skipping move, {} is not online; {}", getRegion().getEncodedName(), this,
+              dnrre);
+          return Flow.NO_MORE_STATE;
+        }
         addChildProcedure(new UnassignProcedure(plan.getRegionInfo(), plan.getSource(),
             plan.getDestination(), true));
         setNextState(MoveRegionState.MOVE_REGION_ASSIGN);
@@ -134,7 +151,7 @@ public class MoveRegionProcedure extends AbstractStateMachineRegionProcedure<Mov
 
   @Override
   protected MoveRegionState getState(final int stateId) {
-    return MoveRegionState.valueOf(stateId);
+    return MoveRegionState.forNumber(stateId);
   }
 
   @Override

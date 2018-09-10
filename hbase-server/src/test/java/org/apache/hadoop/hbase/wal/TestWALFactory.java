@@ -17,6 +17,8 @@
  */
 package org.apache.hadoop.hbase.wal;
 
+import static org.apache.hadoop.hbase.wal.WALFactory.META_WAL_PROVIDER;
+import static org.apache.hadoop.hbase.wal.WALFactory.WAL_PROVIDER;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -60,6 +62,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CommonFSUtils;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.Threads;
+import org.apache.hadoop.hbase.wal.WALFactory.Providers;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
@@ -672,5 +675,56 @@ public class TestWALFactory {
       // Templates.
       increments++;
     }
+  }
+
+  @Test
+  public void testWALProviders() throws IOException {
+    Configuration conf = new Configuration();
+    WALFactory walFactory = new WALFactory(conf, this.currentServername.toString());
+    assertEquals(walFactory.getWALProvider().getClass(), walFactory.getMetaProvider().getClass());
+  }
+
+  @Test
+  public void testOnlySetWALProvider() throws IOException {
+    Configuration conf = new Configuration();
+    conf.set(WAL_PROVIDER, WALFactory.Providers.multiwal.name());
+    WALFactory walFactory = new WALFactory(conf, this.currentServername.toString());
+
+    assertEquals(WALFactory.Providers.multiwal.clazz, walFactory.getWALProvider().getClass());
+    assertEquals(WALFactory.Providers.multiwal.clazz, walFactory.getMetaProvider().getClass());
+  }
+
+  @Test
+  public void testOnlySetMetaWALProvider() throws IOException {
+    Configuration conf = new Configuration();
+    conf.set(META_WAL_PROVIDER, WALFactory.Providers.asyncfs.name());
+    WALFactory walFactory = new WALFactory(conf, this.currentServername.toString());
+
+    assertEquals(WALFactory.Providers.defaultProvider.clazz,
+        walFactory.getWALProvider().getClass());
+    assertEquals(WALFactory.Providers.asyncfs.clazz, walFactory.getMetaProvider().getClass());
+  }
+
+  @Test
+  public void testDefaultProvider() throws IOException {
+    final Configuration conf = new Configuration();
+    // AsyncFSWal is the default, we should be able to request any WAL.
+    final WALFactory normalWalFactory = new WALFactory(conf, this.currentServername.toString());
+    Class<? extends WALProvider> fshLogProvider = normalWalFactory.getProviderClass(
+        WALFactory.WAL_PROVIDER, Providers.filesystem.name());
+    assertEquals(Providers.filesystem.clazz, fshLogProvider);
+
+    // Imagine a world where MultiWAL is the default
+    final WALFactory customizedWalFactory = new WALFactory(
+        conf, this.currentServername.toString())  {
+      @Override
+      Providers getDefaultProvider() {
+        return Providers.multiwal;
+      }
+    };
+    // If we don't specify a WALProvider, we should get the default implementation.
+    Class<? extends WALProvider> multiwalProviderClass = customizedWalFactory.getProviderClass(
+        WALFactory.WAL_PROVIDER, Providers.multiwal.name());
+    assertEquals(Providers.multiwal.clazz, multiwalProviderClass);
   }
 }

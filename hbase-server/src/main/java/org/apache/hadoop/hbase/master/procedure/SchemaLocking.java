@@ -77,6 +77,10 @@ class SchemaLocking {
     return getLock(regionLocks, encodedRegionName);
   }
 
+  /**
+   * @deprecated Since 2.0.2
+   */
+  @Deprecated
   LockAndQueue getMetaLock() {
     return metaLock;
   }
@@ -87,6 +91,10 @@ class SchemaLocking {
 
   LockAndQueue getServerLock(ServerName serverName) {
     return getLock(serverLocks, serverName);
+  }
+
+  LockAndQueue removeServerLock(ServerName serverName) {
+    return serverLocks.remove(serverName);
   }
 
   private LockedResource createLockedResource(LockedResourceType resourceType, String resourceName,
@@ -107,13 +115,8 @@ class SchemaLocking {
 
     List<Procedure<?>> waitingProcedures = new ArrayList<>();
 
-    for (Procedure<?> procedure : queue) {
-      if (!(procedure instanceof LockProcedure)) {
-        continue;
-      }
-
-      waitingProcedures.add(procedure);
-    }
+    queue.filterWaitingQueue(p -> p instanceof LockProcedure)
+      .forEachOrdered(waitingProcedures::add);
 
     return new LockedResource(resourceType, resourceName, lockType, exclusiveLockOwnerProcedure,
       sharedLockCount, waitingProcedures);

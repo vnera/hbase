@@ -116,11 +116,13 @@ public class RegionStateStore {
 
       final ServerName lastHost = hrl.getServerName();
       final ServerName regionLocation = getRegionServer(result, replicaId);
-      final long openSeqNum = -1;
+      final long openSeqNum = hrl.getSeqNum();
 
       // TODO: move under trace, now is visible for debugging
-      LOG.info("Load hbase:meta entry region={}, regionState={}, lastHost={}, " +
-          "regionLocation={}", regionInfo.getEncodedName(), state, lastHost, regionLocation);
+      LOG.info(
+        "Load hbase:meta entry region={}, regionState={}, lastHost={}, " +
+          "regionLocation={}, openSeqNum={}",
+        regionInfo.getEncodedName(), state, lastHost, regionLocation, openSeqNum);
       visitor.visitRegionState(result, regionInfo, state, regionLocation, lastHost, openSeqNum);
     }
   }
@@ -128,30 +130,31 @@ public class RegionStateStore {
   public void updateRegionLocation(RegionStates.RegionStateNode regionStateNode)
       throws IOException {
     if (regionStateNode.getRegionInfo().isMetaRegion()) {
-      updateMetaLocation(regionStateNode.getRegionInfo(), regionStateNode.getRegionLocation());
+      updateMetaLocation(regionStateNode.getRegionInfo(), regionStateNode.getRegionLocation(),
+        regionStateNode.getState());
     } else {
-      long openSeqNum = regionStateNode.getState() == State.OPEN ?
-          regionStateNode.getOpenSeqNum() : HConstants.NO_SEQNUM;
+      long openSeqNum = regionStateNode.getState() == State.OPEN ? regionStateNode.getOpenSeqNum()
+        : HConstants.NO_SEQNUM;
       updateUserRegionLocation(regionStateNode.getRegionInfo(), regionStateNode.getState(),
-          regionStateNode.getRegionLocation(), regionStateNode.getLastHost(), openSeqNum,
+          regionStateNode.getRegionLocation(), openSeqNum,
           // The regionStateNode may have no procedure in a test scenario; allow for this.
-          regionStateNode.getProcedure() != null?
-              regionStateNode.getProcedure().getProcId(): Procedure.NO_PROC_ID);
+          regionStateNode.getProcedure() != null ? regionStateNode.getProcedure().getProcId()
+              : Procedure.NO_PROC_ID);
     }
   }
 
-  private void updateMetaLocation(final RegionInfo regionInfo, final ServerName serverName)
+  private void updateMetaLocation(RegionInfo regionInfo, ServerName serverName, State state)
       throws IOException {
     try {
-      MetaTableLocator.setMetaLocation(master.getZooKeeper(), serverName,
-        regionInfo.getReplicaId(), State.OPEN);
+      MetaTableLocator.setMetaLocation(master.getZooKeeper(), serverName, regionInfo.getReplicaId(),
+        state);
     } catch (KeeperException e) {
       throw new IOException(e);
     }
   }
 
   private void updateUserRegionLocation(final RegionInfo regionInfo, final State state,
-      final ServerName regionLocation, final ServerName lastHost, final long openSeqNum,
+      final ServerName regionLocation, final long openSeqNum,
       final long pid)
       throws IOException {
     long time = EnvironmentEdgeManager.currentTime();
@@ -167,7 +170,7 @@ public class RegionStateStore {
       MetaTableAccessor.addLocation(put, regionLocation, openSeqNum, replicaId);
       info.append(", openSeqNum=").append(openSeqNum);
       info.append(", regionLocation=").append(regionLocation);
-    } else if (regionLocation != null && !regionLocation.equals(lastHost)) {
+    } else if (regionLocation != null) {
       // Ideally, if no regionLocation, write null to the hbase:meta but this will confuse clients
       // currently; they want a server to hit. TODO: Make clients wait if no location.
       put.add(CellBuilderFactory.create(CellBuilderType.SHALLOW_COPY)

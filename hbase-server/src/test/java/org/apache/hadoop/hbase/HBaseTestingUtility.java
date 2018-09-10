@@ -64,6 +64,7 @@ import org.apache.hadoop.hbase.Waiter.ExplainingPredicate;
 import org.apache.hadoop.hbase.Waiter.Predicate;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.BufferedMutator;
+import org.apache.hadoop.hbase.client.ClusterConnection;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
 import org.apache.hadoop.hbase.client.Connection;
@@ -73,6 +74,7 @@ import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Durability;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.client.Hbck;
 import org.apache.hadoop.hbase.client.ImmutableHRegionInfo;
 import org.apache.hadoop.hbase.client.ImmutableHTableDescriptor;
 import org.apache.hadoop.hbase.client.Put;
@@ -333,8 +335,12 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
     ChecksumUtil.generateExceptionForChecksumFailureForTest(true);
 
     // Save this for when setting default file:// breaks things
-    this.conf.set("original.defaultFS", this.conf.get("fs.defaultFS"));
-
+    if (this.conf.get("fs.defaultFS") != null) {
+      this.conf.set("original.defaultFS", this.conf.get("fs.defaultFS"));
+    }
+    if (this.conf.get(HConstants.HBASE_DIR) != null) {
+      this.conf.set("original.hbase.dir", this.conf.get(HConstants.HBASE_DIR));
+    }
     // Every cluster is a local cluster until we start DFS
     // Note that conf could be null, but this.conf will not be
     String dataTestDir = getDataTestDir().toString();
@@ -1050,12 +1056,15 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
    * Starts the hbase cluster up again after shutting it down previously in a
    * test.  Use this if you want to keep dfs/zk up and just stop/start hbase.
    * @param servers number of region servers
-   * @throws IOException
    */
   public void restartHBaseCluster(int servers) throws IOException, InterruptedException {
-    if(connection != null){
-      connection.close();
-      connection = null;
+    if (hbaseAdmin != null) {
+      hbaseAdmin.close();
+      hbaseAdmin = null;
+    }
+    if (this.connection != null) {
+      this.connection.close();
+      this.connection = null;
     }
     this.hbaseCluster = new MiniHBaseCluster(this.conf, servers);
     // Don't leave here till we've done a successful scan of the hbase:meta
@@ -1091,10 +1100,6 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
    */
   public void shutdownMiniCluster() throws Exception {
     LOG.info("Shutting down minicluster");
-    if (this.connection != null && !this.connection.isClosed()) {
-      this.connection.close();
-      this.connection = null;
-    }
     shutdownMiniHBaseCluster();
     shutdownMiniDFSCluster();
     shutdownMiniZKCluster();
@@ -1106,14 +1111,16 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
 
   /**
    * Shutdown HBase mini cluster.  Does not shutdown zk or dfs if running.
-   * @throws IOException
    */
   public void shutdownMiniHBaseCluster() throws IOException {
     if (hbaseAdmin != null) {
       hbaseAdmin.close();
       hbaseAdmin = null;
     }
-
+    if (this.connection != null) {
+      this.connection.close();
+      this.connection = null;
+    }
     // unset the configuration for MIN and MAX RS to start
     conf.setInt(ServerManager.WAIT_ON_REGIONSERVERS_MINTOSTART, -1);
     conf.setInt(ServerManager.WAIT_ON_REGIONSERVERS_MAXTOSTART, -1);
@@ -1123,7 +1130,6 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
       this.hbaseCluster.waitUntilShutDown();
       this.hbaseCluster = null;
     }
-
     if (zooKeeperWatcher != null) {
       zooKeeperWatcher.close();
       zooKeeperWatcher = null;
@@ -2800,7 +2806,12 @@ public class HBaseTestingUtility extends HBaseZKTestingUtility {
 
   private HBaseAdmin hbaseAdmin = null;
 
-
+  /**
+   * Returns an {@link Hbck} instance. Needs be closed when done.
+   */
+  public Hbck getHbck() throws IOException {
+    return ((ClusterConnection) getConnection()).getHbck();
+  }
 
   /**
    * Unassign the named region.

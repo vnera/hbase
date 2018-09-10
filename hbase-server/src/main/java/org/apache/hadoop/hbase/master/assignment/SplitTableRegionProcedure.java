@@ -139,6 +139,16 @@ public class SplitTableRegionProcedure
   }
 
   /**
+   * Check whether there are recovered.edits in the parent closed region.
+   * @param env master env
+   * @throws IOException IOException
+   */
+  static boolean hasRecoveredEdits(MasterProcedureEnv env, RegionInfo ri) throws IOException {
+    return WALSplitter.hasRecoveredEdits(env.getMasterServices().getFileSystem(),
+        env.getMasterConfiguration(), ri);
+  }
+
+  /**
    * Check whether the region is splittable
    * @param env MasterProcedureEnv
    * @param regionToSplit parent Region to be split
@@ -238,7 +248,21 @@ public class SplitTableRegionProcedure
           break;
         case SPLIT_TABLE_REGION_CLOSE_PARENT_REGION:
           addChildProcedure(createUnassignProcedures(env, getRegionReplication(env)));
-          setNextState(SplitTableRegionState.SPLIT_TABLE_REGION_CREATE_DAUGHTER_REGIONS);
+          setNextState(SplitTableRegionState.SPLIT_TABLE_REGIONS_CHECK_CLOSED_REGIONS);
+          break;
+        case SPLIT_TABLE_REGIONS_CHECK_CLOSED_REGIONS:
+          if (hasRecoveredEdits(env, getRegion())) {
+            // If recovered edits, reopen parent region and then re-run the close by going back to
+            // SPLIT_TABLE_REGION_CLOSE_PARENT_REGION. We might have to cycle here a few times
+            // (TODO: Add being able to open a region in read-only mode). Open the primary replica
+            // in this case only where we just want to pickup the left-out replicated.edits.
+            LOG.info("Found recovered.edits under {}, reopen so we pickup these missed edits!",
+                getRegion().getEncodedName());
+            addChildProcedure(env.getAssignmentManager().createAssignProcedure(getParentRegion()));
+            setNextState(SplitTableRegionState.SPLIT_TABLE_REGION_CLOSE_PARENT_REGION);
+          } else {
+            setNextState(SplitTableRegionState.SPLIT_TABLE_REGION_CREATE_DAUGHTER_REGIONS);
+          }
           break;
         case SPLIT_TABLE_REGION_CREATE_DAUGHTER_REGIONS:
           createDaughterRegions(env);
@@ -271,10 +295,9 @@ public class SplitTableRegionProcedure
           throw new UnsupportedOperationException(this + " unhandled state=" + state);
       }
     } catch (IOException e) {
-      String msg = "Error trying to split region " + getParentRegion().getEncodedName() +
-          " in the table " + getTableName() + " (in state=" + state + ")";
+      String msg = "Splitting " + getParentRegion().getEncodedName() + ", " + this;
       if (!isRollbackSupported(state)) {
-        // We reach a state that cannot be rolled back. We just need to keep retry.
+        // We reach a state that cannot be rolled back. We just need to keep retrying.
         LOG.warn(msg, e);
       } else {
         LOG.error(msg, e);
@@ -311,6 +334,10 @@ public class SplitTableRegionProcedure
         case SPLIT_TABLE_REGION_CREATE_DAUGHTER_REGIONS:
         case SPLIT_TABLE_REGION_WRITE_MAX_SEQUENCE_ID_FILE:
           // Doing nothing, as re-open parent region would clean up daughter region directories.
+          break;
+        case SPLIT_TABLE_REGIONS_CHECK_CLOSED_REGIONS:
+          // Doing nothing, in SPLIT_TABLE_REGION_CLOSE_PARENT_REGION,
+          // we will bring parent region online
           break;
         case SPLIT_TABLE_REGION_CLOSE_PARENT_REGION:
           openParentRegion(env);
@@ -498,7 +525,7 @@ public class SplitTableRegionProcedure
     try {
       env.getMasterServices().getMasterQuotaManager().onRegionSplit(this.getParentRegion());
     } catch (QuotaExceededException e) {
-      env.getAssignmentManager().getRegionNormalizer().planSkipped(this.getParentRegion(),
+      env.getMasterServices().getRegionNormalizer().planSkipped(this.getParentRegion(),
           NormalizationPlan.PlanType.SPLIT);
       throw e;
     }

@@ -202,6 +202,13 @@ public final class ProcedureUtil {
       builder.setNonce(proc.getNonceKey().getNonce());
     }
 
+    if (proc.hasLock()) {
+      builder.setLocked(true);
+    }
+
+    if (proc.isBypass()) {
+      builder.setBypass(true);
+    }
     return builder.build();
   }
 
@@ -253,6 +260,14 @@ public final class ProcedureUtil {
 
     if (proto.getNonce() != HConstants.NO_NONCE) {
       proc.setNonceKey(new NonceKey(proto.getNonceGroup(), proto.getNonce()));
+    }
+
+    if (proto.getLocked()) {
+      proc.lockedWhenLoading();
+    }
+
+    if (proto.getBypass()) {
+      proc.bypass();
     }
 
     ProcedureStateSerializer serializer = null;

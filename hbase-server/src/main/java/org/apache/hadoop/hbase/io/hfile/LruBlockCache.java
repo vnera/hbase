@@ -379,15 +379,7 @@ public class LruBlockCache implements ResizableBlockCache, HeapSize {
     }
 
     LruCachedBlock cb = map.get(cacheKey);
-    if (cb != null) {
-      // compare the contents, if they are not equal, we are in big trouble
-      if (BlockCacheUtil.compareCacheBlock(buf, cb.getBuffer()) != 0) {
-        throw new RuntimeException("Cached block contents differ, which should not have happened."
-          + "cacheKey:" + cacheKey);
-      }
-      String msg = "Cached an already cached block: " + cacheKey + " cb:" + cb.getCacheKey();
-      msg += ". This is harmless and can happen in rare cases (see HBASE-8547)";
-      LOG.debug(msg);
+    if (cb != null && !BlockCacheUtil.shouldReplaceExistingCacheBlock(this, cacheKey, buf)) {
       return;
     }
     long currentSize = size.get();

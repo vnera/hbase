@@ -246,6 +246,7 @@ enum SplitTableRegionState {
   SPLIT_TABLE_REGION_PRE_OPERATION_AFTER_META = 8;
   SPLIT_TABLE_REGION_OPEN_CHILD_REGIONS = 9;
   SPLIT_TABLE_REGION_POST_OPERATION = 10;
+  SPLIT_TABLE_REGIONS_CHECK_CLOSED_REGIONS = 11;
 }
 
 message SplitTableRegionStateData {
@@ -266,6 +267,7 @@ enum MergeTableRegionsState {
   MERGE_TABLE_REGIONS_POST_MERGE_COMMIT_OPERATION = 9;
   MERGE_TABLE_REGIONS_OPEN_MERGED_REGION = 10;
   MERGE_TABLE_REGIONS_POST_OPERATION = 11;
+  MERGE_TABLE_REGIONS_CHECK_CLOSED_REGIONS = 12;
 }
 
 message MergeTableRegionsStateData {
@@ -293,15 +295,17 @@ message RecoverMetaStateData {
 
 enum ServerCrashState {
   SERVER_CRASH_START = 1;
-  SERVER_CRASH_PROCESS_META = 2;
+  SERVER_CRASH_PROCESS_META = 2[deprecated=true];
   SERVER_CRASH_GET_REGIONS = 3;
-  SERVER_CRASH_NO_SPLIT_LOGS = 4;
+  SERVER_CRASH_NO_SPLIT_LOGS = 4[deprecated=true];
   SERVER_CRASH_SPLIT_LOGS = 5;
   // Removed SERVER_CRASH_PREPARE_LOG_REPLAY = 6;
   // Removed SERVER_CRASH_CALC_REGIONS_TO_ASSIGN = 7;
   SERVER_CRASH_ASSIGN = 8;
   SERVER_CRASH_WAIT_ON_ASSIGN = 9;
-  SERVER_CRASH_HANDLE_RIT2 = 20;
+  SERVER_CRASH_SPLIT_META_LOGS = 10;
+  SERVER_CRASH_ASSIGN_META = 11;
+  SERVER_CRASH_HANDLE_RIT2 = 20[deprecated=true];
   SERVER_CRASH_FINISH = 100;
 }
 
@@ -374,4 +378,22 @@ message GCMergedRegionsStateData {
   required RegionInfo parent_a = 1;
   required RegionInfo parent_b = 2;
   required RegionInfo merged_child = 3;
+}
+
+enum ReopenTableRegionsState {
+  REOPEN_TABLE_REGIONS_GET_REGIONS = 1;
+  REOPEN_TABLE_REGIONS_REOPEN_REGIONS = 2;
+  REOPEN_TABLE_REGIONS_CONFIRM_REOPENED = 3;
+}
+
+message ReopenTableRegionsStateData {
+  required TableName table_name = 1;
+  repeated RegionLocation region = 2;
+}
+
+enum InitMetaState {
+   INIT_META_ASSIGN_META = 1;
+}
+
+message InitMetaStateData {
 }

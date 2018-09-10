@@ -1028,7 +1028,7 @@ public class WALProcedureStore extends ProcedureStoreBase {
     long startPos = -1;
     newLogFile = getLogFilePath(logId);
     try {
-      newStream = fs.create(newLogFile, false);
+      newStream = CommonFSUtils.createForWal(fs, newLogFile, false);
     } catch (FileAlreadyExistsException e) {
       LOG.error("Log file with id=" + logId + " already exists", e);
       return false;
@@ -1075,9 +1075,7 @@ public class WALProcedureStore extends ProcedureStoreBase {
         ". check running procedures to see if something is stuck.");
     }
 
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Roll new state log: " + logId);
-    }
+    LOG.info("Rolled new Procedure Store WAL, id={}", logId);
     return true;
   }
 

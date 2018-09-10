@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.hadoop.hbase.master.procedure;
 
 import java.io.IOException;
@@ -93,8 +92,12 @@ public abstract class AbstractStateMachineTableProcedure<TState>
   }
 
   @Override
+  protected boolean waitInitialized(MasterProcedureEnv env) {
+    return env.waitInitialized(this);
+  }
+
+  @Override
   protected LockState acquireLock(final MasterProcedureEnv env) {
-    if (env.waitInitialized(this)) return LockState.LOCK_EVENT_WAIT;
     if (env.getProcedureScheduler().waitTableExclusiveLock(this, getTableName())) {
       return LockState.LOCK_EVENT_WAIT;
     }
@@ -190,7 +193,7 @@ public abstract class AbstractStateMachineTableProcedure<TState>
       throw new UnknownRegionException("No RegionState found for " + ri.getEncodedName());
     }
     if (!rs.isOpened()) {
-      throw new DoNotRetryRegionException(ri.getEncodedName() + " is not OPEN");
+      throw new DoNotRetryRegionException(ri.getEncodedName() + " is not OPEN; regionState=" + rs);
     }
     if (ri.isSplitParent()) {
       throw new DoNotRetryRegionException(ri.getEncodedName() +

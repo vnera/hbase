@@ -71,10 +71,10 @@ public class TestYieldProcedures {
     logDir = new Path(testDir, "proc-logs");
     procStore = ProcedureTestingUtility.createWalStore(htu.getConfiguration(), logDir);
     procRunnables = new TestScheduler();
-    procExecutor = new ProcedureExecutor(htu.getConfiguration(), new TestProcEnv(),
-        procStore, procRunnables);
+    procExecutor =
+      new ProcedureExecutor<>(htu.getConfiguration(), new TestProcEnv(), procStore, procRunnables);
     procStore.start(PROCEDURE_EXECUTOR_SLOTS);
-    procExecutor.start(PROCEDURE_EXECUTOR_SLOTS, true);
+    ProcedureTestingUtility.initAndStartWorkers(procExecutor, PROCEDURE_EXECUTOR_SLOTS, true);
   }
 
   @After
@@ -117,9 +117,9 @@ public class TestYieldProcedures {
     // check runnable queue stats
     assertEquals(0, procRunnables.size());
     assertEquals(0, procRunnables.addFrontCalls);
-    assertEquals(18, procRunnables.addBackCalls);
-    assertEquals(15, procRunnables.yieldCalls);
-    assertEquals(19, procRunnables.pollCalls);
+    assertEquals(15, procRunnables.addBackCalls);
+    assertEquals(12, procRunnables.yieldCalls);
+    assertEquals(16, procRunnables.pollCalls);
     assertEquals(3, procRunnables.completionCalls);
   }
 
@@ -143,23 +143,25 @@ public class TestYieldProcedures {
       assertEquals(i, info.getStep().ordinal());
     }
 
-    // test rollback (we execute steps twice, one has the IE the other completes)
+    // test rollback (we execute steps twice, rollback counts both IE and completed)
     for (int i = NUM_STATES - 1; i >= 0; --i) {
       TestStateMachineProcedure.ExecutionInfo info = proc.getExecutionInfo().get(count++);
       assertEquals(true, info.isRollback());
       assertEquals(i, info.getStep().ordinal());
+    }
 
-      info = proc.getExecutionInfo().get(count++);
+    for (int i = NUM_STATES - 1; i >= 0; --i) {
+      TestStateMachineProcedure.ExecutionInfo info = proc.getExecutionInfo().get(count++);
       assertEquals(true, info.isRollback());
-      assertEquals(i, info.getStep().ordinal());
+      assertEquals(0, info.getStep().ordinal());
     }
 
     // check runnable queue stats
     assertEquals(0, procRunnables.size());
     assertEquals(0, procRunnables.addFrontCalls);
-    assertEquals(12, procRunnables.addBackCalls);
-    assertEquals(11, procRunnables.yieldCalls);
-    assertEquals(13, procRunnables.pollCalls);
+    assertEquals(11, procRunnables.addBackCalls);
+    assertEquals(10, procRunnables.yieldCalls);
+    assertEquals(12, procRunnables.pollCalls);
     assertEquals(1, procRunnables.completionCalls);
   }
 

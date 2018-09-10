@@ -82,7 +82,6 @@ public class WALFactory {
   static final String DEFAULT_WAL_PROVIDER = Providers.defaultProvider.name();
 
   public static final String META_WAL_PROVIDER = "hbase.wal.meta_provider";
-  static final String DEFAULT_META_WAL_PROVIDER = Providers.defaultProvider.name();
 
   final String factoryId;
   private final WALProvider provider;
@@ -121,9 +120,31 @@ public class WALFactory {
   }
 
   @VisibleForTesting
+  Providers getDefaultProvider() {
+    return Providers.defaultProvider;
+  }
+
+  @VisibleForTesting
   public Class<? extends WALProvider> getProviderClass(String key, String defaultValue) {
     try {
-      return Providers.valueOf(conf.get(key, defaultValue)).clazz;
+      Providers provider = Providers.valueOf(conf.get(key, defaultValue));
+
+      // AsyncFSWALProvider is not guaranteed to work on all Hadoop versions, when it's chosen as
+      // the default and we can't use it, we want to fall back to FSHLog which we know works on
+      // all versions.
+      if (provider == getDefaultProvider() && provider.clazz == AsyncFSWALProvider.class
+          && !AsyncFSWALProvider.load()) {
+        // AsyncFSWAL has better performance in most cases, and also uses less resources, we will
+        // try to use it if possible. It deeply hacks into the internal of DFSClient so will be
+        // easily broken when upgrading hadoop.
+        LOG.warn("Failed to load AsyncFSWALProvider, falling back to FSHLogProvider");
+        return FSHLogProvider.class;
+      }
+
+      // N.b. If the user specifically requested AsyncFSWALProvider but their environment doesn't
+      // support using it (e.g. AsyncFSWALProvider.load() == false), we should let this fail and
+      // not fall back to FSHLogProvider.
+      return provider.clazz;
     } catch (IllegalArgumentException exception) {
       // Fall back to them specifying a class name
       // Note that the passed default class shouldn't actually be used, since the above only fails
@@ -225,14 +246,15 @@ public class WALFactory {
     return provider.getWALs();
   }
 
-  private WALProvider getMetaProvider() throws IOException {
+  @VisibleForTesting
+  WALProvider getMetaProvider() throws IOException {
     for (;;) {
       WALProvider provider = this.metaProvider.get();
       if (provider != null) {
         return provider;
       }
-      provider = getProvider(META_WAL_PROVIDER, DEFAULT_META_WAL_PROVIDER,
-        AbstractFSWALProvider.META_WAL_PROVIDER_ID);
+      provider = getProvider(META_WAL_PROVIDER, conf.get(WAL_PROVIDER, DEFAULT_WAL_PROVIDER),
+          AbstractFSWALProvider.META_WAL_PROVIDER_ID);
       if (metaProvider.compareAndSet(null, provider)) {
         return provider;
       } else {
