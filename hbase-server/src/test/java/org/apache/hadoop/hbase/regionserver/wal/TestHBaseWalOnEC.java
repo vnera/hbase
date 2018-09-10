@@ -59,6 +59,8 @@ public class TestHBaseWalOnEC {
 
   @BeforeClass
   public static void setup() throws Exception {
+    // Enable 'cloudera' ec locally in the test for 6.0.1... Its done in HDFS in 6.1 (CDH-71926).
+    util.getConfiguration().setBoolean("cloudera.erasure_coding.enabled", true);
     try {
       MiniDFSCluster cluster = util.startMiniDFSCluster(3); // Need 3 DNs for RS-3-2 policy
       DistributedFileSystem fs = cluster.getFileSystem();
