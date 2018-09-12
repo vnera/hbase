@@ -52,7 +52,7 @@ function personality_globals
   #shellcheck disable=SC2034
   PROJECT_NAME=hbase
   #shellcheck disable=SC2034
-  PATCH_BRANCH_DEFAULT=cdh5-1.2.0_dev
+  PATCH_BRANCH_DEFAULT=cdh5-1.2.0_5.15.x_dev
   #shellcheck disable=SC2034
   JIRA_ISSUE_RE='^(HBASE|CDH)-[0-9]+$'
 
