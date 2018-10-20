@@ -64,7 +64,7 @@ mkdir -p "${PATCHPROCESS}"
 # First time we call this it's from jenkins, so break it on spaces
 # YETUS_ARGS=(${YETUS_ARGS} --jenkins)
 ## HACK avoid --jenkins which enables robot which does a 'git -xdf' that breaks the run
-YETUS_ARGS=(${YETUS_ARGS} --dirty-workspace)
+YETUS_ARGS=(${YETUS_ARGS} --dirty-workspace --run-tests)
 
 ### Download Yetus
 if [ ! -d "${TEST_FRAMEWORK}" ]; then
