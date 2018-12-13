@@ -27,7 +27,10 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -77,7 +80,6 @@ import org.apache.hadoop.hbase.snapshot.TablePartiallyOpenException;
 import org.apache.hadoop.hbase.snapshot.UnknownSnapshotException;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.FSUtils;
-import org.apache.hadoop.hbase.util.KeyLocker;
 import org.apache.hadoop.hbase.util.NonceKey;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.yetus.audience.InterfaceStability;
@@ -149,7 +151,7 @@ public class SnapshotManager extends MasterProcedureManager implements Stoppable
   // The map is always accessed and modified under the object lock using synchronized.
   // snapshotTable() will insert an Handler in the table.
   // isSnapshotDone() will remove the handler requested if the operation is finished.
-  private Map<TableName, SnapshotSentinel> snapshotHandlers = new HashMap<>();
+  private Map<TableName, SnapshotSentinel> snapshotHandlers = new ConcurrentHashMap<>();
 
   // Restore map, with table name as key, procedure ID as value.
   // The map is always accessed and modified under the object lock using synchronized.
@@ -164,14 +166,12 @@ public class SnapshotManager extends MasterProcedureManager implements Stoppable
   private ExecutorService executorService;
 
   /**
-   *  Locks for snapshot operations
-   *  key is snapshot's filename in progress, value is the related lock
-   *    - create snapshot
-   *    - SnapshotCleaner
-   * */
-  private KeyLocker<String> locks = new KeyLocker<>();
-
-
+   * Read write lock between taking snapshot and snapshot HFile cleaner. The cleaner should skip to
+   * check the HFiles if any snapshot is in progress, otherwise it may clean a HFile which would
+   * belongs to the newly creating snapshot. So we should grab the write lock first when cleaner
+   * start to work. (See HBASE-21387)
+   */
+  private ReentrantReadWriteLock takingSnapshotLock = new ReentrantReadWriteLock(true);
 
   public SnapshotManager() {}
 
@@ -420,7 +420,7 @@ public class SnapshotManager extends MasterProcedureManager implements Stoppable
    * @param tableName name of the table being snapshotted.
    * @return <tt>true</tt> if there is a snapshot in progress on the specified table.
    */
-  synchronized boolean isTakingSnapshot(final TableName tableName) {
+  public boolean isTakingSnapshot(final TableName tableName) {
     SnapshotSentinel handler = this.snapshotHandlers.get(tableName);
     return handler != null && !handler.isFinished();
   }
@@ -543,14 +543,38 @@ public class SnapshotManager extends MasterProcedureManager implements Stoppable
     }
   }
 
+  public ReadWriteLock getTakingSnapshotLock() {
+    return this.takingSnapshotLock;
+  }
+
+  /**
+   * The snapshot operation processing as following: <br>
+   * 1. Create a Snapshot Handler, and do some initialization; <br>
+   * 2. Put the handler into snapshotHandlers <br>
+   * So when we consider if any snapshot is taking, we should consider both the takingSnapshotLock
+   * and snapshotHandlers;
+   * @return true to indicate that there're some running snapshots.
+   */
+  public synchronized boolean isTakingAnySnapshot() {
+    return this.takingSnapshotLock.getReadHoldCount() > 0 || this.snapshotHandlers.size() > 0;
+  }
+
   /**
    * Take a snapshot based on the enabled/disabled state of the table.
-   *
    * @param snapshot
    * @throws HBaseSnapshotException when a snapshot specific exception occurs.
    * @throws IOException when some sort of generic IO exception occurs.
    */
   public void takeSnapshot(SnapshotDescription snapshot) throws IOException {
+    this.takingSnapshotLock.readLock().lock();
+    try {
+      takeSnapshotInternal(snapshot);
+    } finally {
+      this.takingSnapshotLock.readLock().unlock();
+    }
+  }
+
+  private void takeSnapshotInternal(SnapshotDescription snapshot) throws IOException {
     // check to see if we already completed the snapshot
     if (isSnapshotCompleted(snapshot)) {
       throw new SnapshotExistsException(
@@ -1185,9 +1209,4 @@ public class SnapshotManager extends MasterProcedureManager implements Stoppable
     builder.setType(SnapshotDescription.Type.FLUSH);
     return builder.build();
   }
-
-  public KeyLocker<String> getLocks() {
-    return locks;
-  }
-
 }

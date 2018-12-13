@@ -251,6 +251,9 @@ public class ServerCrashProcedure
     // PROBLEM!!! WE BLOCK HERE.
     am.getRegionStates().logSplitting(this.serverName);
     mwm.splitLog(this.serverName);
+    if (!carryingMeta) {
+      mwm.archiveMetaLog(this.serverName);
+    }
     am.getRegionStates().logSplit(this.serverName);
     LOG.debug("Done splitting WALs {}", this);
   }
@@ -419,13 +422,15 @@ public class ServerCrashProcedure
       if (sce == null) {
         sce = new ServerCrashException(getProcId(), getServerName());
       }
-      rtp.remoteCallFailed(env, this.serverName, sce);
-      // If an assign, remove from passed-in list of regions so we subsequently do not create
-      // a new assign; the exisitng assign after the call to remoteCallFailed will recalibrate
-      // and assign to a server other than the crashed one; no need to create new assign.
-      // If an unassign, do not return this region; the above cancel will wake up the unassign and
-      // it will complete. Done.
-      it.remove();
+      if(rtp.remoteCallFailed(env, this.serverName, sce)) {
+        // If an assign, remove from passed-in list of regions so we subsequently do not create
+        // a new assign; the exisitng assign after the call to remoteCallFailed will recalibrate
+        // and assign to a server other than the crashed one; no need to create new assign.
+        // If an unassign, do not return this region; the above cancel will wake up the unassign and
+        // it will complete. Done.
+        it.remove();
+      }
+
     }
     return toAssign;
   }
