@@ -588,8 +588,7 @@ public class HRegionServer extends HasThread implements
 
       regionServerAccounting = new RegionServerAccounting(conf);
       boolean isMasterNotCarryTable =
-          this instanceof HMaster && !LoadBalancer.isTablesOnMaster(conf) && !LoadBalancer
-              .isSystemTablesOnlyOnMaster(conf);
+          this instanceof HMaster && !LoadBalancer.isTablesOnMaster(conf);
       cacheConfig = new CacheConfig(conf, !isMasterNotCarryTable);
       mobCacheConfig = new MobCacheConfig(conf, !isMasterNotCarryTable);
       uncaughtExceptionHandler = new UncaughtExceptionHandler() {
@@ -2859,7 +2858,7 @@ public class HRegionServer extends HasThread implements
   /**
    * @return Return the walRootDir.
    */
-  protected Path getWALRootDir() {
+  public Path getWALRootDir() {
     return walRootDir;
   }
 
