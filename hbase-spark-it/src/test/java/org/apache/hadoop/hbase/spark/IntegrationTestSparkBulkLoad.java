@@ -18,10 +18,7 @@
  */
 package org.apache.hadoop.hbase.spark;
 
-import com.google.common.collect.Sets;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
@@ -67,6 +64,8 @@ import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.api.java.function.VoidFunction;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import scala.Tuple2;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -79,6 +78,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
+import org.apache.hbase.thirdparty.com.google.common.collect.Sets;
 import org.apache.hbase.thirdparty.org.apache.commons.cli.CommandLine;
 
 /**
@@ -95,7 +95,7 @@ import org.apache.hbase.thirdparty.org.apache.commons.cli.CommandLine;
 @org.junit.Ignore("CDH-35577 Our hbase-spark story is incompat with upstream. Fix after rebase.")
 public class IntegrationTestSparkBulkLoad extends IntegrationTestBase {
 
-  private static final Log LOG = LogFactory.getLog(IntegrationTestSparkBulkLoad.class);
+  private static final Logger LOG = LoggerFactory.getLogger(IntegrationTestSparkBulkLoad.class);
 
   // The number of partitions for random generated data
   private static String BULKLOAD_PARTITIONS_NUM = "hbase.spark.bulkload.partitionsnum";
