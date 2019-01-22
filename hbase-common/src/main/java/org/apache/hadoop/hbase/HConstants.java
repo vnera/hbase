@@ -343,7 +343,7 @@ public final class HConstants {
   /** Parameter name for HBase client operation timeout. */
   public static final String HBASE_CLIENT_OPERATION_TIMEOUT = "hbase.client.operation.timeout";
 
-  /** Parameter name for HBase client operation timeout. */
+  /** Parameter name for HBase client meta operation timeout. */
   public static final String HBASE_CLIENT_META_OPERATION_TIMEOUT =
     "hbase.client.meta.operation.timeout";
 
@@ -1402,6 +1402,8 @@ public final class HConstants {
   public static final String DEFAULT_SNAPSHOT_RESTORE_FAILSAFE_NAME =
       "hbase-failsafe-{snapshot.name}-{restore.timestamp}";
 
+  public static final String DEFAULT_LOSSY_COUNTING_ERROR_RATE =
+      "hbase.util.default.lossycounting.errorrate";
   public static final String NOT_IMPLEMENTED = "Not implemented";
 
   private HConstants() {
