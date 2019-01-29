@@ -64,5 +64,8 @@ public class TestVersionInfo {
     assertTrue(VersionInfo.compareVersion("2.0.0-beta-5-SNAPSHOT", "2.any.any") > 0);
     assertTrue(VersionInfo.compareVersion("2.any.any", "1.4.4") > 0);
     assertTrue(VersionInfo.compareVersion("1.4.4", "2.any.any") < 0);
+    assertTrue(VersionInfo.compareVersion("2.1.0-cdh6.1.0", "2.1.0-cdh6.1.x") < 0);
+    assertTrue(VersionInfo.compareVersion("2.1.0-cdh6.1.0", "2.1.0-cdh6.x") < 0);
+    assertTrue(VersionInfo.compareVersion("cdh5.15.0", "cdh6.0.0") < 0);
   }
 }

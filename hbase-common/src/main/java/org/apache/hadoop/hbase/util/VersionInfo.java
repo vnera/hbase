@@ -142,14 +142,14 @@ public class VersionInfo {
    */
   private static String[] getVersionComponents(final String version) {
     assert(version != null);
-    String[] strComps = version.split("[\\.-]");
+    String[] strComps = version.replace("cdh", "").split("[\\.-]");
     assert(strComps.length > 0);
 
     String[] comps = new String[strComps.length];
     for (int i = 0; i < strComps.length; ++i) {
       if (StringUtils.isNumeric(strComps[i])) {
         comps[i] = strComps[i];
-      } else if (StringUtils.isEmpty(strComps[i])) {
+      } else if (StringUtils.isEmpty(strComps[i]) || "x".equals(strComps[i])) {
         comps[i] = String.valueOf(VERY_LARGE_NUMBER);
       } else {
         if("SNAPSHOT".equals(strComps[i])) {
