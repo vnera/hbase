@@ -21,3 +21,4 @@
 **/TestServerCrashProcedureStuck.java
 **/TestMasterOperationsForRegionReplicas.java
 **/TestRegionInfoDisplay
+**/TestSnapshotFromMaster.java
