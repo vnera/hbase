@@ -1499,7 +1499,7 @@
     <external.protobuf.version>2.5.0</external.protobuf.version>
     <protobuf.plugin.version>0.5.0</protobuf.plugin.version>
     <thrift.path>thrift</thrift.path>
-    <thrift.version>0.9.3</thrift.version>
+    <thrift.version>${cdh.thrift.version}</thrift.version>
     <zookeeper.version>${cdh.zookeeper.version}</zookeeper.version>
     <jline.version>${cdh.jline.version}</jline.version>
     <slf4j.version>${cdh.slf4j.version}</slf4j.version>
