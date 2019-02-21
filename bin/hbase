@@ -71,11 +71,20 @@ if [ -d "${HBASE_HOME}/target" ]; then
   in_dev_env=true
 fi
 
+# CDH-77786
+# We only ship an equivalent of the omnibus so hardcoding this value to true
+# if set as false, we wouldn't be able to see few help options such as zkcli etc
+# whose display is filtered out based on the value of this variable.
+in_omnibus_tarball="true"
+
+# Keeping this code around, as we would eventually need to copy
+# the hbase-daemons.sh in the parcels and rely on this code.
+
 # Detect if we are in the omnibus tarball
-in_omnibus_tarball="false"
-if [ -f "${HBASE_HOME}/bin/hbase-daemons.sh" ]; then
-  in_omnibus_tarball="true"
-fi
+# in_omnibus_tarball="false"
+# if [ -f "${HBASE_HOME}/bin/hbase-daemons.sh" ]; then
+#  in_omnibus_tarball="true"
+# fi
 
 read -d '' options_string << EOF
 Options:
