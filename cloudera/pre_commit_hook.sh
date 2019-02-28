@@ -114,6 +114,7 @@ if [[ "true" = "${RUN_IN_DOCKER}" ]]; then
   YETUS_ARGS=(--docker --findbugs-home=/opt/findbugs ${YETUS_ARGS[@]})
   if [ -d "${COMPONENT}/dev-support/docker/Dockerfile" ]; then
     YETUS_ARGS=(--dockerfile="${COMPONENT}/dev-support/docker/Dockerfile" ${YETUS_ARGS[@]})
+    YETUS_ARGS=("--dockermemlimit=20g" "${YETUS_ARGS[@]}")
   fi
 else
   YETUS_ARGS=(--findbugs-home=/opt/toolchain/findbugs-1.3.9 ${YETUS_ARGS[@]})
@@ -128,6 +129,8 @@ fi
 if [ -r "${COMPONENT}/cloudera/cdh-personality.sh" ]; then
   YETUS_ARGS=("--personality=${COMPONENT}/cloudera/cdh-personality.sh" ${YETUS_ARGS[@]})
 fi
+
+YETUS_ARGS=("--proclimit=10000" "${YETUS_ARGS[@]}")
 
 # work around YETUS-61, manually create a patch file and move the repo to the correct branch.
 if [ -z "${GIT_COMMIT}" ] || [ -z "${GERRIT_BRANCH}" ]; then
