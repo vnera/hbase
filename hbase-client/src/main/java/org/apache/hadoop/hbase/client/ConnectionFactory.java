@@ -266,7 +266,6 @@ public class ConnectionFactory {
    * @param conf configuration
    * @param user the user the asynchronous connection is for
    * @return AsyncConnection object wrapped by CompletableFuture
-   * @throws IOException
    */
   public static CompletableFuture<AsyncConnection> createAsyncConnection(Configuration conf,
       User user) {
@@ -274,10 +273,12 @@ public class ConnectionFactory {
     AsyncRegistry registry = AsyncRegistryFactory.getRegistry(conf);
     registry.getClusterId().whenComplete((clusterId, error) -> {
       if (error != null) {
+        registry.close();
         future.completeExceptionally(error);
         return;
       }
       if (clusterId == null) {
+        registry.close();
         future.completeExceptionally(new IOException("clusterid came back null"));
         return;
       }
@@ -286,6 +287,7 @@ public class ConnectionFactory {
       try {
         future.complete(ReflectionUtils.newInstance(clazz, conf, registry, clusterId, user));
       } catch (Exception e) {
+        registry.close();
         future.completeExceptionally(e);
       }
     });
