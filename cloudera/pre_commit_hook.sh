@@ -35,7 +35,7 @@ sed 's/#.*//' cloudera/excluded.txt |  grep -v '^\w*$' | tr '\n' ',' | sed 's/^/
 # Assumed from job environment
 export JAVA_HOME=$JAVA_1_8_HOME
 export PATH=${JAVA_HOME}/bin:${MAVEN_3_5_0_HOME}/bin:$PATH
-export YETUS_VERSION_NUMBER=0.7.0
+export YETUS_VERSION_NUMBER=0.9.0
 
 if [[ "true" = "${DEBUG}" ]]; then
   set -x
@@ -80,14 +80,14 @@ if [ ! -d "${TEST_FRAMEWORK}" ]; then
   gpg --homedir "${TEST_FRAMEWORK}/.gpg" --import "${TEST_FRAMEWORK}/KEYS_YETUS"
 
   ## Release
-  curl -L --fail -O "https://dist.apache.org/repos/dist/release/yetus/${YETUS_VERSION_NUMBER}/yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz"
-  curl -L --fail -O "https://dist.apache.org/repos/dist/release/yetus/${YETUS_VERSION_NUMBER}/yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz.asc"
-  gpg --homedir "${TEST_FRAMEWORK}/.gpg" --verify "yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz.asc"
-  tar xzpf "yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz"
+  curl -L --fail -O "https://dist.apache.org/repos/dist/release/yetus/${YETUS_VERSION_NUMBER}/apache-yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz"
+  curl -L --fail -O "https://dist.apache.org/repos/dist/release/yetus/${YETUS_VERSION_NUMBER}/apache-yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz.asc"
+  gpg --homedir "${TEST_FRAMEWORK}/.gpg" --verify "apache-yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz.asc"
+  tar xzpf "apache-yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz"
 fi
 
-TESTPATCHBIN=${TEST_FRAMEWORK}/yetus-${YETUS_VERSION_NUMBER}/bin/test-patch
-TESTPATCHLIB=${TEST_FRAMEWORK}/yetus-${YETUS_VERSION_NUMBER}/lib/precommit
+TESTPATCHBIN=${TEST_FRAMEWORK}/apache-yetus-${YETUS_VERSION_NUMBER}/bin/test-patch
+TESTPATCHLIB=${TEST_FRAMEWORK}/apache-yetus-${YETUS_VERSION_NUMBER}/lib/precommit
 
 if [ ! -x "${TESTPATCHBIN}" ] && [ -n "${TEST_FRAMEWORK}" ] && [ -d "${TEST_FRAMEWORK}" ]; then
   echo "Something is amiss with the test framework; removing it. please re-run."
