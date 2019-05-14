@@ -61,7 +61,6 @@
   </licenses>
 
   <modules>
-    <module>hbase-build-support</module>
     <module>hbase-build-configuration</module>
     <module>hbase-replication</module>
     <module>hbase-mapreduce</module>
@@ -838,6 +837,8 @@
               <exclude>**/8e8ab58dcf39412da19833fcd8f687ac</exclude>
               <exclude>**/a6a6562b777440fd9c34885428f5cb61.21e75333ada3d5bafb34bb918f29576c</exclude>
               <exclude>**/0000000000000016310</exclude>
+              <exclude>**/a6a6562b777440fd9c34885428f5cb61.21e75333ada3d5bafb34bb918f29576c</exclude>
+              <exclude>**/8e8ab58dcf39412da19833fcd8f687ac</exclude>
               <exclude>**/.idea/**</exclude>
               <exclude>**/*.iml</exclude>
               <exclude>**/CHANGES.txt</exclude>
@@ -968,6 +969,20 @@
               <properties>
                 <property>skip.license.check</property>
               </properties>
+            </configuration>
+          </execution>
+          <!-- sets where to find the generated LICENSE files -->
+          <execution>
+            <id>create-license-file-path-property</id>
+            <goals>
+              <goal>regex-property</goal>
+            </goals>
+            <configuration>
+              <name>license.aggregate.path</name>
+              <value>${project.build.directory}/maven-shared-archive-resources/META-INF/LICENSE</value>
+              <regex>\\</regex>
+              <replacement>/</replacement>
+              <failIfNoMatch>false</failIfNoMatch>
             </configuration>
           </execution>
         </executions>
@@ -1439,10 +1454,6 @@
     <license.bundles.bootstrap>false</license.bundles.bootstrap>
     <!-- modules that include jquery in their source tree should set true -->
     <license.bundles.jquery>false</license.bundles.jquery>
-    <!-- where to find the generated LICENSE files -->
-    <license.aggregate.path>
-      ${project.build.directory}/maven-shared-archive-resources/META-INF/LICENSE
-    </license.aggregate.path>
     <tar.name>${project.build.finalName}.tar.gz</tar.name>
     <maven.build.timestamp.format>
       yyyy-MM-dd'T'HH:mm
@@ -1477,7 +1488,7 @@
     <collections.version>4.1</collections.version>
     <httpclient.version>${cdh.httpcomponents.version}</httpclient.version>
     <httpcore.version>4.4.6</httpcore.version>
-    <metrics-core.version>3.2.1</metrics-core.version>
+    <metrics-core.version>3.2.6</metrics-core.version>
     <jackson.version>${cdh.jackson2.version}</jackson.version>
     <jaxb-api.version>2.2.12</jaxb-api.version>
     <jetty.version>${cdh.jetty9.version}</jetty.version>
@@ -1529,7 +1540,7 @@
     <buildnumber.maven.version>1.4</buildnumber.maven.version>
     <checkstyle.version>8.11</checkstyle.version>
     <exec.maven.version>1.6.0</exec.maven.version>
-    <error-prone.version>2.2.0</error-prone.version>
+    <error-prone.version>2.3.3</error-prone.version>
     <findbugs-annotations>1.3.9-1</findbugs-annotations>
     <findbugs.maven.version>3.0.4</findbugs.maven.version>
     <jamon.plugin.version>2.4.2</jamon.plugin.version>
@@ -1550,10 +1561,9 @@
     <maven.source.version>3.0.1</maven.source.version>
     <maven.warbucks.version>1.1.0</maven.warbucks.version>
     <os.maven.version>1.5.0.Final</os.maven.version>
-    <plexus.errorprone.javac.version>2.8.2</plexus.errorprone.javac.version>
     <scala.maven.version>3.2.2</scala.maven.version>
     <scalatest.maven.version>1.0</scalatest.maven.version>
-    <spotbugs.version>3.1.0-RC3</spotbugs.version>
+    <spotbugs.version>3.1.11</spotbugs.version>
     <wagon.ssh.version>2.12</wagon.ssh.version>
     <xml.maven.version>1.0.1</xml.maven.version>
     <hbase-thirdparty.version>2.1.0</hbase-thirdparty.version>
@@ -2058,6 +2068,11 @@
         <version>${wx.rs.api.version}</version>
       </dependency>
       <dependency>
+        <groupId>com.sun.activation</groupId>
+        <artifactId>javax.activation</artifactId>
+        <version>1.2.0</version>
+      </dependency>
+      <dependency>
         <groupId>org.eclipse.jetty</groupId>
         <artifactId>jetty-server</artifactId>
         <version>${jetty.version}</version>
@@ -2543,6 +2558,10 @@
             <version>${hadoop-two.version}</version>
             <exclusions>
               <exclusion>
+                <groupId>com.sun.jersey</groupId>
+                <artifactId>jersey-core</artifactId>
+              </exclusion>
+              <exclusion>
                 <groupId>io.netty</groupId>
                 <artifactId>netty</artifactId>
               </exclusion>
@@ -2570,6 +2589,10 @@
             <version>${hadoop-two.version}</version>
             <exclusions>
               <exclusion>
+                <groupId>com.sun.jersey</groupId>
+                <artifactId>jersey-core</artifactId>
+              </exclusion>
+              <exclusion>
                 <groupId>io.netty</groupId>
                 <artifactId>netty</artifactId>
               </exclusion>
@@ -2587,6 +2610,10 @@
             <scope>test</scope>
             <exclusions>
               <exclusion>
+                <groupId>com.sun.jersey</groupId>
+                <artifactId>jersey-core</artifactId>
+              </exclusion>
+              <exclusion>
                 <groupId>io.netty</groupId>
                 <artifactId>netty</artifactId>
               </exclusion>
@@ -2601,6 +2628,10 @@
             <artifactId>hadoop-hdfs</artifactId>
             <version>${hadoop-two.version}</version>
             <exclusions>
+              <exclusion>
+                <groupId>com.sun.jersey</groupId>
+                <artifactId>jersey-core</artifactId>
+              </exclusion>
               <exclusion>
                 <groupId>javax.servlet.jsp</groupId>
                 <artifactId>jsp-api</artifactId>
@@ -2674,6 +2705,10 @@
                 <groupId>com.google.guava</groupId>
                 <artifactId>guava</artifactId>
               </exclusion>
+              <exclusion>
+                <groupId>com.sun.jersey</groupId>
+                <artifactId>jersey-core</artifactId>
+              </exclusion>
             </exclusions>
           </dependency>
           <dependency>
@@ -2686,6 +2721,10 @@
             <artifactId>hadoop-common</artifactId>
             <version>${hadoop-two.version}</version>
             <exclusions>
+              <exclusion>
+                <groupId>com.sun.jersey</groupId>
+                <artifactId>jersey-core</artifactId>
+              </exclusion>
               <exclusion>
                 <groupId>commons-beanutils</groupId>
                 <artifactId>commons-beanutils</artifactId>
@@ -2726,6 +2765,23 @@
           </dependency>
           <dependency>
             <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-common</artifactId>
+            <version>${hadoop-two.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+            <exclusions>
+              <exclusion>
+                <groupId>com.sun.jersey</groupId>
+                <artifactId>jersey-core</artifactId>
+              </exclusion>
+              <exclusion>
+                <groupId>com.google.code.findbugs</groupId>
+                <artifactId>jsr305</artifactId>
+              </exclusion>
+            </exclusions>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-client</artifactId>
             <version>${hadoop-two.version}</version>
           </dependency>
@@ -2736,6 +2792,18 @@
             <artifactId>hadoop-minicluster</artifactId>
             <version>${hadoop-two.version}</version>
             <exclusions>
+              <!--If we comment this in, a few tests in hbase-mapreduce
+                   fail. They depend on jersey-core somehow. But excluding
+                   jersey-core here messes up hbase-it because jersey-core
+                   implements a 1.x jaxrs Response Interface when we depend
+                   on the 2.x Interface... . Letting this jar come in
+                   transitively here but will exclude it down in hbase-it.
+                   See HBASE-22029.
+              <exclusion>
+                <groupId>com.sun.jersey</groupId>
+                <artifactId>jersey-core</artifactId>
+              </exclusion>
+              -->
               <exclusion>
                 <groupId>commons-httpclient</groupId>
                 <artifactId>commons-httpclient</artifactId>
@@ -2768,6 +2836,11 @@
             <version>${hadoop-two.version}</version>
             <scope>test</scope>
           </dependency>
+         <dependency>
+           <groupId>org.apache.hadoop</groupId>
+           <artifactId>hadoop-annotations</artifactId>
+           <version>${hadoop-two.version}</version>
+         </dependency>
         </dependencies>
       </dependencyManagement>
     </profile>
@@ -2800,6 +2873,10 @@
            <version>${hadoop-three.version}</version>
            <exclusions>
              <exclusion>
+               <groupId>com.sun.jersey</groupId>
+               <artifactId>jersey-core</artifactId>
+             </exclusion>
+             <exclusion>
                <groupId>io.netty</groupId>
                <artifactId>netty</artifactId>
              </exclusion>
@@ -2827,6 +2904,10 @@
            <version>${hadoop-three.version}</version>
            <exclusions>
              <exclusion>
+               <groupId>com.sun.jersey</groupId>
+               <artifactId>jersey-core</artifactId>
+             </exclusion>
+             <exclusion>
                <groupId>io.netty</groupId>
                <artifactId>netty</artifactId>
              </exclusion>
@@ -2839,6 +2920,10 @@
            <type>test-jar</type>
            <scope>test</scope>
            <exclusions>
+             <exclusion>
+               <groupId>com.sun.jersey</groupId>
+               <artifactId>jersey-core</artifactId>
+             </exclusion>
              <exclusion>
                <groupId>io.netty</groupId>
                <artifactId>netty</artifactId>
@@ -3024,6 +3109,10 @@
                <groupId>com.sun.jersey</groupId>
                <artifactId>jersey-core</artifactId>
              </exclusion>
+             <exclusion>
+               <groupId>com.google.code.findbugs</groupId>
+               <artifactId>jsr305</artifactId>
+             </exclusion>
            </exclusions>
          </dependency>
          <dependency>
@@ -3043,6 +3132,18 @@
            <artifactId>hadoop-minicluster</artifactId>
            <version>${hadoop-three.version}</version>
            <exclusions>
+              <!--If we comment this in, a few tests in hbase-mapreduce
+                   fail. They depend on jersey-core somehow. But excluding
+                   jersey-core here messes up hbase-it because jersey-core
+                   implements a 1.x jaxrs Response Interface when we depend
+                   on the 2.x Interface... . Letting this jar come in
+                   transitively here but will exclude it down in hbase-it.
+                   See HBASE-22029.
+             <exclusion>
+               <groupId>com.sun.jersey</groupId>
+               <artifactId>jersey-core</artifactId>
+             </exclusion>
+             -->
              <exclusion>
                <groupId>commons-httpclient</groupId>
                <artifactId>commons-httpclient</artifactId>
@@ -3509,33 +3610,6 @@
       </build>
     </profile>
     <profile>
-      <id>errorProne</id>
-      <activation>
-        <activeByDefault>false</activeByDefault>
-      </activation>
-        <build>
-            <plugins>
-                <!-- Turn on error-prone -->
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-compiler-plugin</artifactId>
-                    <version>${maven.compiler.version}</version>
-                    <configuration>
-                        <compilerId>javac-with-errorprone</compilerId>
-                        <forceJavacCompilerUse>true</forceJavacCompilerUse>
-                    </configuration>
-                    <dependencies>
-                        <dependency>
-                            <groupId>org.codehaus.plexus</groupId>
-                            <artifactId>plexus-compiler-javac-errorprone</artifactId>
-                            <version>2.5</version>
-                        </dependency>
-                    </dependencies>
-                </plugin>
-            </plugins>
-        </build>
-    </profile>
-    <profile>
       <!-- Used by the website generation script on jenkins to
            do a local install of the jars we need to run a normal
            site build w/o forking.
@@ -3698,7 +3772,6 @@
               <report>aggregate</report>
             </reports>
             <configuration>
-              <!-- Breaks build on branch-2. See HBASE-19663
               <doclet>
                 org.apache.yetus.audience.tools.IncludePublicAnnotationsStandardDoclet
               </doclet>
@@ -3708,7 +3781,6 @@
                 <version>${audience-annotations.version}</version>
               </docletArtifact>
               <useStandardDocletOptions>true</useStandardDocletOptions>
-              -->
               <destDir>apidocs</destDir>
               <name>User API</name>
               <description>The HBase Application Programmer's API</description>
@@ -3753,7 +3825,6 @@
               <report>test-aggregate</report>
             </reports>
             <configuration>
-              <!-- Breaks build on branch-2. See HBASE-19663
               <doclet>
                 org.apache.yetus.audience.tools.IncludePublicAnnotationsStandardDoclet
               </doclet>
@@ -3763,7 +3834,6 @@
                 <version>${audience-annotations.version}</version>
               </docletArtifact>
               <useStandardDocletOptions>true</useStandardDocletOptions>
-              -->
               <destDir>testapidocs</destDir>
               <name>User API</name>
               <description>The HBase Application Programmer's API</description>

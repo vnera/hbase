@@ -53,12 +53,18 @@ final class AsyncRegionLocatorHelper {
       Function<HRegionLocation, HRegionLocation> cachedLocationSupplier,
       Consumer<HRegionLocation> addToCache, Consumer<HRegionLocation> removeFromCache) {
     HRegionLocation oldLoc = cachedLocationSupplier.apply(loc);
-    LOG.debug("Try updating {} , the old value is {}", loc, oldLoc, exception);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Try updating {} , the old value is {}, error={}", loc, oldLoc,
+        exception != null ? exception.toString() : "none");
+    }
     if (!canUpdateOnError(loc, oldLoc)) {
       return;
     }
     Throwable cause = findException(exception);
-    LOG.debug("The actual exception when updating {}", loc, cause);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("The actual exception when updating {} is {}", loc,
+        cause != null ? cause.toString() : "none");
+    }
     if (cause == null || !isMetaClearingException(cause)) {
       LOG.debug("Will not update {} because the exception is null or not the one we care about",
         loc);
@@ -68,7 +74,8 @@ final class AsyncRegionLocatorHelper {
       RegionMovedException rme = (RegionMovedException) cause;
       HRegionLocation newLoc =
         new HRegionLocation(loc.getRegion(), rme.getServerName(), rme.getLocationSeqNum());
-      LOG.debug("Try updating {} with the new location {} constructed by {}", loc, newLoc, rme);
+      LOG.debug("Try updating {} with the new location {} constructed by {}", loc, newLoc,
+        rme.toString());
       addToCache.accept(newLoc);
     } else {
       LOG.debug("Try removing {} from cache", loc);
@@ -121,20 +128,6 @@ final class AsyncRegionLocatorHelper {
       // if all the locations are null, just return null
       return null;
     }
-  }
-
-  /**
-   * Create a new {@link RegionLocations} which is the merging result for the given two
-   * {@link RegionLocations}.
-   * <p/>
-   * All the {@link RegionLocations} in async locator related class are immutable because we want to
-   * access them concurrently, so here we need to create a new one, instead of calling
-   * {@link RegionLocations#mergeLocations(RegionLocations)} directly.
-   */
-  static RegionLocations mergeRegionLocations(RegionLocations newLocs, RegionLocations oldLocs) {
-    RegionLocations locs = new RegionLocations(newLocs.getRegionLocations());
-    locs.mergeLocations(oldLocs);
-    return locs;
   }
 
   static boolean isGood(RegionLocations locs, int replicaId) {

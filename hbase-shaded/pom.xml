@@ -208,6 +208,11 @@
                                         <shadedPattern>${shaded.prefix}.com.zaxxer</shadedPattern>
                                     </relocation>
 
+                                    <!-- dnsjava -->
+                                    <relocation>
+                                        <pattern>org.xbill</pattern>
+                                        <shadedPattern>${shaded.prefix}.org.xbill</shadedPattern>
+                                    </relocation>
 
                                     <!-- netty family -->
                                     <relocation>
@@ -227,8 +232,12 @@
 
                                     <!-- top level org -->
                                     <relocation>
-                                        <pattern>org.codehaus</pattern>
-                                        <shadedPattern>${shaded.prefix}.org.codehaus</shadedPattern>
+                                      <pattern>org.checkerframework</pattern>
+                                      <shadedPattern>${shaded.prefix}.org.checkerframework</shadedPattern>
+                                    </relocation>
+                                    <relocation>
+                                      <pattern>org.codehaus</pattern>
+                                      <shadedPattern>${shaded.prefix}.org.codehaus</shadedPattern>
                                     </relocation>
                                     <relocation>
                                         <pattern>org.eclipse</pattern>
@@ -417,6 +426,10 @@
                                         <pattern>org.apache.commons.codec</pattern>
                                         <shadedPattern>${shaded.prefix}.org.apache.commons.codec</shadedPattern>
                                     </relocation>
+                                    <relocation>
+                                        <pattern>org.apache.commons.text</pattern>
+                                        <shadedPattern>${shaded.prefix}.org.apache.commons.text</shadedPattern>
+                                    </relocation>
 
                                     <!-- top level net-->
                                     <relocation>
@@ -454,6 +467,16 @@
                                   </transformer>
                                 </transformers>
                                 <filters>
+                                    <!-- remove utility classes which are not required from dnsjava -->
+                                    <filter>
+                                        <artifact>dnsjava:dnsjava</artifact>
+                                        <excludes>
+                                            <exclude>dig*</exclude>
+                                            <exclude>jnamed*</exclude>
+                                            <exclude>lookup*</exclude>
+                                            <exclude>update*</exclude>
+                                        </excludes>
+                                    </filter>
                                   <filter>
                                     <!-- this is a signed osgi bundle -->
                                     <artifact>org.eclipse.jetty.orbit:javax.servlet.jsp.jstl</artifact>

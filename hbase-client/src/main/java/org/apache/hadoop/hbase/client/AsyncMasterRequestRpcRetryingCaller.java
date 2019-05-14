@@ -17,8 +17,12 @@
  */
 package org.apache.hadoop.hbase.client;
 
+import static org.apache.hadoop.hbase.util.FutureUtils.addListener;
+
 import java.util.concurrent.CompletableFuture;
+import org.apache.hadoop.hbase.exceptions.ClientExceptionsUtil;
 import org.apache.hadoop.hbase.ipc.HBaseRpcController;
+import org.apache.hadoop.hbase.ipc.ServerNotRunningYetException;
 import org.apache.yetus.audience.InterfaceAudience;
 
 import org.apache.hbase.thirdparty.io.netty.util.Timer;
@@ -43,23 +47,31 @@ public class AsyncMasterRequestRpcRetryingCaller<T> extends AsyncRpcRetryingCall
       Callable<T> callable, long pauseNs, int maxRetries, long operationTimeoutNs,
       long rpcTimeoutNs, int startLogErrorsCnt) {
     super(retryTimer, conn, pauseNs, maxRetries, operationTimeoutNs, rpcTimeoutNs,
-        startLogErrorsCnt);
+      startLogErrorsCnt);
     this.callable = callable;
+  }
+
+  private void clearMasterStubCacheOnError(MasterService.Interface stub, Throwable error) {
+    // ServerNotRunningYetException may because it is the backup master.
+    if (ClientExceptionsUtil.isConnectionException(error) ||
+      error instanceof ServerNotRunningYetException) {
+      conn.clearMasterStubCache(stub);
+    }
   }
 
   @Override
   protected void doCall() {
-    conn.getMasterStub().whenComplete((stub, error) -> {
+    addListener(conn.getMasterStub(), (stub, error) -> {
       if (error != null) {
         onError(error, () -> "Get async master stub failed", err -> {
         });
         return;
       }
       resetCallTimeout();
-      callable.call(controller, stub).whenComplete((result, error2) -> {
+      addListener(callable.call(controller, stub), (result, error2) -> {
         if (error2 != null) {
-          onError(error2, () -> "Call to master failed", err -> {
-          });
+          onError(error2, () -> "Call to master failed",
+            err -> clearMasterStubCacheOnError(stub, error2));
           return;
         }
         future.complete(result);

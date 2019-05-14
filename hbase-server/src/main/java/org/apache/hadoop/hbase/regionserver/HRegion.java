@@ -295,7 +295,8 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
 
   // Track data size in all memstores
   private final MemStoreSizing memStoreSizing = new ThreadSafeMemStoreSizing();
-  private final RegionServicesForStores regionServicesForStores = new RegionServicesForStores(this);
+  @VisibleForTesting
+  RegionServicesForStores regionServicesForStores;
 
   // Debug possible data loss due to WAL off
   final LongAdder numMutationsWithoutWAL = new LongAdder();
@@ -773,6 +774,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       }
     }
     this.rsServices = rsServices;
+    this.regionServicesForStores = new RegionServicesForStores(this, rsServices);
     setHTableSpecificConf();
     this.scannerReadPoints = new ConcurrentHashMap<>();
 
@@ -989,7 +991,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     // Use maximum of log sequenceid or that which was found in stores
     // (particularly if no recovered edits, seqid will be -1).
     long maxSeqIdFromFile =
-      WALSplitter.getMaxRegionSequenceId(getWalFileSystem(), getWALRegionDir());
+        WALSplitter.getMaxRegionSequenceId(getWalFileSystem(), getWALRegionDirOfDefaultReplica());
     long nextSeqId = Math.max(maxSeqId, maxSeqIdFromFile) + 1;
     // The openSeqNum will always be increase even for read only region, as we rely on it to
     // determine whether a region has been successfully reopend, so here we always need to update
@@ -1897,6 +1899,19 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     return regionDir;
   }
 
+  /**
+   * @return the Region directory under WALRootDirectory; in case of secondary replica return the
+   *         region directory corresponding to its default replica
+   * @throws IOException if there is an error getting WALRootDir
+   */
+  private Path getWALRegionDirOfDefaultReplica() throws IOException {
+    RegionInfo regionInfo = getRegionInfo();
+    if (!RegionReplicaUtil.isDefaultReplica(regionInfo)) {
+      regionInfo = RegionReplicaUtil.getRegionInfoForDefaultReplica(regionInfo);
+    }
+    return FSUtils.getWALRegionDir(conf, regionInfo.getTable(), regionInfo.getEncodedName());
+  }
+
   @Override
   public long getEarliestFlushTimeForAllStores() {
     return Collections.min(lastStoreFlushTimeMap.values());
@@ -2618,7 +2633,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       }
     }
     MemStoreSize mss = this.memStoreSizing.getMemStoreSize();
-    LOG.info("Flushing " + + storesToFlush.size() + "/" + stores.size() + " column families," +
+    LOG.info("Flushing " + storesToFlush.size() + "/" + stores.size() + " column families," +
         " dataSize=" + StringUtils.byteDesc(mss.getDataSize()) +
         " heapSize=" + StringUtils.byteDesc(mss.getHeapSize()) +
         ((perCfExtras != null && perCfExtras.length() > 0)? perCfExtras.toString(): "") +
@@ -3748,6 +3763,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
           // Returned mutations from coprocessor correspond to the Mutation at index i. We can
           // directly add the cells from those mutations to the familyMaps of this mutation.
           Map<byte[], List<Cell>> cpFamilyMap = cpMutation.getFamilyCellMap();
+          region.rewriteCellTags(cpFamilyMap, mutation);
           // will get added to the memStore later
           mergeFamilyMaps(familyCellMaps[i], cpFamilyMap);
 
@@ -4616,7 +4632,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
                   HConstants.HREGION_EDITS_REPLAY_SKIP_ERRORS + " instead.");
         }
         if (skipErrors) {
-          Path p = WALSplitter.moveAsideBadEditsFile(walFS, edits);
+          Path p = WALSplitter.moveAsideBadEditsFile(fs, edits);
           LOG.error(HConstants.HREGION_EDITS_REPLAY_SKIP_ERRORS
               + "=true so continuing. Renamed " + edits +
               " as " + p, e);
@@ -7007,7 +7023,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     LOG.info("creating HRegion " + info.getTable().getNameAsString()
         + " HTD == " + hTableDescriptor + " RootDir = " + rootDir +
         " Table name == " + info.getTable().getNameAsString());
-    FileSystem fs = FileSystem.get(conf);
+    FileSystem fs = rootDir.getFileSystem(conf);
     Path tableDir = FSUtils.getTableDir(rootDir, info.getTable());
     HRegionFileSystem.createRegionOnFileSystem(conf, fs, tableDir, info);
     HRegion region = HRegion.newHRegion(tableDir, wal, fs, conf, info, hTableDescriptor, null);
@@ -7109,7 +7125,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       fs = rsServices.getFileSystem();
     }
     if (fs == null) {
-      fs = FileSystem.get(conf);
+      fs = rootDir.getFileSystem(conf);
     }
     return openHRegion(conf, fs, rootDir, info, htd, wal, rsServices, reporter);
   }
@@ -7278,7 +7294,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       fs = rsServices.getFileSystem();
     }
     if (fs == null) {
-      fs = FileSystem.get(conf);
+      fs = rootDir.getFileSystem(conf);
     }
 
     HRegion r = HRegion.newHRegion(tableDir, wal, fs, conf, info, htd, null);
@@ -7973,7 +7989,15 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
           break;
         default: throw new UnsupportedOperationException(op.toString());
       }
-
+      int newCellSize = PrivateCellUtil.estimatedSerializedSizeOf(newCell);
+      if (newCellSize > this.maxCellSize) {
+        String msg = "Cell with size " + newCellSize + " exceeds limit of " +
+            this.maxCellSize + " bytes";
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(msg);
+        }
+        throw new DoNotRetryIOException(msg);
+      }
       // Give coprocessors a chance to update the new cell
       if (coprocessorHost != null) {
         newCell =

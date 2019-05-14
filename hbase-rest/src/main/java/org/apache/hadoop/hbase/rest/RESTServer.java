@@ -92,7 +92,6 @@ public class RESTServer implements Constants {
   static final String REST_CSRF_CUSTOM_HEADER_DEFAULT = "X-XSRF-HEADER";
   static final String REST_CSRF_METHODS_TO_IGNORE_KEY = "hbase.rest.csrf.methods.to.ignore";
   static final String REST_CSRF_METHODS_TO_IGNORE_DEFAULT = "GET,OPTIONS,HEAD,TRACE";
-  // Intended for unit tests
   public static final String SKIP_LOGIN_KEY = "hbase.rest.skip.login";
 
   private static final String PATH_SPEC_ANY = "/*";
@@ -100,10 +99,14 @@ public class RESTServer implements Constants {
   static final String REST_HTTP_ALLOW_OPTIONS_METHOD = "hbase.rest.http.allow.options.method";
   // HTTP OPTIONS method is commonly used in REST APIs for negotiation. So it is enabled by default.
   private static boolean REST_HTTP_ALLOW_OPTIONS_METHOD_DEFAULT = true;
+
   static final String REST_CSRF_BROWSER_USERAGENTS_REGEX_KEY =
-    "hbase.rest-csrf.browser-useragents-regex";
+      "hbase.rest-csrf.browser-useragents-regex";
 
   // HACK, making this static for AuthFilter to get at our configuration. Necessary for unit tests.
+  @edu.umd.cs.findbugs.annotations.SuppressWarnings(
+      value={"ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD", "MS_CANNOT_BE_FINAL"},
+      justification="For testing")
   public static Configuration conf = null;
   private final UserProvider userProvider;
   private Server server;
@@ -207,7 +210,9 @@ public class RESTServer implements Constants {
 
     if (commandLine != null && commandLine.hasOption("skipLogin")) {
       conf.setBoolean(SKIP_LOGIN_KEY, true);
-      LOG.warn("Skipping Kerberos login for REST server");
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Skipping Kerberos login for REST server");
+      }
     }
 
     List<String> remainingArgs = commandLine != null ? commandLine.getArgList() : new ArrayList<>();

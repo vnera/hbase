@@ -332,10 +332,9 @@ public class LoadIncrementalHFiles extends Configured implements Tool {
 
       if (queue.isEmpty()) {
         LOG.warn(
-          "Bulk load operation did not find any files to load in " + "directory " + hfofDir != null
-              ? hfofDir.toUri().toString()
-              : "" + ".  Does it contain files in " +
-                  "subdirectories that correspond to column family names?");
+            "Bulk load operation did not find any files to load in directory {}. " +
+            "Does it contain files in subdirectories that correspond to column family names?",
+            (hfofDir != null ? hfofDir.toUri().toString() : ""));
         return Collections.emptyMap();
       }
       pool = createExecutorService();
@@ -410,7 +409,7 @@ public class LoadIncrementalHFiles extends Configured implements Tool {
       // need to reload split keys each iteration.
       final Pair<byte[][], byte[][]> startEndKeys = regionLocator.getStartEndKeys();
       if (count != 0) {
-        LOG.info("Split occurred while grouping HFiles, retry attempt " + +count + " with " +
+        LOG.info("Split occurred while grouping HFiles, retry attempt " + count + " with " +
             queue.size() + " files remaining to group or split");
       }
 

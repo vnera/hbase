@@ -19,6 +19,7 @@ package org.apache.hadoop.hbase.client;
 
 import static org.apache.hadoop.hbase.TableName.META_TABLE_NAME;
 import static org.apache.hadoop.hbase.util.FutureUtils.addListener;
+import static org.apache.hadoop.hbase.util.FutureUtils.unwrapCompletionException;
 
 import com.google.protobuf.Message;
 import com.google.protobuf.RpcChannel;
@@ -33,6 +34,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -374,7 +376,7 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
       @Override
       public void run(PRESP resp) {
         if (controller.failed()) {
-          future.completeExceptionally(new IOException(controller.errorText()));
+          future.completeExceptionally(controller.getFailed());
         } else {
           try {
             future.complete(respConverter.convert(resp));
@@ -390,12 +392,12 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
   private <PREQ, PRESP> CompletableFuture<Void> procedureCall(PREQ preq,
       MasterRpcCall<PRESP, PREQ> rpcCall, Converter<Long, PRESP> respConverter,
       ProcedureBiConsumer consumer) {
-    CompletableFuture<Long> procFuture = this
-        .<Long> newMasterCaller()
-        .action(
-          (controller, stub) -> this.<PREQ, PRESP, Long> call(controller, stub, preq, rpcCall,
-            respConverter)).call();
-    return waitProcedureResult(procFuture).whenComplete(consumer);
+    CompletableFuture<Long> procFuture =
+      this.<Long> newMasterCaller().action((controller, stub) -> this
+        .<PREQ, PRESP, Long> call(controller, stub, preq, rpcCall, respConverter)).call();
+    CompletableFuture<Void> future = waitProcedureResult(procFuture);
+    addListener(future, consumer);
+    return future;
   }
 
   @FunctionalInterface
@@ -646,7 +648,11 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
     CompletableFuture<Boolean> future = new CompletableFuture<>();
     addListener(isTableEnabled(tableName), (enabled, error) -> {
       if (error != null) {
-        future.completeExceptionally(error);
+        if (error instanceof TableNotFoundException) {
+          future.complete(false);
+        } else {
+          future.completeExceptionally(error);
+        }
         return;
       }
       if (!enabled) {
@@ -1049,6 +1055,9 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
             future.completeExceptionally(err);
             return;
           }
+          if (locations == null || locations.isEmpty()) {
+            future.completeExceptionally(new TableNotFoundException(tableName));
+          }
           CompletableFuture<?>[] compactFutures =
             locations.stream().filter(l -> l.getRegion() != null)
               .filter(l -> !l.getRegion().isOffline()).filter(l -> l.getServerName() != null)
@@ -1280,7 +1289,7 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
     if (splitPoint == null) {
       return failedFuture(new IllegalArgumentException("splitPoint can not be null."));
     }
-    addListener(connection.getRegionLocator(tableName).getRegionLocation(splitPoint),
+    addListener(connection.getRegionLocator(tableName).getRegionLocation(splitPoint, true),
       (loc, err) -> {
         if (err != null) {
           result.completeExceptionally(err);
@@ -1305,6 +1314,10 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
   public CompletableFuture<Void> splitRegion(byte[] regionName) {
     CompletableFuture<Void> future = new CompletableFuture<>();
     addListener(getRegionLocation(regionName), (location, err) -> {
+      if (err != null) {
+        future.completeExceptionally(err);
+        return;
+      }
       RegionInfo regionInfo = location.getRegion();
       if (regionInfo.getReplicaId() != RegionInfo.DEFAULT_REPLICA_ID) {
         future
@@ -1335,6 +1348,10 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
       "splitPoint is null. If you don't specify a splitPoint, use splitRegion(byte[]) instead");
     CompletableFuture<Void> future = new CompletableFuture<>();
     addListener(getRegionLocation(regionName), (location, err) -> {
+      if (err != null) {
+        future.completeExceptionally(err);
+        return;
+      }
       RegionInfo regionInfo = location.getRegion();
       if (regionInfo.getReplicaId() != RegionInfo.DEFAULT_REPLICA_ID) {
         future
@@ -2848,7 +2865,7 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
             future.completeExceptionally(err);
             return;
           }
-          List<CompactionState> regionStates = new ArrayList<>();
+          ConcurrentLinkedQueue<CompactionState> regionStates = new ConcurrentLinkedQueue<>();
           List<CompletableFuture<CompactionState>> futures = new ArrayList<>();
           locations.stream().filter(loc -> loc.getServerName() != null)
             .filter(loc -> loc.getRegion() != null).filter(loc -> !loc.getRegion().isOffline())
@@ -2857,7 +2874,7 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
                 // If any region compaction state is MAJOR_AND_MINOR
                 // the table compaction state is MAJOR_AND_MINOR, too.
                 if (err2 != null) {
-                  future.completeExceptionally(err2);
+                  future.completeExceptionally(unwrapCompletionException(err2));
                 } else if (regionState == CompactionState.MAJOR_AND_MINOR) {
                   future.complete(regionState);
                 } else {
@@ -2890,9 +2907,9 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
                     case NONE:
                     default:
                   }
-                  if (!future.isDone()) {
-                    future.complete(state);
-                  }
+                }
+                if (!future.isDone()) {
+                  future.complete(state);
                 }
               }
             });
@@ -3444,7 +3461,7 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
         futures
           .add(clearBlockCache(entry.getKey(), entry.getValue()).whenComplete((stats, err2) -> {
             if (err2 != null) {
-              future.completeExceptionally(err2);
+              future.completeExceptionally(unwrapCompletionException(err2));
             } else {
               aggregator.append(stats);
             }
@@ -3453,7 +3470,7 @@ class RawAsyncHBaseAdmin implements AsyncAdmin {
       addListener(CompletableFuture.allOf(futures.toArray(new CompletableFuture[futures.size()])),
         (ret, err3) -> {
           if (err3 != null) {
-            future.completeExceptionally(err3);
+            future.completeExceptionally(unwrapCompletionException(err3));
           } else {
             future.complete(aggregator.sum());
           }

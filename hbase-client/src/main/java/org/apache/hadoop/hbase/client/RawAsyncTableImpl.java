@@ -197,12 +197,10 @@ class RawAsyncTableImpl implements AsyncTable<AdvancedScanResultConsumer> {
     D convert(I info, S src, long nonceGroup, long nonce) throws IOException;
   }
 
-  private <REQ, RESP> CompletableFuture<RESP> noncedMutate(HBaseRpcController controller,
-      HRegionLocation loc, ClientService.Interface stub, REQ req,
+  private <REQ, RESP> CompletableFuture<RESP> noncedMutate(long nonceGroup, long nonce,
+      HBaseRpcController controller, HRegionLocation loc, ClientService.Interface stub, REQ req,
       NoncedConverter<MutateRequest, byte[], REQ> reqConvert,
       Converter<RESP, HBaseRpcController, MutateResponse> respConverter) {
-    long nonceGroup = conn.getNonceGenerator().getNonceGroup();
-    long nonce = conn.getNonceGenerator().newNonce();
     return mutate(controller, loc, stub, req,
       (info, src) -> reqConvert.convert(info, src, nonceGroup, nonce), respConverter);
   }
@@ -254,18 +252,24 @@ class RawAsyncTableImpl implements AsyncTable<AdvancedScanResultConsumer> {
   @Override
   public CompletableFuture<Result> append(Append append) {
     checkHasFamilies(append);
+    long nonceGroup = conn.getNonceGenerator().getNonceGroup();
+    long nonce = conn.getNonceGenerator().newNonce();
     return this.<Result> newCaller(append, rpcTimeoutNs)
-      .action((controller, loc, stub) -> this.<Append, Result> noncedMutate(controller, loc, stub,
-        append, RequestConverter::buildMutateRequest, RawAsyncTableImpl::toResult))
+      .action(
+        (controller, loc, stub) -> this.<Append, Result> noncedMutate(nonceGroup, nonce, controller,
+          loc, stub, append, RequestConverter::buildMutateRequest, RawAsyncTableImpl::toResult))
       .call();
   }
 
   @Override
   public CompletableFuture<Result> increment(Increment increment) {
     checkHasFamilies(increment);
+    long nonceGroup = conn.getNonceGenerator().getNonceGroup();
+    long nonce = conn.getNonceGenerator().newNonce();
     return this.<Result> newCaller(increment, rpcTimeoutNs)
-      .action((controller, loc, stub) -> this.<Increment, Result> noncedMutate(controller, loc,
-        stub, increment, RequestConverter::buildMutateRequest, RawAsyncTableImpl::toResult))
+      .action((controller, loc, stub) -> this.<Increment, Result> noncedMutate(nonceGroup, nonce,
+        controller, loc, stub, increment, RequestConverter::buildMutateRequest,
+        RawAsyncTableImpl::toResult))
       .call();
   }
 
@@ -426,6 +430,7 @@ class RawAsyncTableImpl implements AsyncTable<AdvancedScanResultConsumer> {
     return newScan;
   }
 
+  @Override
   public void scan(Scan scan, AdvancedScanResultConsumer consumer) {
     new AsyncClientScanner(setDefaultScanConfig(scan), consumer, tableName, conn, retryTimer,
       pauseNs, maxAttempts, scanTimeoutNs, readRpcTimeoutNs, startLogErrorsCnt).start();
@@ -583,7 +588,7 @@ class RawAsyncTableImpl implements AsyncTable<AdvancedScanResultConsumer> {
         (l, e) -> onLocateComplete(stubMaker, callable, callback, locs, endKey, endKeyInclusive,
           locateFinished, unfinishedRequest, l, e));
     }
-    coprocessorService(stubMaker, callable, region, region.getStartKey()).whenComplete((r, e) -> {
+    addListener(coprocessorService(stubMaker, callable, region, region.getStartKey()), (r, e) -> {
       if (e != null) {
         callback.onRegionError(region, e);
       } else {
