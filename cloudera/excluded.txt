@@ -22,3 +22,7 @@
 **/TestMasterOperationsForRegionReplicas.java
 **/TestRegionInfoDisplay
 **/TestSnapshotFromMaster.java
+
+**/TestStochasticLoadBalancerRegionReplicaSameHosts.java
+**/TestAsyncTableRegionReplicasGet.java
+**/TestAsyncTableRegionReplicasScan.java
