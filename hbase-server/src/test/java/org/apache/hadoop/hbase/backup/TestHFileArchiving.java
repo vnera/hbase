@@ -30,8 +30,12 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
-import org.apache.hadoop.hbase.*;
+import org.apache.hadoop.hbase.ChoreService;
 import org.apache.hadoop.hbase.HBaseClassTestRule;
+import org.apache.hadoop.hbase.HBaseTestingUtility;
+import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.Stoppable;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.master.cleaner.HFileCleaner;
 import org.apache.hadoop.hbase.regionserver.CompactingMemStore;
@@ -143,7 +147,7 @@ public class TestHFileArchiving {
 
     // now attempt to depose the region
     Path rootDir = region.getRegionFileSystem().getTableDir().getParent();
-    Path regionDir = HRegion.getRegionDir(rootDir, region.getRegionInfo());
+    Path regionDir = FSUtils.getRegionDirFromRootDir(rootDir, region.getRegionInfo());
 
     HFileArchiver.archiveRegion(UTIL.getConfiguration(), fs, region.getRegionInfo());
 
@@ -151,7 +155,6 @@ public class TestHFileArchiving {
     Path archiveDir = HFileArchiveTestingUtil.getRegionArchiveDir(UTIL.getConfiguration(), region);
     assertTrue(fs.exists(archiveDir));
 
-    // check to make sure the store directory was copied
     // check to make sure the store directory was copied
     FileStatus[] stores = fs.listStatus(archiveDir, new PathFilter() {
       @Override
@@ -194,7 +197,7 @@ public class TestHFileArchiving {
 
     // make sure there are some files in the regiondir
     Path rootDir = FSUtils.getRootDir(fs.getConf());
-    Path regionDir = HRegion.getRegionDir(rootDir, region.getRegionInfo());
+    Path regionDir = FSUtils.getRegionDirFromRootDir(rootDir, region.getRegionInfo());
     FileStatus[] regionFiles = FSUtils.listStatus(fs, regionDir, null);
     Assert.assertNotNull("No files in the region directory", regionFiles);
     if (LOG.isDebugEnabled()) {

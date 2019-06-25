@@ -43,7 +43,6 @@ import org.apache.hadoop.hbase.master.MasterFileSystem;
 import org.apache.hadoop.hbase.mob.MobConstants;
 import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.procedure2.ProcedureStateSerializer;
-import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
@@ -312,7 +311,7 @@ public class DeleteTableProcedure
       for (RegionInfo hri : regions) {
         LOG.debug("Archiving region " + hri.getRegionNameAsString() + " from FS");
         HFileArchiver.archiveRegion(fs, mfs.getRootDir(),
-            tempTableDir, HRegion.getRegionDir(tempTableDir, hri.getEncodedName()));
+            tempTableDir, FSUtils.getRegionDirFromTableDir(tempTableDir, hri));
       }
       LOG.debug("Table '" + tableName + "' archived!");
     }
@@ -336,6 +335,13 @@ public class DeleteTableProcedure
       if (!fs.delete(mobTableDir, true)) {
         throw new IOException("Couldn't delete mob dir " + mobTableDir);
       }
+    }
+
+    // Delete the directory on wal filesystem
+    FileSystem walFs = mfs.getWALFileSystem();
+    Path tableWALDir = FSUtils.getWALTableDir(env.getMasterConfiguration(), tableName);
+    if (walFs.exists(tableWALDir) && !walFs.delete(tableWALDir, true)) {
+      throw new IOException("Couldn't delete table dir on wal filesystem" + tableWALDir);
     }
   }
 
