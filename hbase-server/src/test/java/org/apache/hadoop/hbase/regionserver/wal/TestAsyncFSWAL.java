@@ -80,7 +80,7 @@ public class TestAsyncFSWAL extends AbstractTestFSWAL {
         suffix, GROUP, CHANNEL_CLASS) {
 
       @Override
-      void atHeadOfRingBufferEventHandlerAppend() {
+      protected void atHeadOfRingBufferEventHandlerAppend() {
         action.run();
         super.atHeadOfRingBufferEventHandlerAppend();
       }
