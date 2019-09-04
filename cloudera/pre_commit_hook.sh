@@ -75,14 +75,12 @@ if [ ! -d "${TEST_FRAMEWORK}" ]; then
   mkdir -p "${TEST_FRAMEWORK}/.gpg"
   chmod -R 700 "${TEST_FRAMEWORK}/.gpg"
 
-  # TODO post these curl'ed files on mirrors or artifactory and grab it from there.
-  curl -L --fail -o "${TEST_FRAMEWORK}/KEYS_YETUS" https://dist.apache.org/repos/dist/release/yetus/KEYS
-  gpg --homedir "${TEST_FRAMEWORK}/.gpg" --import "${TEST_FRAMEWORK}/KEYS_YETUS"
+  ${COMPONENT}/dev-support/jenkins-scripts/cache-apache-project-artifact.sh \
+      --keys 'https://www.apache.org/dist/yetus/KEYS' \
+      --working-dir "${TEST_FRAMEWORK}" \
+      yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz \
+      yetus/${YETUS_VERSION_NUMBER}/yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz
 
-  ## Release
-  curl -L --fail -O "https://dist.apache.org/repos/dist/release/yetus/${YETUS_VERSION_NUMBER}/yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz"
-  curl -L --fail -O "https://dist.apache.org/repos/dist/release/yetus/${YETUS_VERSION_NUMBER}/yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz.asc"
-  gpg --homedir "${TEST_FRAMEWORK}/.gpg" --verify "yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz.asc"
   tar xzpf "yetus-${YETUS_VERSION_NUMBER}-bin.tar.gz"
 fi
 
