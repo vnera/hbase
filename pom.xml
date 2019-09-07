@@ -91,6 +91,7 @@
     <module>hbase-metrics-api</module>
     <module>hbase-metrics</module>
     <module>hbase-zookeeper</module>
+    <module>hbase-hbtop</module>
   </modules>
   <!--Add apache snapshots in case we want to use unreleased versions of plugins:
       e.g. surefire 2.18-SNAPSHOT-->
@@ -1880,6 +1881,11 @@
         <version>${project.version}</version>
         <type>test-jar</type>
         <scope>test</scope>
+      </dependency>
+      <dependency>
+        <artifactId>hbase-hbtop</artifactId>
+        <groupId>org.apache.hbase</groupId>
+        <version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>org.apache.hbase</groupId>
