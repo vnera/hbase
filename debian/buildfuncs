@@ -1,0 +1,68 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+#
+# This file is designed to be sourced by all of the various
+# do-component-build scripts. It provides functions used by all.
+#
+
+die() {
+    >&2 echo "$@"
+    exit 1
+}
+
+#
+# Create a .tar.gz file from the contents of the current working
+# directory. This is done using "git add" + "git commit" + "git
+# archive" for questionable historical reasons.
+#
+# $1 (required) The prefix of the tarball. Entries in the tarball will
+# start with this directory, and the tarball will be named
+# build/<prefix>.tar.gz.
+#
+make-tarball() {
+    local PREFIX=$1
+    if [ -z "${PREFIX}" ]; then
+        die "Prefix required to make-tarball"
+    fi
+    git init
+    git add .
+    # Git add does not add hidden files. Explicitly add them here.
+    find . -name ".*" -exec git add -f {} \;
+    git commit -a -m "Temporary commit for tarball"
+    mkdir -p build
+    git archive --prefix=${PREFIX}/ --format=tar HEAD | pigz > build/${PREFIX}.tar.gz
+}
+
+#
+# Create a .tar.gz file from the contents of the current working
+# directory. Same purpose and arguments as make-tarball above, but
+# actually uses a sane tar command.
+#
+# $1 (required) The prefix of the tarball. Entries in the tarball will
+# start with this directory, and the tarball will be named
+# build/<prefix>.tar.gz.
+#
+make-tarball-using-tar() {
+    local PREFIX=$1
+    if [ -z "${PREFIX}" ]; then
+        die "Prefix required to make-tarball"
+    fi
+    rm -rf build
+    mkdir build
+    tar --use-compress-program pigz --transform "s/^\./${PREFIX}/" --exclude build --exclude .git -cvf build/${PREFIX}.tar.gz .
+}

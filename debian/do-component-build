@@ -1,0 +1,84 @@
+#!/bin/bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -ex
+CWD="$(dirname "$0")"
+COMPONENT="hbase"
+
+# This file can be called in two ways. In the normal path, it is
+# invoked here as-is, and the build functions are over in the
+# templates directory.  As part of packaging, it is copied into a
+# package-specific directory along with the contents of the templates
+# directory, and so the build functions are in the currrent working
+# directory.
+FUNCTIONS1="${CWD}/../../templates/buildfuncs"
+FUNCTIONS2="${CWD}/buildfuncs"
+if [ -f "${FUNCTIONS1}" ]; then
+    . "${FUNCTIONS1}"
+elif [ -f "${FUNCTIONS2}" ]; then
+    . "${FUNCTIONS2}"
+else
+    echo "Unable to source ${FUNCTIONS1} or ${FUNCTIONS2}"
+    exit 1
+fi
+
+if [ -z "${DO_MAVEN_DEPLOY}" ]; then
+    MAVEN_INST_DEPLOY=install
+else
+    MAVEN_INST_DEPLOY=$DO_MAVEN_DEPLOY
+fi
+build_args="-Prelease -DskipTests $MAVEN_INST_DEPLOY -Dmaven.repo.local=${HOME}/.m2/repository${M2_REPO_SUFFIX}"
+
+if [ -z "${MAVEN_DEPLOY_ONLY}" ]; then
+#rvasanthakumari : Added split goal
+    build_args_asm="${build_args} -Pnative assembly:single"
+    build_args="${build_args} -Pnative source:jar site javadoc:aggregate"
+fi
+
+set -ex
+# We can run up-to ${#SUPPORTED_PLATFORMS} of hbase at the same time.
+# In our typical cauldron instance job. etting Xmx to 3G causes the build
+# each individual target to take more than 2 hours. Setting it to 6G sometimes
+# results in oom.
+# We try 4G for now.
+JAVA_OPTS="-Xmx4G -XX:MaxPermSize=256m"
+
+# See CDH-57819. Enforcer is consistently taking hours and occasionally
+# timing out builds.
+SKIP_ENFORCER="-Denforcer.skip=true"
+
+MAVEN_OPTS="$JAVA_OPTS" mvn $CAULDRON_MAVEN_EXTRA_ARGS $SKIP_ENFORCER $build_args "$@"
+MAVEN_OPTS="$JAVA_OPTS" mvn $CAULDRON_MAVEN_EXTRA_ARGS $SKIP_ENFORCER $build_args_asm "$@"
+
+if [ -z "${MAVEN_DEPLOY_ONLY}" ]; then
+    mkdir -p build
+    for x in ${COMPONENT}-assembly/target/*.tar.gz ; do
+        tar --use-compress-program pigz -C build -xf $x
+    done
+
+    cp ${COMPONENT}-hadoop*-compat/target/${COMPONENT}-hadoop*-compat-*-tests.jar build/${COMPONENT}-${FULL_VERSION}/lib/
+    cp -r target/site/apidocs build/${COMPONENT}-${FULL_VERSION}/docs
+
+    (cd build && tar --use-compress-program pigz --exclude='*/native/lib*' --exclude='*/lib/native/*' -cf ${COMPONENT}-${FULL_VERSION}.tar.gz ${COMPONENT}-${FULL_VERSION})
+
+    # Copy generated docs
+    if [ -n "$CAULDRON_FIRST_NATIVE_BUILD" ]; then
+        # We only need to copy docs once regardless of OS
+        PUB_DOCS_DIR="${CAULDRON_OUTPUT}/cdh6/${CDH_VERSION}/docs/${COMPONENT}-${FULL_VERSION}/"
+        mkdir -p "${PUB_DOCS_DIR}"
+        cp -r build/"${COMPONENT}-${FULL_VERSION}"/docs/* "${PUB_DOCS_DIR}"
+    fi
+fi
